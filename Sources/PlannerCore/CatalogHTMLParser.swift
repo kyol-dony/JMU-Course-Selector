@@ -1,0 +1,588 @@
+import Foundation
+
+public struct HTMLProgramIndexEntry: Hashable, Sendable {
+    public var title: String
+    public var kind: ProgramKind
+    public var sectionTitle: String
+    public var sourceURL: URL
+    public var printURL: URL
+    public var catoid: String
+    public var poid: String
+    public var degreeType: String?
+
+    public init(
+        title: String,
+        kind: ProgramKind,
+        sectionTitle: String,
+        sourceURL: URL,
+        printURL: URL,
+        catoid: String,
+        poid: String,
+        degreeType: String?
+    ) {
+        self.title = title
+        self.kind = kind
+        self.sectionTitle = sectionTitle
+        self.sourceURL = sourceURL
+        self.printURL = printURL
+        self.catoid = catoid
+        self.poid = poid
+        self.degreeType = degreeType
+    }
+}
+
+public struct HTMLProgramRequirements: Sendable {
+    public var title: String?
+    public var requirements: [RequirementCategory]
+    public var courses: [Course]
+    public var totalCredits: Int?
+
+    public init(title: String?, requirements: [RequirementCategory], courses: [Course], totalCredits: Int?) {
+        self.title = title
+        self.requirements = requirements
+        self.courses = courses
+        self.totalCredits = totalCredits
+    }
+}
+
+public struct JMUHTMLCatalogParser: Sendable {
+    private let baseURL = URL(string: "https://catalog.jmu.edu/")!
+
+    public init() {}
+
+    public func parseProgramsOfStudy(_ html: String) -> [HTMLProgramIndexEntry] {
+        let sectionPattern = #"(?is)<p\b[^>]*>\s*<strong>(.*?)</strong>\s*</p>\s*<ul\s+class="program-list"\s*>(.*?)</ul>"#
+        let linkPattern = #"(?is)<a\s+href="([^"]*preview_program\.php[^"]*)"[^>]*>(.*?)</a>"#
+        var entries: [HTMLProgramIndexEntry] = []
+
+        for section in html.matches(for: sectionPattern) {
+            guard section.count >= 3 else { continue }
+            let sectionTitle = HTMLCleaner.clean(section[1])
+            guard let kind = programKind(forSectionTitle: sectionTitle) else { continue }
+
+            for link in section[2].matches(for: linkPattern) {
+                guard link.count >= 3 else { continue }
+                let href = HTMLCleaner.decodeEntities(in: link[1])
+                let title = HTMLCleaner.clean(link[2])
+                guard let catoid = queryValue("catoid", in: href),
+                      let poid = queryValue("poid", in: href),
+                      let sourceURL = URL(string: "preview_program.php?catoid=\(catoid)&poid=\(poid)&returnto=3541", relativeTo: baseURL)?.absoluteURL,
+                      let printURL = URL(string: "preview_program.php?catoid=\(catoid)&poid=\(poid)&returnto=3541&print", relativeTo: baseURL)?.absoluteURL
+                else {
+                    continue
+                }
+
+                entries.append(HTMLProgramIndexEntry(
+                    title: title,
+                    kind: kind,
+                    sectionTitle: sectionTitle,
+                    sourceURL: sourceURL,
+                    printURL: printURL,
+                    catoid: catoid,
+                    poid: poid,
+                    degreeType: degreeType(from: title, kind: kind)
+                ))
+            }
+        }
+
+        return entries
+    }
+
+    public func parseProgramRequirements(_ html: String, kind: ProgramKind, sourceURL: URL) -> HTMLProgramRequirements {
+        let title = parseTitle(from: html)
+        let catoid = queryValue("catoid", in: sourceURL.absoluteString) ?? "62"
+        let requirementSlice = requirementsSlice(in: html, kind: kind) ?? ""
+        var coursesByID: [String: Course] = [:]
+        var usedCategoryIDs: Set<String> = []
+        var categories: [RequirementCategory] = []
+
+        for block in requirementBlocks(in: requirementSlice) {
+            let courseItems = courseItems(in: block.body, catoid: catoid)
+            let courses = courseItems.compactMap { item -> Course? in
+                if case .course(let course) = item { return course }
+                return nil
+            }
+
+            // Skip non-requirement sections (descriptions, totals, admission, etc).
+            // Umbrella headings like "Major Requirements" are skipped ONLY when their
+            // body has no course rows — some catalog pages place the core required
+            // courses directly under the umbrella heading with no child acalog-core div.
+            guard !shouldIgnoreRequirementHeading(block.heading, hasCourses: !courses.isEmpty) else {
+                continue
+            }
+
+            for item in courseItems {
+                if case .course(let course) = item {
+                    coursesByID[course.id] = course
+                }
+            }
+
+            let selectionCount = choiceSelectionCount(heading: block.heading, body: block.body)
+
+            let requiredCredits = parseCredits(from: block.heading)
+                ?? parseTotalCreditsFromBody(block.body)
+                ?? inferredCredits(for: courseItems, selectionCount: selectionCount)
+
+            guard requiredCredits > 0 || !courses.isEmpty else { continue }
+
+            let options = courseOptions(
+                from: courseItems,
+                selectionCount: selectionCount
+            )
+            let categoryID = uniqueID(slug(from: block.heading), used: &usedCategoryIDs)
+            let note = note(for: block, options: options, courses: courses)
+
+            categories.append(RequirementCategory(
+                id: categoryID,
+                name: block.heading,
+                requiredCredits: requiredCredits,
+                courseOptions: options,
+                verificationStatus: .partial,
+                note: note
+            ))
+        }
+
+        return HTMLProgramRequirements(
+            title: title,
+            requirements: categories,
+            courses: coursesByID.values.sorted { $0.code < $1.code },
+            totalCredits: parseProgramTotal(from: html)
+        )
+    }
+
+    private func programKind(forSectionTitle title: String) -> ProgramKind? {
+        let normalized = title.lowercased()
+        if normalized == "major" { return .major }
+        if normalized == "minor" || normalized.contains("minor") { return .minor }
+        return nil
+    }
+
+    private func queryValue(_ name: String, in text: String) -> String? {
+        let pattern = #"(?i)(?:\?|&|&amp;)\#(name)=([^&#"]+)"#
+        return text.firstMatch(for: pattern)?.dropFirst().first
+    }
+
+    private func degreeType(from title: String, kind: ProgramKind) -> String? {
+        guard kind == .major else { return nil }
+        let knownDegrees = [
+            "B.B.A.", "B.S.N.", "B.S.W.", "B.I.S.", "B.F.A.", "B.M.",
+            "B.A.", "B.S.", "Dual Degree"
+        ]
+        return knownDegrees.first { title.hasSuffix($0) || title.contains(", \($0)") }
+    }
+
+    private func parseTitle(from html: String) -> String? {
+        guard let match = html.firstMatch(for: #"(?is)<h1\b[^>]*id="acalog-content"[^>]*>(.*?)</h1>"#),
+              match.count > 1
+        else {
+            return nil
+        }
+        return HTMLCleaner.clean(match[1])
+    }
+
+    private func requirementsSlice(in html: String, kind: ProgramKind) -> String? {
+        let anchors: [String]
+        switch kind {
+        case .major:
+            anchors = ["DegreeAndMajorRequirements", "MajorRequirements", "DegreeRequirements"]
+        case .minor:
+            anchors = ["MinorRequirements", "Requirements"]
+        case .certificate:
+            anchors = ["CertificateRequirements", "Requirements"]
+        }
+
+        let start = anchors.compactMap { anchorStart(named: $0, in: html) }.min()
+            ?? firstRequirementHeading(in: html)
+        guard let start else { return nil }
+
+        let remainder = html[start..<html.endIndex]
+        let end = stopHeadingStart(in: remainder).map { html.index(start, offsetBy: $0) } ?? html.endIndex
+        return String(html[start..<end])
+    }
+
+    private func anchorStart(named name: String, in html: String) -> String.Index? {
+        html.range(of: #"<a\s+name="\#(name)""#, options: [.regularExpression, .caseInsensitive])?.lowerBound
+    }
+
+    private func firstRequirementHeading(in html: String) -> String.Index? {
+        let headingPattern = #"(?is)<h2\b[^>]*>.*?</h2>"#
+        for match in html.matchesWithRanges(for: headingPattern) {
+            let text = HTMLCleaner.clean(match.match)
+            let lower = text.lowercased()
+            if lower.contains("requirements") && !lower.contains("admission") && !lower.contains("retention") {
+                return match.range.lowerBound
+            }
+        }
+        return nil
+    }
+
+    private func stopHeadingStart(in html: Substring) -> Int? {
+        let source = String(html)
+        let headingPattern = #"(?is)<h2\b[^>]*>.*?</h2>"#
+        for match in source.matchesWithRanges(for: headingPattern) {
+            let text = HTMLCleaner.clean(match.match).lowercased()
+            if text.contains("recommended schedule")
+                || text.contains("sample plan")
+                || text.contains("additional information")
+                || text.contains("program total") {
+                return source.distance(from: source.startIndex, to: match.range.lowerBound)
+            }
+        }
+        return nil
+    }
+
+    private struct RequirementBlock {
+        var heading: String
+        var body: String
+    }
+
+    private func requirementBlocks(in html: String) -> [RequirementBlock] {
+        let markerPattern = #"(?is)<div\s+class="acalog-core"\s*>\s*<h[2-5]\b[^>]*>"#
+        let markers = html.matchesWithRanges(for: markerPattern).map(\.range)
+
+        return markers.enumerated().compactMap { index, markerRange in
+            let segmentEnd = index + 1 < markers.count ? markers[index + 1].lowerBound : html.endIndex
+            let segment = String(html[markerRange.upperBound..<segmentEnd])
+            guard let headingEnd = segment.range(of: #"(?is)</h[2-5]>"#, options: .regularExpression) else {
+                return nil
+            }
+
+            let heading = HTMLCleaner.clean(String(segment[..<headingEnd.lowerBound]))
+            guard !heading.isEmpty else { return nil }
+            let body = String(segment[headingEnd.upperBound...])
+                .replacingOccurrences(of: #"(?is)^\s*<hr\s*/?>"#, with: "", options: .regularExpression)
+            return RequirementBlock(heading: heading, body: body)
+        }
+    }
+
+    private func shouldIgnoreRequirementHeading(_ heading: String, hasCourses: Bool) -> Bool {
+        let lower = heading.lowercased()
+        if lower.contains("footnote") { return true }
+        if lower.contains("program description") { return true }
+        if lower.contains("admission") || lower.contains("retention") { return true }
+        if lower.contains("progressing in the major") { return true }
+        if lower.contains("recommended schedule") || lower.contains("sample plan") { return true }
+        if lower.contains("first year") || lower.contains("second year") || lower.contains("third year") || lower.contains("fourth year") {
+            return true
+        }
+        if lower.contains("semester") && (lower.contains("fall") || lower.contains("spring")) { return true }
+        if lower.contains("total") && lower.contains("credit") { return true }
+        if lower.contains("additional information") { return true }
+        if lower.contains("u.s. government requirements") { return true }
+        if lower.contains("certificates") { return true }
+        // Umbrella headings: skip only when they have no inline course list.
+        // Some pages tuck the entire core course list directly under these.
+        if !hasCourses {
+            if lower == "major requirements" || lower == "minor requirements" { return true }
+            if lower == "degree and major requirements" { return true }
+        }
+        return false
+    }
+
+    private enum CourseItem {
+        case course(Course)
+        case marker(String)
+    }
+
+    private func courseItems(in html: String, catoid: String) -> [CourseItem] {
+        let listItemPattern = #"(?is)<li\b([^>]*)>(.*?)</li>"#
+        return html.matches(for: listItemPattern).compactMap { match in
+            guard match.count >= 3 else { return nil }
+            let attributes = match[1]
+            let body = match[2]
+            let text = HTMLCleaner.clean(body).lowercased()
+
+            if text == "or" {
+                return .marker("or")
+            }
+
+            guard attributes.contains("acalog-course") else {
+                return text == "or" ? .marker("or") : nil
+            }
+
+            guard let course = parseCourse(fromListItem: body, catoid: catoid) else {
+                return nil
+            }
+            return .course(course)
+        }
+    }
+
+    private func parseCourse(fromListItem html: String, catoid: String) -> Course? {
+        guard let labelMatch = html.firstMatch(for: #"(?is)<a\b[^>]*>(.*?)</a>"#),
+              labelMatch.count > 1
+        else {
+            return nil
+        }
+
+        let label = HTMLCleaner.clean(labelMatch[1])
+        guard let parsedLabel = parseCourseLabel(label) else { return nil }
+        let credits = parseCredits(from: html)
+        let coid = html.firstMatch(for: #"(?i)showCourse\('\d+',\s*'(\d+)'"#)?.dropFirst().first
+            ?? html.firstMatch(for: #"(?i)coid=(\d+)"#)?.dropFirst().first
+        let registrarURL = coid.flatMap { URL(string: "preview_course.php?catoid=\(catoid)&coid=\($0)&print", relativeTo: baseURL)?.absoluteURL }
+
+        return Course(
+            id: parsedLabel.id,
+            code: parsedLabel.code,
+            title: parsedLabel.title,
+            credits: credits ?? 3,
+            availability: nil,
+            prerequisites: [],
+            verificationStatus: .partial,
+            registrarURL: registrarURL
+        )
+    }
+
+    private func parseCourseLabel(_ label: String) -> (id: String, code: String, title: String)? {
+        let stripped = label.replacingOccurrences(of: #"\s+\[[^\]]+\]"#, with: "", options: .regularExpression)
+        guard let match = stripped.firstMatch(for: #"^([A-Z]{2,5})\s+(\d{3}[A-Z]?)\.\s*(.+)$"#),
+              match.count >= 4
+        else {
+            return nil
+        }
+        let subject = match[1]
+        let number = match[2]
+        let title = match[3].trimmingCharacters(in: .whitespacesAndNewlines)
+        return ("\(subject)\(number)", "\(subject) \(number)", title)
+    }
+
+    private func parseCredits(from text: String) -> Int? {
+        let cleaned = HTMLCleaner.clean(text)
+        let patterns = [
+            #"(?i):\s*(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#,
+            #"(?i)Credits?:\s*(\d+(?:\.\d+)?)"#,
+            #"(?i)(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#
+        ]
+
+        for pattern in patterns {
+            guard let match = cleaned.firstMatch(for: pattern),
+                  match.count > 1,
+                  let value = Double(match[1])
+            else {
+                continue
+            }
+            return max(Int(value.rounded(.up)), 0)
+        }
+        return nil
+    }
+
+    /// Block-body credit parser. Excludes the per-course "Credits: 3.00" pattern
+    /// so we never mistake a course row's credit field for the section total.
+    private func parseTotalCreditsFromBody(_ body: String) -> Int? {
+        let cleaned = HTMLCleaner.clean(body)
+        let patterns = [
+            #"(?i):\s*(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#,
+            #"(?i)(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#
+        ]
+        for pattern in patterns {
+            guard let match = cleaned.firstMatch(for: pattern),
+                  match.count > 1,
+                  let value = Double(match[1])
+            else { continue }
+            return max(Int(value.rounded(.up)), 0)
+        }
+        return nil
+    }
+
+    private func inferredCredits(for items: [CourseItem], selectionCount: Int?) -> Int {
+        let courses = items.compactMap { item -> Course? in
+            if case .course(let course) = item { return course }
+            return nil
+        }
+
+        if let selectionCount {
+            return courses.prefix(selectionCount).reduce(0) { $0 + $1.credits }
+        }
+
+        return courseOptions(from: items, selectionCount: nil).reduce(0) { total, option in
+            total + (option.compactMap { courseID in courses.first(where: { $0.id == courseID })?.credits }.max() ?? 0)
+        }
+    }
+
+    private func isChoiceRequirement(heading: String, body: String) -> Bool {
+        choiceSelectionCount(heading: heading, body: body) != nil
+    }
+
+    private func choiceSelectionCount(heading: String, body: String) -> Int? {
+        let text = HTMLCleaner.clean("\(heading) \(body)").lowercased()
+        if text.contains("one of the following") || text.contains("select one") {
+            return 1
+        }
+
+        let wordValues = ["one": 1, "two": 2, "three": 3, "four": 4, "five": 5]
+        for (word, value) in wordValues where text.contains("choose \(word)") || text.contains("select \(word)") {
+            return value
+        }
+
+        guard let match = text.firstMatch(for: #"(?i)(?:choose|select)\s+(\d+)"#),
+              match.count > 1
+        else {
+            return nil
+        }
+        return Int(match[1])
+    }
+
+    private func courseOptions(from items: [CourseItem], selectionCount: Int?) -> [[String]] {
+        let courseIDs = items.compactMap { item -> String? in
+            if case .course(let course) = item { return course.id }
+            return nil
+        }
+        guard !courseIDs.isEmpty else { return [] }
+
+        if selectionCount == 1 {
+            return [unique(courseIDs)]
+        }
+
+        if let selectionCount, selectionCount > 1 {
+            return unique(courseIDs).prefix(selectionCount).map { [$0] }
+        }
+
+        var options: [[String]] = []
+        var index = 0
+        while index < items.count {
+            guard case .course(let course) = items[index] else {
+                index += 1
+                continue
+            }
+
+            var group = [course.id]
+            var cursor = index
+            while cursor + 2 < items.count,
+                  case .marker(let marker) = items[cursor + 1],
+                  marker.lowercased() == "or",
+                  case .course(let nextCourse) = items[cursor + 2] {
+                group.append(nextCourse.id)
+                cursor += 2
+            }
+
+            options.append(unique(group))
+            index = cursor + 1
+        }
+
+        return uniqueOptions(options)
+    }
+
+    private func note(for block: RequirementBlock, options: [[String]], courses: [Course]) -> String? {
+        let text = HTMLCleaner.clean(block.body)
+        if options.isEmpty, !text.isEmpty {
+            return "Catalog text did not provide a fixed course list. Review this requirement with an advisor."
+        }
+        if isChoiceRequirement(heading: block.heading, body: block.body) || options.contains(where: { $0.count > 1 }) {
+            return "Parsed from JMU catalog HTML as a choice requirement. Confirm eligible choices with an advisor."
+        }
+        if courses.isEmpty {
+            return "Parsed from JMU catalog HTML."
+        }
+        return nil
+    }
+
+    private func parseProgramTotal(from html: String) -> Int? {
+        guard let match = HTMLCleaner.clean(html).firstMatch(for: #"(?i)(?:Program\s+)?Total:\s*(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#),
+              match.count > 1
+        else {
+            return nil
+        }
+        return Int(match[1])
+    }
+
+    private func slug(from text: String) -> String {
+        let lower = text.lowercased()
+        let allowed = lower.unicodeScalars.map { scalar -> Character in
+            CharacterSet.alphanumerics.contains(scalar) ? Character(scalar) : "-"
+        }
+        let collapsed = String(allowed)
+            .replacingOccurrences(of: #"-+"#, with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return collapsed.isEmpty ? "requirement" : collapsed
+    }
+
+    private func uniqueID(_ base: String, used: inout Set<String>) -> String {
+        var candidate = base
+        var suffix = 2
+        while used.contains(candidate) {
+            candidate = "\(base)-\(suffix)"
+            suffix += 1
+        }
+        used.insert(candidate)
+        return candidate
+    }
+
+    private func unique(_ values: [String]) -> [String] {
+        var seen: Set<String> = []
+        return values.filter { seen.insert($0).inserted }
+    }
+
+    private func uniqueOptions(_ options: [[String]]) -> [[String]] {
+        var seen: Set<[String]> = []
+        return options.filter { seen.insert($0).inserted }
+    }
+}
+
+private enum HTMLCleaner {
+    static func clean(_ html: String) -> String {
+        let withoutScripts = html
+            .replacingOccurrences(of: #"(?is)<script\b.*?</script>"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"(?is)<style\b.*?</style>"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"(?is)<span\s+style="display:\s*none\s*!important"[^>]*>.*?</span>"#, with: " ", options: .regularExpression)
+        let withoutTags = withoutScripts.replacingOccurrences(of: #"(?is)<[^>]+>"#, with: " ", options: .regularExpression)
+        let decoded = decodeEntities(in: withoutTags)
+        return decoded
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func decodeEntities(in text: String) -> String {
+        var result = text
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&#160;", with: " ")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#8220;", with: "\"")
+            .replacingOccurrences(of: "&#8221;", with: "\"")
+            .replacingOccurrences(of: "&#8217;", with: "'")
+            .replacingOccurrences(of: "&rsquo;", with: "'")
+            .replacingOccurrences(of: "&ndash;", with: "-")
+            .replacingOccurrences(of: "&mdash;", with: "-")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+
+        let numericPattern = #"&#(\d+);"#
+        for match in result.matches(for: numericPattern).reversed() {
+            guard match.count > 1,
+                  let value = UInt32(match[1]),
+                  let scalar = UnicodeScalar(value)
+            else {
+                continue
+            }
+            result = result.replacingOccurrences(of: match[0], with: String(Character(scalar)))
+        }
+
+        return result
+    }
+}
+
+private extension String {
+    func matches(for pattern: String) -> [[String]] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(startIndex..<endIndex, in: self)
+        return regex.matches(in: self, range: range).map { match in
+            (0..<match.numberOfRanges).compactMap { index in
+                guard let range = Range(match.range(at: index), in: self) else { return nil }
+                return String(self[range])
+            }
+        }
+    }
+
+    func firstMatch(for pattern: String) -> [String]? {
+        matches(for: pattern).first
+    }
+
+    func matchesWithRanges(for pattern: String) -> [(match: String, range: Range<String.Index>)] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(startIndex..<endIndex, in: self)
+        return regex.matches(in: self, range: range).compactMap { match in
+            guard let swiftRange = Range(match.range, in: self) else { return nil }
+            return (String(self[swiftRange]), swiftRange)
+        }
+    }
+}

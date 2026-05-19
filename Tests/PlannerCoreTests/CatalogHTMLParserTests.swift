@@ -1,0 +1,144 @@
+import Foundation
+import Testing
+@testable import PlannerCore
+
+@Suite("JMU catalog HTML parser")
+struct CatalogHTMLParserTests {
+    @Test("program index extracts majors and minors from JMU program lists")
+    func parsesProgramIndex() throws {
+        let html = """
+        <p style="padding-left: 30px"><strong>Major</strong></p>
+        <ul class="program-list">
+        <li><a href="preview_program.php?catoid=62&poid=27091&returnto=3541">Computer Science, B.S.</a></li>
+        </ul>
+        <p style="padding-left: 30px"><strong>Cross Disciplinary Minor</strong></p>
+        <ul class="program-list">
+        <li><a href="preview_program.php?catoid=62&amp;poid=27015&amp;returnto=3541">Robotics Minor</a></li>
+        </ul>
+        """
+
+        let entries = JMUHTMLCatalogParser().parseProgramsOfStudy(html)
+
+        #expect(entries.count == 2)
+        #expect(entries[0].title == "Computer Science, B.S.")
+        #expect(entries[0].kind == .major)
+        #expect(entries[0].degreeType == "B.S.")
+        #expect(entries[0].printURL.absoluteString.contains("poid=27091"))
+        #expect(entries[1].title == "Robotics Minor")
+        #expect(entries[1].kind == .minor)
+    }
+
+    @Test("program requirements preserve required courses and choice groups")
+    func parsesProgramRequirements() throws {
+        let html = """
+        <h1 id="acalog-content">Computer Science Minor</h1>
+        <div class="acalog-core"><h2><a name="MinorRequirements"></a>Minor Requirements</h2><hr></div>
+        <div class="custom_leftpad_20">
+          <div class="acalog-core"><h3><a name="IntroductoryCourses6CreditHours"></a>Introductory Courses: 6 Credit Hours</h3><hr>
+            <ul>
+              <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '368727',this, 'x'); return false;">CS 149. Introduction to Programming</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+              <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '368728',this, 'x'); return false;">CS 159. Advanced Programming</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            </ul>
+          </div>
+          <div class="acalog-core"><h3><a name="CoreCourse3CreditHours"></a>Core Course: 3 Credit Hours</h3><hr>
+            <p>Choose one of the following:</p>
+            <ul>
+              <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '368704',this, 'x'); return false;">CS 240. Algorithms and Data Structures</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+              <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '368734',this, 'x'); return false;">CS 261. Computer Systems I</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            </ul>
+          </div>
+          <div class="acalog-core"><h2><a name="Total18CreditHours"></a>Total: 18 Credit Hours</h2><hr></div>
+        </div>
+        """
+
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=27051&returnto=3541"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .minor, sourceURL: sourceURL)
+
+        #expect(parsed.title == "Computer Science Minor")
+        #expect(parsed.requirements.count == 2)
+        #expect(parsed.requirements[0].requiredCredits == 6)
+        #expect(parsed.requirements[0].courseOptions == [["CS149"], ["CS159"]])
+        #expect(parsed.requirements[1].courseOptions == [["CS240", "CS261"]])
+        #expect(parsed.courses.map(\.id).sorted() == ["CS149", "CS159", "CS240", "CS261"])
+        #expect(parsed.courses.first(where: { $0.id == "CS149" })?.registrarURL?.absoluteString.contains("coid=368727") == true)
+    }
+
+    @Test("or markers create alternate course options")
+    func parsesOrAlternates() throws {
+        let html = """
+        <h1 id="acalog-content">Accounting, B.B.A.</h1>
+        <div class="acalog-core"><h2><a name="DegreeAndMajorRequirements"></a>Degree and Major Requirements</h2><hr></div>
+        <div class="acalog-core"><h3><a name="MathChoice34CreditHours"></a>Math Choice: 3-4 Credit Hours</h3><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '370246',this, 'x'); return false;">MATH 205. Applied Calculus [C3QR]</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-adhoc acalog-adhoc-after" style="list-style: none;"><p>or</p></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '370231',this, 'x'); return false;">MATH 235. Calculus I [C3QR]</a> <em><strong>Credits:</strong></em> <em>4.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="RecommendedScheduleForMajors"></a>Recommended Schedule for Majors</h2><hr></div>
+        """
+
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=27172&returnto=3541"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+
+        let math = try #require(parsed.requirements.first)
+        #expect(math.courseOptions == [["MATH205", "MATH235"]])
+        #expect(math.requiredCredits == 3)
+    }
+
+    @Test("nested acalog wrappers do not hide the first child requirement")
+    func parsesNestedRequirementWrappers() throws {
+        let html = """
+        <h1 id="acalog-content">Accounting, B.B.A.</h1>
+        <div class="acalog-core"><h2><a name="DegreeAndMajorRequirements"></a>Degree and Major Requirements</h2><hr></div>
+        <div class="acalog-core"><h2><a name="BBACoreComponent"></a>B.B.A. Core Component</h2><hr>
+          <div class="custom_leftpad_20">
+            <div class="acalog-core"><h3><a name="LowerCore"></a>Lower Core: 6 Credit Hours</h3><hr>
+              <ul>
+                <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '368535',this, 'x'); return false;">COB 191. Business Analytics I</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+                <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '368544',this, 'x'); return false;">COB 202. Interpersonal Skills</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+              </ul>
+            </div>
+            <div class="acalog-core"><h3><a name="UpperCore"></a>Upper Core: 3 Credit Hours</h3><hr>
+              <ul>
+                <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '368543',this, 'x'); return false;">COB 487. Strategic Management</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="acalog-core"><h2><a name="RecommendedScheduleForMajors"></a>Recommended Schedule for Majors</h2><hr></div>
+        """
+
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=27172&returnto=3541"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+
+        #expect(parsed.requirements.map(\.name) == ["Lower Core: 6 Credit Hours", "Upper Core: 3 Credit Hours"])
+        #expect(parsed.requirements[0].courseOptions == [["COB191"], ["COB202"]])
+        #expect(parsed.requirements[1].courseOptions == [["COB487"]])
+    }
+
+    @Test("choose multiple requirements use concrete default choices")
+    func parsesChooseMultipleDefaults() throws {
+        let html = """
+        <h1 id="acalog-content">Example, B.S.</h1>
+        <div class="acalog-core"><h2><a name="MajorRequirements"></a>Major Requirements</h2><hr></div>
+        <div class="acalog-core"><h3><a name="Electives9CreditHours"></a>Electives: 9 Credit Hours</h3><hr>
+          <p>Choose three of the following:</p>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '1',this, 'x'); return false;">CS 343. Application Development</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '2',this, 'x'); return false;">CS 374. Database Systems</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '3',this, 'x'); return false;">CS 444. Artificial Intelligence</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '4',this, 'x'); return false;">CS 450. Operating Systems</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="AdditionalInformation"></a>Additional Information</h2><hr></div>
+        """
+
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=1&returnto=3541"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+
+        let electives = try #require(parsed.requirements.first)
+        #expect(electives.courseOptions == [["CS343"], ["CS374"], ["CS444"]])
+        #expect(electives.note?.contains("choice requirement") == true)
+    }
+}

@@ -91,4 +91,63 @@ struct CourseDetailCacheTests {
         #expect(merged.descriptionSourceURL == registrarURL)
         #expect(merged.detailRetrievedAt == retrievedAt)
     }
+
+    @Test("course detail service maps cached description and RMP search link")
+    func courseDetailServiceUsesCachedDescription() async throws {
+        let registrarURL = try #require(URL(string: "https://catalog.jmu.edu/preview_course.php?catoid=62&coid=368727&print"))
+        let course = Course(
+            id: "CS149",
+            code: "CS 149",
+            title: "Introduction to Programming",
+            credits: 3,
+            availability: nil,
+            prerequisites: [],
+            verificationStatus: .verified,
+            registrarURL: registrarURL,
+            description: "Official cached CS 149 description.",
+            descriptionSourceURL: registrarURL,
+            detailRetrievedAt: Date(timeIntervalSince1970: 0)
+        )
+
+        let detail = await CourseDetailService().detail(for: course)
+
+        #expect(detail.description == "Official cached CS 149 description.")
+        #expect(detail.descriptionStatus == "Official JMU catalog description cached from https://catalog.jmu.edu/preview_course.php?catoid=62&coid=368727&print.")
+        #expect(detail.rmpStatus == "Automatic Rate My Professors ratings are unavailable because the app does not use unstable scraping.")
+        #expect(detail.rmpSearchURL?.absoluteString == "https://www.ratemyprofessors.com/search/professors/457?q=%2A")
+        #expect(detail.professors.isEmpty)
+    }
+
+    @Test("course detail service explains missing cached descriptions")
+    func courseDetailServiceExplainsMissingDescriptions() async throws {
+        let registrarURL = try #require(URL(string: "https://catalog.jmu.edu/preview_course.php?catoid=62&coid=368728&print"))
+        let courseWithURL = Course(
+            id: "CS159",
+            code: "CS 159",
+            title: "Advanced Programming",
+            credits: 3,
+            availability: nil,
+            prerequisites: ["CS149"],
+            verificationStatus: .verified,
+            registrarURL: registrarURL
+        )
+        let courseWithoutURL = Course(
+            id: "CS240",
+            code: "CS 240",
+            title: "Algorithms and Data Structures",
+            credits: 3,
+            availability: nil,
+            prerequisites: ["CS159"],
+            verificationStatus: .partial,
+            registrarURL: nil
+        )
+
+        let withURLDetail = await CourseDetailService().detail(for: courseWithURL)
+        let withoutURLDetail = await CourseDetailService().detail(for: courseWithoutURL)
+
+        #expect(withURLDetail.description == nil)
+        #expect(withURLDetail.descriptionStatus == "Description unavailable in cached catalog. Open the JMU registrar page to verify details.")
+        #expect(withoutURLDetail.description == nil)
+        #expect(withoutURLDetail.descriptionStatus == "Description unavailable until the catalog refresh discovers the official JMU course page.")
+    }
 }

@@ -27,4 +27,25 @@ struct CourseDetailCacheTests {
         #expect(course.descriptionSourceURL == nil)
         #expect(course.detailRetrievedAt == nil)
     }
+
+    @Test("course detail parser extracts official description and prerequisite text")
+    func parsesCourseDetailHTML() throws {
+        let html = """
+        <html>
+          <body>
+            <td id="acalog-page-content">
+              <h1>CS 149. Introduction to Programming</h1>
+              <p><strong>Credits:</strong> 3.00</p>
+              <p>Students learn computational thinking, problem solving, and basic programming in Python.</p>
+              <p><strong>Prerequisite(s):</strong> MATH 155 or sufficient ALEKS score.</p>
+            </td>
+          </body>
+        </html>
+        """
+
+        let detail = JMUHTMLCatalogParser().parseCourseDetail(html)
+
+        #expect(detail.description == "Students learn computational thinking, problem solving, and basic programming in Python.")
+        #expect(detail.prerequisiteText == "Prerequisite(s): MATH 155 or sufficient ALEKS score.")
+    }
 }

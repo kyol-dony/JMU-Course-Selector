@@ -45,6 +45,16 @@ public struct HTMLProgramRequirements: Sendable {
     }
 }
 
+public struct HTMLCourseDetail: Equatable, Sendable {
+    public var description: String?
+    public var prerequisiteText: String?
+
+    public init(description: String?, prerequisiteText: String?) {
+        self.description = description
+        self.prerequisiteText = prerequisiteText
+    }
+}
+
 public struct JMUHTMLCatalogParser: Sendable {
     private let baseURL = URL(string: "https://catalog.jmu.edu/")!
 
@@ -148,6 +158,85 @@ public struct JMUHTMLCatalogParser: Sendable {
             courses: coursesByID.values.sorted { $0.code < $1.code },
             totalCredits: parseProgramTotal(from: html)
         )
+    }
+
+    public func parseCourseDetail(_ html: String) -> HTMLCourseDetail {
+        let content = courseDetailContent(in: html)
+        let paragraphs = paragraphTexts(in: content)
+        var descriptionParts: [String] = []
+        var prerequisiteText: String?
+
+        for paragraph in paragraphs {
+            let text = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+
+            if isCourseDetailMetadata(text) {
+                continue
+            }
+
+            if isPrerequisiteLine(text) {
+                prerequisiteText = text
+                continue
+            }
+
+            descriptionParts.append(text)
+        }
+
+        let description = descriptionParts
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return HTMLCourseDetail(
+            description: description.isEmpty ? nil : description,
+            prerequisiteText: prerequisiteText
+        )
+    }
+
+    private func courseDetailContent(in html: String) -> String {
+        if let match = html.firstMatch(for: #"(?is)<td\b[^>]*id="acalog-page-content"[^>]*>(.*?)</td>"#),
+           match.count > 1 {
+            return match[1]
+        }
+
+        if let match = html.firstMatch(for: #"(?is)<body\b[^>]*>(.*?)</body>"#),
+           match.count > 1 {
+            return match[1]
+        }
+
+        return html
+    }
+
+    private func paragraphTexts(in html: String) -> [String] {
+        let paragraphs = html.matches(for: #"(?is)<p\b[^>]*>(.*?)</p>"#)
+            .compactMap { match -> String? in
+                guard match.count > 1 else { return nil }
+                let text = HTMLCleaner.clean(match[1])
+                return text.isEmpty ? nil : text
+            }
+
+        if !paragraphs.isEmpty {
+            return paragraphs
+        }
+
+        let fallback = HTMLCleaner.clean(html)
+        return fallback.isEmpty ? [] : [fallback]
+    }
+
+    private func isCourseDetailMetadata(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.hasPrefix("credits:")
+            || lower.hasPrefix("credit hours:")
+            || lower.hasPrefix("repeat status:")
+            || lower.hasPrefix("grading basis:")
+            || lower.hasPrefix("course id:")
+            || lower.hasPrefix("peoplesoft course id:")
+    }
+
+    private func isPrerequisiteLine(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.hasPrefix("prerequisite")
+            || lower.hasPrefix("prerequisites")
+            || lower.hasPrefix("prerequisite(s)")
     }
 
     private func programKind(forSectionTitle title: String) -> ProgramKind? {

@@ -1,0 +1,338 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-19T22:00:00Z",
+  "title": "Design System: JMU Course Planner",
+  "extensions": {
+    "colorMeta": {
+      "royal-purple": {
+        "role": "primary",
+        "displayName": "Royal Purple",
+        "canonical": "oklch(31% 0.21 295)",
+        "tonalRamp": [
+          "oklch(15% 0.10 295)",
+          "oklch(22% 0.16 295)",
+          "oklch(31% 0.21 295)",
+          "oklch(42% 0.22 295)",
+          "oklch(55% 0.23 295)",
+          "oklch(70% 0.18 295)",
+          "oklch(85% 0.10 295)",
+          "oklch(95% 0.04 295)"
+        ]
+      },
+      "royal-purple-soft": {
+        "role": "primary-tint",
+        "displayName": "Royal Purple Soft",
+        "canonical": "oklch(96% 0.025 295)",
+        "tonalRamp": [
+          "oklch(20% 0.07 295)",
+          "oklch(35% 0.07 295)",
+          "oklch(55% 0.05 295)",
+          "oklch(72% 0.04 295)",
+          "oklch(86% 0.03 295)",
+          "oklch(93% 0.025 295)",
+          "oklch(96% 0.025 295)",
+          "oklch(98% 0.012 295)"
+        ]
+      },
+      "madison-gold": {
+        "role": "secondary",
+        "displayName": "Madison Gold",
+        "canonical": "oklch(79% 0.08 87)",
+        "tonalRamp": [
+          "oklch(25% 0.04 87)",
+          "oklch(40% 0.06 87)",
+          "oklch(55% 0.07 87)",
+          "oklch(68% 0.08 87)",
+          "oklch(79% 0.08 87)",
+          "oklch(87% 0.06 87)",
+          "oklch(93% 0.04 87)",
+          "oklch(98% 0.015 87)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "oklch(98% 0.002 295)",
+        "tonalRamp": [
+          "oklch(12% 0.006 295)",
+          "oklch(22% 0.006 295)",
+          "oklch(38% 0.005 295)",
+          "oklch(55% 0.004 295)",
+          "oklch(70% 0.003 295)",
+          "oklch(85% 0.002 295)",
+          "oklch(94% 0.002 295)",
+          "oklch(98% 0.002 295)"
+        ]
+      },
+      "card-paper": {
+        "role": "neutral",
+        "displayName": "Card Paper",
+        "canonical": "oklch(100% 0 0)",
+        "tonalRamp": [
+          "oklch(14% 0.006 295)",
+          "oklch(24% 0.005 295)",
+          "oklch(40% 0.004 295)",
+          "oklch(58% 0.003 295)",
+          "oklch(74% 0.002 295)",
+          "oklch(88% 0.002 295)",
+          "oklch(96% 0.002 295)",
+          "oklch(100% 0 0)"
+        ]
+      },
+      "hairline": {
+        "role": "neutral-border",
+        "displayName": "Hairline",
+        "canonical": "oklch(91% 0.004 295)",
+        "tonalRamp": [
+          "oklch(28% 0.008 295)",
+          "oklch(40% 0.008 295)",
+          "oklch(55% 0.006 295)",
+          "oklch(70% 0.005 295)",
+          "oklch(80% 0.004 295)",
+          "oklch(87% 0.004 295)",
+          "oklch(91% 0.004 295)",
+          "oklch(96% 0.003 295)"
+        ]
+      },
+      "ink": {
+        "role": "text",
+        "displayName": "Ink",
+        "canonical": "oklch(14% 0.006 295)",
+        "tonalRamp": [
+          "oklch(10% 0.006 295)",
+          "oklch(14% 0.006 295)",
+          "oklch(25% 0.006 295)",
+          "oklch(38% 0.006 295)",
+          "oklch(50% 0.006 295)",
+          "oklch(60% 0.006 295)",
+          "oklch(75% 0.004 295)",
+          "oklch(90% 0.003 295)"
+        ]
+      },
+      "body-gray": {
+        "role": "text-secondary",
+        "displayName": "Body Gray",
+        "canonical": "oklch(45% 0.006 295)",
+        "tonalRamp": [
+          "oklch(20% 0.006 295)",
+          "oklch(30% 0.006 295)",
+          "oklch(45% 0.006 295)",
+          "oklch(58% 0.005 295)",
+          "oklch(70% 0.005 295)",
+          "oklch(82% 0.004 295)",
+          "oklch(90% 0.004 295)",
+          "oklch(96% 0.003 295)"
+        ]
+      },
+      "verified-green": {
+        "role": "status",
+        "displayName": "Verified Green",
+        "canonical": "oklch(58% 0.15 150)",
+        "tonalRamp": [
+          "oklch(25% 0.06 150)",
+          "oklch(35% 0.09 150)",
+          "oklch(45% 0.13 150)",
+          "oklch(58% 0.15 150)",
+          "oklch(68% 0.14 150)",
+          "oklch(80% 0.10 150)",
+          "oklch(90% 0.06 150)",
+          "oklch(96% 0.02 150)"
+        ]
+      },
+      "advisor-amber": {
+        "role": "status",
+        "displayName": "Advisor Amber",
+        "canonical": "oklch(64% 0.16 60)",
+        "tonalRamp": [
+          "oklch(28% 0.07 60)",
+          "oklch(40% 0.10 60)",
+          "oklch(52% 0.14 60)",
+          "oklch(64% 0.16 60)",
+          "oklch(75% 0.14 60)",
+          "oklch(85% 0.10 60)",
+          "oklch(92% 0.06 60)",
+          "oklch(97% 0.02 60)"
+        ]
+      },
+      "hard-stop-red": {
+        "role": "status",
+        "displayName": "Hard Stop Red",
+        "canonical": "oklch(57% 0.21 25)",
+        "tonalRamp": [
+          "oklch(28% 0.10 25)",
+          "oklch(38% 0.14 25)",
+          "oklch(48% 0.18 25)",
+          "oklch(57% 0.21 25)",
+          "oklch(68% 0.18 25)",
+          "oklch(80% 0.13 25)",
+          "oklch(90% 0.07 25)",
+          "oklch(96% 0.03 25)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Program titles and Course Detail sheet headers. The largest reading size." },
+      "title": { "displayName": "Title", "purpose": "Setup sheet header, donut hero on the Progress tab." },
+      "heading": { "displayName": "Heading", "purpose": "Section headers within tabs and sheets." },
+      "body": { "displayName": "Body", "purpose": "Default reading copy. Program descriptions, requirement notes, course titles." },
+      "bodyEmphasized": { "displayName": "Body Emphasized", "purpose": "Card titles, course codes in chips, stat-chip values." },
+      "label": { "displayName": "Label", "purpose": "Tab pill text, tertiary button text, radio titles." },
+      "caption": { "displayName": "Caption", "purpose": "Credit counts beneath progress rails, helper copy, card sub-info." },
+      "small": { "displayName": "Small Eyebrow", "purpose": "Uppercase eyebrow labels above stat tiles and degree-type pills." }
+    },
+    "shadows": [
+      {
+        "name": "card-rest",
+        "value": "0 1px 2px rgba(0,0,0,0.06)",
+        "purpose": "The only shadow in the system. Applied to every Card primitive in LIGHT MODE ONLY. Disappears entirely in dark mode where the 1px Hairline border carries elevation."
+      }
+    ],
+    "motion": [
+      {
+        "name": "tab-crossfade",
+        "value": "150ms ease-out",
+        "purpose": "The active tab pill transitions colors on selection. Content panels do NOT animate position; only state changes animate."
+      },
+      {
+        "name": "sheet-slide",
+        "value": "250ms ease-out",
+        "purpose": "Setup sheet and Course Detail side sheet present and dismiss. SwiftUI default sheet timing."
+      },
+      {
+        "name": "chip-pickup",
+        "value": "120ms ease-out, scale 1.03",
+        "purpose": "Subtle lift when a CourseChip is picked up for drag. No bounce, no elastic."
+      }
+    ],
+    "breakpoints": [
+      { "name": "workspace-cap-my-plan", "value": "1100px" },
+      { "name": "workspace-cap-progress", "value": "980px" },
+      { "name": "course-detail-sheet", "value": "480px" },
+      { "name": "catalog-left-rail", "value": "320px" },
+      { "name": "schedule-column", "value": "280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single most important action on a screen. Royal Purple fill on Card Paper.",
+      "html": "<button class=\"ds-btn-primary\">Generate Plan</button>",
+      "css": ".ds-btn-primary { background: #450084; color: #ffffff; padding: 12px 16px; border-radius: 8px; border: none; font-family: system-ui, -apple-system, 'SF Pro Text', 'Inter', sans-serif; font-size: 14px; font-weight: 600; line-height: 1.45; cursor: pointer; transition: opacity 120ms ease-out; } .ds-btn-primary:hover { opacity: 0.92; } .ds-btn-primary:active { opacity: 0.85; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Supporting action. Card Paper fill with 1px Hairline border.",
+      "html": "<button class=\"ds-btn-secondary\">Edit setup</button>",
+      "css": ".ds-btn-secondary { background: #ffffff; color: #0a0a0c; padding: 12px 16px; border-radius: 8px; border: 1px solid #e4e4e7; font-family: system-ui, -apple-system, 'SF Pro Text', 'Inter', sans-serif; font-size: 14px; font-weight: 600; line-height: 1.45; cursor: pointer; transition: background 120ms ease-out; } .ds-btn-secondary:hover { background: #f4f0fa; } .ds-btn-secondary:focus-visible { outline: 2px solid #450084; outline-offset: 2px; }"
+    },
+    {
+      "name": "Tertiary Button",
+      "kind": "button",
+      "refersTo": "button-tertiary",
+      "description": "Inline action. No background, Royal Purple text.",
+      "html": "<button class=\"ds-btn-tertiary\">Skip</button>",
+      "css": ".ds-btn-tertiary { background: transparent; color: #450084; padding: 4px 8px; border: none; font-family: system-ui, -apple-system, 'SF Pro Text', 'Inter', sans-serif; font-size: 13px; font-weight: 500; line-height: 1.3; cursor: pointer; transition: opacity 120ms ease-out; } .ds-btn-tertiary:hover { opacity: 0.7; }"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Reset App Data, Start Over. Card Paper background, Hard Stop Red text.",
+      "html": "<button class=\"ds-btn-destructive\">Reset App Data</button>",
+      "css": ".ds-btn-destructive { background: #ffffff; color: #dc2626; padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(220,38,38,0.5); font-family: system-ui, -apple-system, 'SF Pro Text', 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 120ms ease-out; } .ds-btn-destructive:hover { background: rgba(220,38,38,0.15); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The base elevated surface. 12px corner radius, 1px Hairline border, soft shadow in light mode only.",
+      "html": "<article class=\"ds-card\"><h3 class=\"ds-card-title\">Computer Science, B.S.</h3><p class=\"ds-card-body\">College of Integrated Science and Engineering . Department of Computer Science</p></article>",
+      "css": ".ds-card { background: #ffffff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); font-family: system-ui, -apple-system, 'SF Pro Text', 'Inter', sans-serif; } .ds-card-title { margin: 0 0 4px 0; font-size: 14px; font-weight: 600; color: #0a0a0c; } .ds-card-body { margin: 0; font-size: 14px; color: #52525b; line-height: 1.45; }"
+    },
+    {
+      "name": "Course Chip (Major)",
+      "kind": "chip",
+      "refersTo": "course-chip",
+      "description": "One course in a semester column. 3px left-border in category color (Royal Purple for major core shown here).",
+      "html": "<button class=\"ds-course-chip ds-course-chip--major\"><div class=\"ds-course-chip-accent\"></div><div class=\"ds-course-chip-body\"><div class=\"ds-course-chip-head\"><span class=\"ds-course-chip-code\">CS 240</span><span class=\"ds-course-chip-credits\">3 cr</span></div><div class=\"ds-course-chip-title\">Algorithms and Data Structures</div></div></button>",
+      "css": ".ds-course-chip { display: flex; width: 100%; padding: 0; background: #ffffff; border: 1px solid #e4e4e7; border-radius: 6px; cursor: pointer; font-family: system-ui, -apple-system, 'SF Pro Text', 'Inter', sans-serif; text-align: left; transition: transform 120ms ease-out; } .ds-course-chip:hover { transform: translateY(-1px); } .ds-course-chip-accent { width: 3px; background: #450084; border-radius: 6px 0 0 6px; } .ds-course-chip--gened .ds-course-chip-accent { background: #cbb677; } .ds-course-chip--elective .ds-course-chip-accent { background: #71717a; } .ds-course-chip--warning .ds-course-chip-accent { background: #dc2626; } .ds-course-chip-body { padding: 8px 12px; flex: 1; } .ds-course-chip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 2px; } .ds-course-chip-code { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: #0a0a0c; } .ds-course-chip-credits { font-size: 11px; font-weight: 500; color: #71717a; font-variant-numeric: tabular-nums; } .ds-course-chip-title { font-size: 12px; color: #52525b; line-height: 1.4; }"
+    },
+    {
+      "name": "Status Pill (Verified)",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "Filled semantic badge. Verified Green shown; other tones swap fill and text color.",
+      "html": "<span class=\"ds-status-pill ds-status-pill--success\"><svg width=\"9\" height=\"9\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z\"/></svg>Verified</span>",
+      "css": ".ds-status-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-family: system-ui, -apple-system, 'SF Pro Text', 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; } .ds-status-pill--success { color: #16a34a; background: rgba(22,163,74,0.15); } .ds-status-pill--warning { color: #d97706; background: rgba(217,119,6,0.15); } .ds-status-pill--danger { color: #dc2626; background: rgba(220,38,38,0.15); } .ds-status-pill--info { color: #450084; background: #f4f0fa; } .ds-status-pill--neutral { color: #52525b; background: rgba(228,228,231,0.5); }"
+    },
+    {
+      "name": "Stat Chip",
+      "kind": "chip",
+      "refersTo": "stat-chip",
+      "description": "Top-bar quick stat. Eyebrow label + tabular-numeric value. Emphasized variant fills Royal Purple Soft.",
+      "html": "<span class=\"ds-stat-chip ds-stat-chip--emphasized\"><span class=\"ds-stat-chip-label\">Done</span><span class=\"ds-stat-chip-value\">42%</span></span>",
+      "css": ".ds-stat-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: #ffffff; border: 1px solid #e4e4e7; border-radius: 999px; font-family: system-ui, -apple-system, 'SF Pro Text', 'Inter', sans-serif; } .ds-stat-chip--emphasized { background: #f4f0fa; } .ds-stat-chip-label { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: #71717a; } .ds-stat-chip-value { font-size: 14px; font-weight: 600; color: #0a0a0c; font-variant-numeric: tabular-nums; } .ds-stat-chip--emphasized .ds-stat-chip-value { color: #450084; }"
+    },
+    {
+      "name": "Progress Rail",
+      "kind": "custom",
+      "refersTo": "progress-rail",
+      "description": "Signature component. 6px rounded bar with credit count inline and a remaining-courses helper line beneath. Royal Purple fill when verified, Advisor Amber when partial.",
+      "html": "<div class=\"ds-rail\"><div class=\"ds-rail-head\"><span class=\"ds-rail-title\">Major Core Requirements</span><span class=\"ds-rail-count\">12/24</span></div><div class=\"ds-rail-track\"><div class=\"ds-rail-fill\" style=\"width: 50%\"></div></div><div class=\"ds-rail-helper\">12 of 24 credits . Still need: CS 240, CS 261, CS 327, CS 345</div></div>",
+      "css": ".ds-rail { font-family: system-ui, -apple-system, 'SF Pro Text', 'Inter', sans-serif; } .ds-rail-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; } .ds-rail-title { font-size: 14px; font-weight: 600; color: #0a0a0c; } .ds-rail-count { font-size: 12px; font-variant-numeric: tabular-nums; color: #71717a; } .ds-rail-track { height: 6px; background: #e4e4e7; border-radius: 3px; overflow: hidden; } .ds-rail-fill { height: 100%; background: #450084; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06); } .ds-rail-helper { margin-top: 8px; font-size: 12px; color: #52525b; line-height: 1.4; }"
+    },
+    {
+      "name": "Top Bar Tab Pill",
+      "kind": "nav",
+      "refersTo": "button-primary",
+      "description": "The four-tab segmented control in the TopBar. Active tab fills Royal Purple, inactive sit transparent inside a Hairline-bordered Paper container.",
+      "html": "<nav class=\"ds-tabbar\"><button class=\"ds-tab ds-tab--active\">My Plan</button><button class=\"ds-tab\">Schedule</button><button class=\"ds-tab\">Catalog</button><button class=\"ds-tab\">Progress</button></nav>",
+      "css": ".ds-tabbar { display: inline-flex; gap: 4px; padding: 4px; background: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; } .ds-tab { padding: 6px 12px; border: none; background: transparent; border-radius: 6px; font-family: system-ui, -apple-system, 'SF Pro Text', 'Inter', sans-serif; font-size: 13px; font-weight: 500; color: #52525b; cursor: pointer; transition: background 150ms ease-out, color 150ms ease-out; } .ds-tab:hover { color: #0a0a0c; } .ds-tab--active { background: #450084; color: #ffffff; } .ds-tab--active:hover { color: #ffffff; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Catalog, Translated",
+    "overview": "The printed JMU 2025-2026 Undergraduate Catalog is the source material. This app is its translation: the same authority, the same scholarly restraint, but rendered for a freshman at a Mac at midnight. Surfaces feel like tinted paper. Royal Purple acts as ink-mark, never as banner. Madison Gold sits in the margin: course-code accents, the lone JMU monogram, a notation. The grid is calm. The numbers are tabular and aligned. Nothing shouts.\n\nThe system rejects four reflexes. It rejects the default Mac app look (System gray, single blue accent, untreated form controls). It rejects the 1990s registrar portal (gray-on-gray tables, abbreviation-soup headers). It rejects the crypto/fintech dark mode (neon, gradient hero metrics on pure black). And it rejects the corporate enterprise dashboard cliché (big number, small label, sparkline, generic blue). When a choice feels like it might be one of those, we stop and choose otherwise.",
+    "keyCharacteristics": [
+      "Light AND dark modes auto-follow macOS appearance; neither is the default.",
+      "Royal Purple appears on ≤10% of any given screen. Madison Gold is rarer still.",
+      "Numbers (course codes, credits, percentages, dates) use tabular figures and align vertically across lists.",
+      "Cards lay flat. Borders carry elevation; shadows are a whisper, not a lift.",
+      "Type does the work. Hierarchy is built from scale and weight, not from color or chrome."
+    ],
+    "rules": [
+      { "name": "The Ink-Mark Rule", "body": "Royal Purple is the writer's pen, not the page. It appears on ≤10% of any given screen: primary action, active tab, one completion number. If Royal Purple is fighting for space with another color, the design is wrong.", "section": "colors" },
+      { "name": "The Marginalia Rule", "body": "Madison Gold is reserved for notation: the monogram, the gen-ed category accent, and nowhere else. It never carries text larger than 12px. It never tints a card background.", "section": "colors" },
+      { "name": "The Semantic Lane Rule", "body": "Verified Green, Advisor Amber, and Hard Stop Red appear only on status pills, progress rails, and warning strips. They never become a default surface. They never carry decorative weight.", "section": "colors" },
+      { "name": "The Tabular Numerals Rule", "body": "Anywhere a number lives next to another number (credit counts, percentages, projected graduation years, course numbers in chip stacks), use the monospacedDigit() SwiftUI modifier or the tabular-nums font feature. Aligned numerals are the difference between scannable and slop.", "section": "typography" },
+      { "name": "The One-Family Rule", "body": "No display font, no editorial serif, no monospace. The system font alone, weighted and scaled, carries every level of hierarchy. The voice is one voice.", "section": "typography" },
+      { "name": "The Border-First Rule", "body": "Elevation is communicated through the 1px Hairline border, not through shadow. If a surface needs to feel raised, give it the border. The shadow is a closing detail in light mode, not the lifting mechanism.", "section": "elevation" },
+      { "name": "The No-Glass Rule", "body": "No backdrop-filter, no blurred translucent cards, no glassmorphism. The system is paper, not glass. The macOS materials (.regularMaterial, .ultraThinMaterial) are not used in this design.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use Royal Purple on the single most important action of any screen, and nowhere else (The Ink-Mark Rule).",
+      "Do use Madison Gold only on the monogram and gen-ed accent (The Marginalia Rule).",
+      "Do enable tabular numerals (.monospacedDigit() / tabular-nums) on every number that appears in a list (The Tabular Numerals Rule).",
+      "Do lead elevation with the 1px Hairline border; let the shadow be a closing whisper in light mode only (The Border-First Rule).",
+      "Do list remaining required courses beneath every category progress rail, capped at 5 with + N more overflow.",
+      "Do use the system font at the documented weights; no extra families (The One-Family Rule).",
+      "Do test every change in both light and dark macOS appearance before shipping."
+    ],
+    "donts": [
+      "Don't ship default Mac chrome. The Xcode template look (System gray, single blue accent, untreated form controls) is the first anti-reference in PRODUCT.md.",
+      "Don't build a 1990s registrar portal. Gray-on-gray tables, abbreviation-soup headers, and dense data dumps are forbidden.",
+      "Don't use crypto/fintech dark mode neon. No glowing gradient hero numbers on pure black. No purple-pink neon. No decorative chart-as-art.",
+      "Don't ship the corporate enterprise dashboard cliché: big number, small label, sparkline, generic blue. No hero metric template, no identical card grids stamped down the page.",
+      "Don't use border-left greater than 1px on cards, list items, callouts, or alerts. The 3px CourseChip accent is the single exception.",
+      "Don't apply background-clip: text with a gradient. No gradient text anywhere.",
+      "Don't use glassmorphism, backdrop blurs, or .ultraThinMaterial. The system is paper, not glass.",
+      "Don't use em dashes in copy. Use commas, colons, semicolons, periods, or parentheses.",
+      "Don't introduce a new font family. No display serif, no monospace, no Inter alongside SF Pro. One family carries the whole system.",
+      "Don't invent a verification status. If a JMU policy or course requirement cannot be confirmed from the catalog, mark it Partial and explain why in the source note."
+    ]
+  }
+}

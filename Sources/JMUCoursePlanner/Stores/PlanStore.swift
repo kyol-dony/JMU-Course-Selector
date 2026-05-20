@@ -169,16 +169,32 @@ final class PlanStore: ObservableObject {
     }
 
     /// Course codes still required for a given requirement category, derived from the catalog.
-    func remainingCourses(in category: RequirementCategory) -> [String] {
+    func remainingCourses(in category: RequirementCategory, selectionKey: String? = nil) -> [String] {
         guard let catalog else { return [] }
         let completed = completedCourseIDs
         let courses = catalog.coursesByID
+        let options: [[String]]
+        if let selectionKey,
+           let selected = selectedRequirementOption(for: selectionKey, in: category) {
+            options = [selected]
+        } else {
+            options = category.courseOptions
+        }
 
-        return category.courseOptions.compactMap { option in
+        return options.compactMap { option in
             guard !option.contains(where: completed.contains) else { return nil }
             guard let firstID = option.first, let course = courses[firstID] else { return nil }
             return course.code
         }
+    }
+
+    func courseIDsForRequirementHighlight(in category: RequirementCategory) -> Set<String> {
+        guard let key = majorRequirementSelectionKey(for: category),
+              let selected = selectedRequirementOption(for: key, in: category)
+        else {
+            return Set(category.courseOptions.flatMap { $0 })
+        }
+        return Set(selected)
     }
 
     func load() async {

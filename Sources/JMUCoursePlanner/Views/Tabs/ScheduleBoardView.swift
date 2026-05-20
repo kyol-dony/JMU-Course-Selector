@@ -214,10 +214,9 @@ private struct SemesterColumn: View {
     }
 
     private func isHighlighted(courseID: String) -> Bool {
-        guard let filterID = highlightedCategoryID,
-              let program = store.effectiveActiveProgram,
-              let requirement = program.requirements.first(where: { $0.id == filterID })
-        else { return false }
-        return requirement.courseOptions.contains { $0.contains(courseID) }
+        guard let categoryID = highlightedCategoryID else { return false }
+        guard let program = store.effectiveActiveProgram else { return false }
+        guard let category = program.requirements.first(where: { $0.id == categoryID }) else { return false }
+        return store.courseIDsForRequirementHighlight(in: category).contains(courseID)
     }
 }

@@ -112,6 +112,9 @@ struct GraduationProgressView: View {
 
     private func remainingCodes(for requirement: RequirementCategory?, fallback: CategoryProgress) -> [String] {
         if let requirement {
+            if let key = store.majorRequirementSelectionKey(for: requirement) {
+                return store.remainingCourses(in: requirement, selectionKey: key)
+            }
             return store.remainingCourses(in: requirement)
         }
         let fallbackRequirement = RequirementCategory(
@@ -120,6 +123,9 @@ struct GraduationProgressView: View {
             requiredCredits: fallback.requiredCredits,
             courseOptions: []
         )
+        if let key = store.majorRequirementSelectionKey(for: fallbackRequirement) {
+            return store.remainingCourses(in: fallbackRequirement, selectionKey: key)
+        }
         return store.remainingCourses(in: fallbackRequirement)
     }
 

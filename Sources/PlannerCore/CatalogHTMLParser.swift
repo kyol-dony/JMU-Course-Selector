@@ -388,10 +388,11 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func splitConcentrationBlocks(_ blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])]) {
-        guard let concentrationIndex = blocks.firstIndex(where: { $0.heading.caseInsensitiveCompare("Concentrations") == .orderedSame }) else {
+        guard let concentrationIndex = blocks.firstIndex(where: isConcentrationSectionHeading) else {
             return (blocks, [])
         }
 
+        let sectionLevel = blocks[concentrationIndex].level
         let shared = Array(blocks[..<concentrationIndex])
         let tail = Array(blocks[(concentrationIndex + 1)...])
         var runs: [(name: String, blocks: [RequirementBlock])] = []
@@ -399,6 +400,7 @@ public struct JMUHTMLCatalogParser: Sendable {
         var currentBlocks: [RequirementBlock] = []
 
         for block in tail {
+            guard block.level > sectionLevel else { break }
             if isConcreteConcentrationHeading(block.heading) {
                 if let currentName, !currentBlocks.isEmpty {
                     runs.append((currentName, currentBlocks))
@@ -415,6 +417,11 @@ public struct JMUHTMLCatalogParser: Sendable {
         }
 
         return (shared, runs)
+    }
+
+    private func isConcentrationSectionHeading(_ block: RequirementBlock) -> Bool {
+        let lower = block.heading.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return lower == "concentrations" || lower == "required concentration" || lower == "required concentrations"
     }
 
     private func isConcreteConcentrationHeading(_ heading: String) -> Bool {

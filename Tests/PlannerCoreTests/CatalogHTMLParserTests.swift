@@ -179,4 +179,49 @@ struct CatalogHTMLParserTests {
         #expect(parsed.concentrations[1].requirements.flatMap(\.courseOptions).flatMap { $0 } == ["PHYS390"])
         #expect(parsed.courses.map(\.id).sorted() == ["PHYS240", "PHYS360", "PHYS390"])
     }
+
+    @Test("required concentration sections create selectable concentration tracks")
+    func parsesRequiredConcentrationSections() throws {
+        let html = """
+        <h1 id="acalog-content">Computer Information Systems, B.B.A.</h1>
+        <div class="acalog-core"><h2><a name="DegreeAndMajorRequirements"></a>Degree and Major Requirements</h2><hr></div>
+        <div class="acalog-core"><h3><a name="MajorRequirements"></a>Major Requirements</h3><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '1',this, 'x'); return false;">CIS 221. Principles of Programming</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="RequiredConcentration"></a>Required Concentration</h2><hr></div>
+        <div class="acalog-core"><h3><a name="InformationAndCybersecurityManagementConcentration"></a>Information and Cybersecurity Management Concentration</h3><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '2',this, 'x'); return false;">CIS 301. Cloud Server Management</a> <em><strong>Credits:</strong></em> <em>1.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '3',this, 'x'); return false;">CIS 424. Computer Security Management</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '4',this, 'x'); return false;">CIS 425. Defensive Cybersecurity</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h4><a name="InformationAndCybersecurityManagementConcentrationElectives"></a>Information and Cybersecurity Management Concentration Electives</h4><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '5',this, 'x'); return false;">CIS 420. Advanced Topics in Computing Networks</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="CooperativeEducationConcentration"></a>Cooperative Education Concentration</h2><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '6',this, 'x'); return false;">CIS 498. Special Topics in Computer Information Systems</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="RecommendedScheduleForMajors"></a>Recommended Schedule for Majors</h2><hr></div>
+        """
+
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=27090&returnto=3541"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+
+        #expect(parsed.requirements.map(\.name) == ["Major Requirements"])
+        #expect(parsed.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["CIS221"])
+        #expect(parsed.concentrations.map(\.name) == ["Information and Cybersecurity Management Concentration"])
+        let cybersecurity = try #require(parsed.concentrations.first)
+        #expect(cybersecurity.requirements.map(\.name) == [
+            "Information and Cybersecurity Management Concentration",
+            "Information and Cybersecurity Management Concentration Electives"
+        ])
+        #expect(cybersecurity.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["CIS301", "CIS424", "CIS425", "CIS420"])
+    }
 }

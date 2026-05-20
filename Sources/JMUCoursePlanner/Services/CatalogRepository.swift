@@ -23,7 +23,7 @@ struct CatalogRepository {
     func refreshCatalogFromHTML(progress: ((CatalogRefreshProgress) -> Void)? = nil) async throws -> Catalog {
         let seed = try SeedCatalog.decode(from: try Data(contentsOf: bundledCatalogURL()))
         let programsURL = URL(string: "https://catalog.jmu.edu/content.php?catoid=62&navoid=3541")!
-        let indexHTML = try await fetchHTML(from: programsURL)
+        let indexHTML = try await Self.fetchHTML(from: programsURL)
         let entries = htmlParser.parseProgramsOfStudy(indexHTML)
         let seedProgramsByTitle = Dictionary(uniqueKeysWithValues: seed.programs.map { ($0.title.normalizedProgramTitle, $0) })
         var programIDsByTitle: [String: String] = [:]
@@ -45,7 +45,7 @@ struct CatalogRepository {
             var requirements: HTMLProgramRequirements?
 
             do {
-                let html = try await fetchHTML(from: entry.printURL)
+                let html = try await Self.fetchHTML(from: entry.printURL)
                 requirements = htmlParser.parseProgramRequirements(html, kind: entry.kind, sourceURL: entry.sourceURL)
                 for course in requirements?.courses ?? [] {
                     coursesByID[course.id] = merge(existing: coursesByID[course.id], parsed: course)
@@ -86,6 +86,15 @@ struct CatalogRepository {
             if index + 1 < entries.count {
                 try await Task.sleep(for: .milliseconds(150))
             }
+        }
+
+        let detailEnrichments = await fetchCourseDetailEnrichments(for: Array(coursesByID.values))
+        for enrichment in detailEnrichments.values {
+            guard var course = coursesByID[enrichment.courseID] else { continue }
+            course.description = enrichment.description
+            course.descriptionSourceURL = enrichment.sourceURL
+            course.detailRetrievedAt = enrichment.retrievedAt
+            coursesByID[enrichment.courseID] = course
         }
 
         let catalogSource = CatalogSource(
@@ -154,7 +163,7 @@ struct CatalogRepository {
     /// requirements changes. Old cache files (e.g., the pre-Gen-Ed format) are
     /// then ignored automatically and the app falls back to the bundled seed,
     /// which in turn triggers a fresh HTML refresh on launch.
-    private static let cacheSchemaVersion = 2
+    private static let cacheSchemaVersion = 3
 
     private func cachedHTMLCatalogURL() throws -> URL {
         let directory = try supportDirectory().appending(path: "Catalog", directoryHint: .isDirectory)
@@ -194,10 +203,69 @@ struct CatalogRepository {
         "C5SD": 3, "C5W": 3
     ]
 
+    private func fetchCourseDetailEnrichments(for courses: [Course]) async -> [String: CourseDetailEnrichment] {
+        let candidates = courses
+            .filter { $0.registrarURL != nil }
+            .filter { ($0.description ?? "").isEmpty }
+            .sorted { $0.code < $1.code }
+
+        guard !candidates.isEmpty else { return [:] }
+
+        let parser = htmlParser
+        let limit = 4
+
+        return await withTaskGroup(
+            of: CourseDetailEnrichment?.self,
+            returning: [String: CourseDetailEnrichment].self
+        ) { group in
+            var nextIndex = 0
+
+            func enqueueNext() {
+                guard nextIndex < candidates.count else { return }
+                let course = candidates[nextIndex]
+                nextIndex += 1
+
+                group.addTask {
+                    guard let url = course.registrarURL else { return nil }
+
+                    do {
+                        let html = try await Self.fetchHTML(from: url)
+                        let detail = parser.parseCourseDetail(html)
+                        guard let description = detail.description, !description.isEmpty else {
+                            return nil
+                        }
+                        return CourseDetailEnrichment(
+                            courseID: course.id,
+                            description: description,
+                            sourceURL: url,
+                            retrievedAt: Date()
+                        )
+                    } catch {
+                        return nil
+                    }
+                }
+            }
+
+            for _ in 0..<min(limit, candidates.count) {
+                enqueueNext()
+            }
+
+            var results: [String: CourseDetailEnrichment] = [:]
+            while let enrichment = await group.next() {
+                if let enrichment {
+                    results[enrichment.courseID] = enrichment
+                }
+                enqueueNext()
+            }
+
+            return results
+        }
+    }
+
     private func fetchGeneralEducation(coursesByID: inout [String: Course]) async throws -> [RequirementCategory] {
         // JMU Gen Ed program page (poid=26976) lists every course in every cluster.
         let url = URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=26976&returnto=3541&print")!
-        let html = try await fetchHTML(from: url)
+        let html = try await Self.fetchHTML(from: url)
         let parsed = htmlParser.parseProgramRequirements(html, kind: .major, sourceURL: url)
         for course in parsed.courses {
             coursesByID[course.id] = merge(existing: coursesByID[course.id], parsed: course)
@@ -237,7 +305,7 @@ struct CatalogRepository {
         return String(heading[group])
     }
 
-    private func fetchHTML(from url: URL) async throws -> String {
+    nonisolated private static func fetchHTML(from url: URL) async throws -> String {
         var request = URLRequest(url: url)
         request.setValue("JMUCoursePlanner/1.0 (+https://catalog.jmu.edu/)", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 30
@@ -288,7 +356,7 @@ struct CatalogRepository {
         return candidate
     }
 
-    private func merge(existing: Course?, parsed: Course) -> Course {
+    func merge(existing: Course?, parsed: Course) -> Course {
         guard var existing else { return parsed }
         if existing.registrarURL == nil {
             existing.registrarURL = parsed.registrarURL
@@ -299,6 +367,18 @@ struct CatalogRepository {
         if existing.credits == 0 {
             existing.credits = parsed.credits
         }
+        if existing.prerequisites.isEmpty {
+            existing.prerequisites = parsed.prerequisites
+        }
+        if (existing.description ?? "").isEmpty {
+            existing.description = parsed.description
+        }
+        if existing.descriptionSourceURL == nil {
+            existing.descriptionSourceURL = parsed.descriptionSourceURL
+        }
+        if existing.detailRetrievedAt == nil {
+            existing.detailRetrievedAt = parsed.detailRetrievedAt
+        }
         return existing
     }
 }
@@ -307,6 +387,13 @@ struct CatalogRefreshProgress: Sendable {
     var current: Int
     var total: Int
     var programTitle: String
+}
+
+private struct CourseDetailEnrichment: Sendable {
+    var courseID: String
+    var description: String
+    var sourceURL: URL
+    var retrievedAt: Date
 }
 
 private struct SeedCatalog: Decodable {

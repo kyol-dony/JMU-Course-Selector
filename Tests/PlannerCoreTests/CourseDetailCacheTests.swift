@@ -48,4 +48,47 @@ struct CourseDetailCacheTests {
         #expect(detail.description == "Students learn computational thinking, problem solving, and basic programming in Python.")
         #expect(detail.prerequisiteText == "Prerequisite(s): MATH 155 or sufficient ALEKS score.")
     }
+
+    @MainActor
+    @Test("repository merge fills cached description without overwriting existing fields")
+    func repositoryMergeFillsDescription() throws {
+        let repo = CatalogRepository()
+        let registrarURL = try #require(URL(string: "https://catalog.jmu.edu/preview_course.php?catoid=62&coid=368728&print"))
+        let retrievedAt = try #require(ISO8601DateFormatter().date(from: "2026-05-19T12:00:00Z"))
+
+        let existing = Course(
+            id: "CS159",
+            code: "CS 159",
+            title: "Advanced Programming",
+            credits: 3,
+            availability: nil,
+            prerequisites: ["CS149"],
+            verificationStatus: .verified,
+            registrarURL: registrarURL
+        )
+
+        let parsed = Course(
+            id: "CS159",
+            code: "CS 159",
+            title: "Parsed Different Title",
+            credits: 4,
+            availability: nil,
+            prerequisites: [],
+            verificationStatus: .partial,
+            registrarURL: registrarURL,
+            description: "Official cached description.",
+            descriptionSourceURL: registrarURL,
+            detailRetrievedAt: retrievedAt
+        )
+
+        let merged = repo.merge(existing: existing, parsed: parsed)
+
+        #expect(merged.title == "Advanced Programming")
+        #expect(merged.credits == 3)
+        #expect(merged.prerequisites == ["CS149"])
+        #expect(merged.registrarURL == registrarURL)
+        #expect(merged.description == "Official cached description.")
+        #expect(merged.descriptionSourceURL == registrarURL)
+        #expect(merged.detailRetrievedAt == retrievedAt)
+    }
 }

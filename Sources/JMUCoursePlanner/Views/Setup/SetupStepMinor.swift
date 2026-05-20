@@ -23,21 +23,20 @@ struct SetupStepMinor: View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.l) {
             SectionHeader(
                 "Add a minor or second major",
-                helper: "Optional. You can come back to this later."
+                helper: "Optional. Pick a pathway for any minor that offers tracks or options."
             )
             TextField("Search programs", text: $searchText)
                 .textFieldStyle(.roundedBorder)
 
-            if !store.plan.minorProgramIDs.isEmpty {
+            if !store.plan.minors.isEmpty {
                 Card {
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.m) {
                         Text("Currently added")
                             .font(DesignTokens.Typography.small)
                             .foregroundStyle(DesignTokens.Colors.textTertiary)
                             .textCase(.uppercase)
-                        ForEach(store.plan.minorProgramIDs, id: \.self) { id in
-                            Text(catalog.programsByID[id]?.title ?? id)
-                                .font(DesignTokens.Typography.body)
+                        ForEach(store.plan.minors) { selection in
+                            addedMinorRow(selection)
                         }
                     }
                 }
@@ -53,8 +52,61 @@ struct SetupStepMinor: View {
         }
     }
 
+    @ViewBuilder
+    private func addedMinorRow(_ selection: MinorSelection) -> some View {
+        let program = catalog.programsByID[selection.programID]
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
+            HStack(spacing: DesignTokens.Spacing.s) {
+                Text(program?.title ?? selection.programID)
+                    .font(DesignTokens.Typography.body)
+                Spacer(minLength: 0)
+                Button {
+                    store.removeMinor(programID: selection.programID)
+                } label: {
+                    Image(systemName: "minus.circle")
+                        .foregroundStyle(DesignTokens.Colors.danger)
+                }
+                .buttonStyle(.plain)
+            }
+            if let program, !program.concentrations.isEmpty {
+                concentrationPicker(for: program, selection: selection)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func concentrationPicker(for program: Program, selection: MinorSelection) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Pathway")
+                .font(DesignTokens.Typography.small)
+                .foregroundStyle(DesignTokens.Colors.textTertiary)
+                .textCase(.uppercase)
+            Picker("Pathway", selection: Binding(
+                get: { selection.concentrationID ?? "" },
+                set: { newValue in
+                    store.selectMinorConcentration(
+                        minorProgramID: selection.programID,
+                        concentrationID: newValue.isEmpty ? nil : newValue
+                    )
+                }
+            )) {
+                Text("Select pathway").tag("")
+                ForEach(program.concentrations) { concentration in
+                    Text(concentration.name).tag(concentration.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            if selection.concentrationID == nil {
+                Text("This minor offers multiple pathways. Pick one so its requirements count toward your plan.")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.warning)
+            }
+        }
+    }
+
     private func programRow(_ program: Program) -> some View {
-        let isAdded = store.plan.minorProgramIDs.contains(program.id)
+        let isAdded = store.plan.minors.contains { $0.programID == program.id }
         return Button {
             store.addMinor(program)
         } label: {

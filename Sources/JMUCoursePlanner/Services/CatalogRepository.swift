@@ -180,7 +180,7 @@ struct CatalogRepository {
     /// JMU pages that label their concentration section "Required Concentration",
     /// so older v3 caches may still have CIS concentrations flattened into the
     /// parent major requirements.
-    private static let cacheSchemaVersion = 4
+    private static let cacheSchemaVersion = 5
 
     private func cachedHTMLCatalogURL() throws -> URL {
         let directory = try supportDirectory().appending(path: "Catalog", directoryHint: .isDirectory)

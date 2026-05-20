@@ -322,13 +322,23 @@ public struct JMUHTMLCatalogParser: Sendable {
             anchors = ["CertificateRequirements", "Requirements"]
         }
 
+        // Most pages name an anchor we recognize. When they don't (common on
+        // minors that drop the umbrella "Minor Requirements" heading and just
+        // list "Required Courses", "Electives" blocks directly), fall back to
+        // the first <h2 ...>Requirements</h2>, and finally to the first
+        // `<div class="acalog-core">` so we never give up on parseable pages.
         let start = anchors.compactMap { anchorStart(named: $0, in: html) }.min()
             ?? firstRequirementHeading(in: html)
+            ?? firstAcalogCoreBlock(in: html)
         guard let start else { return nil }
 
         let remainder = html[start..<html.endIndex]
         let end = stopHeadingStart(in: remainder).map { html.index(start, offsetBy: $0) } ?? html.endIndex
         return String(html[start..<end])
+    }
+
+    private func firstAcalogCoreBlock(in html: String) -> String.Index? {
+        html.range(of: #"<div\s+class="acalog-core""#, options: [.regularExpression, .caseInsensitive])?.lowerBound
     }
 
     private func anchorStart(named name: String, in html: String) -> String.Index? {
@@ -496,14 +506,20 @@ public struct JMUHTMLCatalogParser: Sendable {
 
     private func isConcreteConcentrationHeading(_ heading: String) -> Bool {
         let lower = heading.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !["concentrations", "tracks", "areas of emphasis"].contains(lower) else { return false }
+        let umbrellas = ["concentrations", "tracks", "areas of emphasis", "options", "paths", "routes"]
+        guard !umbrellas.contains(lower) else { return false }
         // Catalog headings carry the noun anywhere in the line, often before
         // "Required Courses" or a credit-hour suffix.
-        return lower.contains("concentration")
-            || lower.contains(" track")
-            || lower.hasSuffix("track")
-            || lower.contains("emphasis")
-            || lower.contains("specialization")
+        if lower.contains("concentration") { return true }
+        if lower.contains("emphasis") { return true }
+        if lower.contains("specialization") { return true }
+        if lower.contains(" track") || lower.hasSuffix("track") { return true }
+        // Match "Option N", "Path N", "Route N" word boundaries. Avoid
+        // matching every "Course Options" sub-heading by requiring the noun
+        // to be followed by a digit / colon / dash / end-of-line.
+        if lower.range(of: #"(?i)\b(option|path|route)\s*\d"#, options: .regularExpression) != nil { return true }
+        if lower.range(of: #"(?i)\b(option|path|route)\s*[:\-]"#, options: .regularExpression) != nil { return true }
+        return false
     }
 
     /// Strip catalog boilerplate ("Required Courses", credit-hour suffix,

@@ -158,9 +158,42 @@ final class PlanStore: ObservableObject {
     }
 
     func addMinor(_ program: Program) {
-        guard !plan.minorProgramIDs.contains(program.id) else { return }
-        plan.minorProgramIDs.append(program.id)
+        guard !plan.minors.contains(where: { $0.programID == program.id }) else { return }
+        plan.minors.append(MinorSelection(programID: program.id))
         autosave()
+    }
+
+    func removeMinor(programID: String) {
+        plan.minors.removeAll { $0.programID == programID }
+        autosave()
+    }
+
+    /// Pick (or clear) the concentration / option pathway for an already-added
+    /// minor. If `concentrationID` is nil the minor reverts to "any pathway".
+    func selectMinorConcentration(minorProgramID: String, concentrationID: String?) {
+        guard let index = plan.minors.firstIndex(where: { $0.programID == minorProgramID }) else { return }
+        guard let catalog,
+              let program = catalog.programsByID[minorProgramID]
+        else {
+            plan.minors[index].concentrationID = nil
+            autosave()
+            return
+        }
+        if let id = concentrationID, program.concentrations.contains(where: { $0.id == id }) {
+            plan.minors[index].concentrationID = id
+        } else {
+            plan.minors[index].concentrationID = nil
+        }
+        autosave()
+    }
+
+    /// Returns the minor's effective program (parent + selected concentration's
+    /// requirements merged). Used by the schedule generator and the progress
+    /// calculator so the minor's required courses participate in graduation
+    /// tracking.
+    func effectiveMinorProgram(for selection: MinorSelection) -> Program? {
+        guard let catalog, let program = catalog.programsByID[selection.programID] else { return nil }
+        return try? program.effectiveProgram(concentrationID: selection.concentrationID)
     }
 
     func addAPScore(examName: String, score: Int) {

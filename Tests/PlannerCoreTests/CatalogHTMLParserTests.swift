@@ -224,4 +224,64 @@ struct CatalogHTMLParserTests {
         ])
         #expect(cybersecurity.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["CIS301", "CIS424", "CIS425", "CIS420"])
     }
+
+    @Test("minor page without a Requirements heading still produces requirements")
+    func parsesMinorWithoutRequirementsHeading() throws {
+        // Many JMU minor pages drop the "Minor Requirements" H2 entirely and
+        // list "Required Courses", "Electives" blocks as siblings under the
+        // top H1. Parser must fall back to the first acalog-core block.
+        let html = """
+        <h1 id="acalog-content">African, African American and Diaspora Studies Minor</h1>
+        <div class="acalog-core"><h2><a name="RequiredCourses4CreditHours"></a>Required Courses: 4 Credit Hours</h2><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '1',this, 'x'); return false;">AAAD 200. Introduction to AAAD</a> <em><strong>Credits:</strong></em> <em>4.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="Electives15CreditHours"></a>Electives: 15 Credit Hours</h2><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '2',this, 'x'); return false;">AAAD 300. African Diaspora Studies</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '3',this, 'x'); return false;">AAAD 310. Black Feminist Thought</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        """
+
+        let url = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=26992"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .minor, sourceURL: url)
+
+        #expect(parsed.requirements.count == 2)
+        #expect(parsed.requirements.first?.name.contains("Required Courses") == true)
+        #expect(parsed.requirements.flatMap(\.courseOptions).flatMap { $0 }.contains("AAAD200"))
+    }
+
+    @Test("minor pathway labeled \"Option 1\" / \"Option 2\" becomes selectable concentrations")
+    func parsesNumberedOptionsAsConcentrations() throws {
+        let html = """
+        <h1 id="acalog-content">Robotics Minor</h1>
+        <div class="acalog-core"><h2><a name="Core"></a>Core: 3 Credit Hours</h2><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '1',this, 'x'); return false;">ROB 200. Intro Robotics</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="Option1"></a>Option 1: Aerial Robotics</h2><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '2',this, 'x'); return false;">ROB 310. UAV Systems</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="Option2"></a>Option 2: Ground Robotics</h2><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '3',this, 'x'); return false;">ROB 320. Mobile Robots</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        """
+
+        let url = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=1"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .minor, sourceURL: url)
+
+        #expect(parsed.concentrations.count == 2, "Option 1 and Option 2 must each become a concentration entry")
+        let names = parsed.concentrations.map(\.name)
+        #expect(names.contains(where: { $0.contains("Aerial Robotics") }))
+        #expect(names.contains(where: { $0.contains("Ground Robotics") }))
+        // The shared "Core" must remain on the parent requirements, not folded into a concentration.
+        #expect(parsed.requirements.contains { $0.name.contains("Core") })
+    }
 }

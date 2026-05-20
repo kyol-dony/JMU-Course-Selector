@@ -65,7 +65,8 @@ final class PlanStore: ObservableObject {
             programID: programID,
             concentrationID: plan.concentrationID,
             pathway: activePathway,
-            transferCredits: plan.transferCredits
+            transferCredits: plan.transferCredits,
+            requirementSelections: activeRequirementSelectionsByRequirementKey()
         )
     }
 
@@ -76,6 +77,95 @@ final class PlanStore: ObservableObject {
             ids.formUnion(activePathway.semesters.flatMap(\.courseIDs))
         }
         return ids
+    }
+
+    func majorRequirementSelectionKey(for category: RequirementCategory) -> String? {
+        guard let programID = plan.programID else { return nil }
+        return requirementSelectionKey(
+            scope: "major",
+            programID: programID,
+            concentrationID: plan.concentrationID,
+            requirementKey: category.selectionKey
+        )
+    }
+
+    func requirementSelectionKey(
+        scope: String,
+        programID: String,
+        concentrationID: String?,
+        requirementKey: String
+    ) -> String {
+        let concentration = concentrationID ?? "no-concentration"
+        return "\(scope):\(programID):\(concentration):\(requirementKey)"
+    }
+
+    func selectedRequirementOption(for key: String, in category: RequirementCategory) -> [String]? {
+        guard let selected = plan.requirementSelections[key],
+              isValidRequirementSelection(selected, in: category)
+        else {
+            return nil
+        }
+        return selected
+    }
+
+    func selectableCourseOptions(in category: RequirementCategory) -> [[String]] {
+        let options = category.courseOptions.filter { !$0.isEmpty }
+        guard options.count == 1 else { return [] }
+        return options[0].map { [$0] }
+    }
+
+    func canSelectRequirementOption(in category: RequirementCategory) -> Bool {
+        selectableCourseOptions(in: category).count > 1
+    }
+
+    func selectRequirementOption(key: String, courseIDs: [String]?) {
+        if let courseIDs {
+            plan.requirementSelections[key] = courseIDs
+        } else {
+            plan.requirementSelections.removeValue(forKey: key)
+        }
+        plan.pathways = []
+        plan.activePathwayID = nil
+        autosave()
+    }
+
+    func activeRequirementSelectionsByRequirementKey() -> [String: [String]] {
+        guard let effectiveActiveProgram else { return [:] }
+        var result: [String: [String]] = [:]
+        for category in effectiveActiveProgram.requirements {
+            guard let storageKey = majorRequirementSelectionKey(for: category),
+                  let selected = selectedRequirementOption(for: storageKey, in: category)
+            else {
+                continue
+            }
+            result[category.selectionKey] = selected
+        }
+        return result
+    }
+
+    func validateRequirementSelections() {
+        guard let effectiveActiveProgram else {
+            plan.requirementSelections = [:]
+            return
+        }
+        let validMajorSelections = Set(effectiveActiveProgram.requirements.compactMap { category -> String? in
+            guard let storageKey = majorRequirementSelectionKey(for: category),
+                  selectedRequirementOption(for: storageKey, in: category) != nil
+            else {
+                return nil
+            }
+            return storageKey
+        })
+        plan.requirementSelections = plan.requirementSelections.filter { key, _ in
+            validMajorSelections.contains(key)
+        }
+    }
+
+    private func isValidRequirementSelection(_ selected: [String], in category: RequirementCategory) -> Bool {
+        guard !selected.isEmpty else { return false }
+        return category.courseOptions.contains { option in
+            Set(option).isSuperset(of: selected)
+        }
     }
 
     /// Course codes still required for a given requirement category, derived from the catalog.
@@ -98,6 +188,7 @@ final class PlanStore: ObservableObject {
             if let autosave = savedPlans.first(where: { $0.name == "Autosave" }) {
                 plan = autosave
                 validateSelectedConcentration()
+                validateRequirementSelections()
             }
             statusMessage = "Catalog loaded from the 2025-2026 JMU undergraduate catalog cache."
         } catch {
@@ -131,6 +222,7 @@ final class PlanStore: ObservableObject {
         } else {
             plan.concentrationID = nil
         }
+        validateRequirementSelections()
         plan.pathways = []
         plan.activePathwayID = nil
         // Re-route any previously-entered AP credits through the optimizer now
@@ -146,6 +238,7 @@ final class PlanStore: ObservableObject {
         } else {
             plan.concentrationID = nil
         }
+        validateRequirementSelections()
         plan.pathways = []
         plan.activePathwayID = nil
         recomputeAPCredits()
@@ -250,7 +343,8 @@ final class PlanStore: ObservableObject {
                 concentrationID: plan.concentrationID,
                 workload: plan.workload,
                 transferCredits: plan.transferCredits,
-                starting: SemesterIdentity(year: 2026, term: .fall)
+                starting: SemesterIdentity(year: 2026, term: .fall),
+                requirementSelections: activeRequirementSelectionsByRequirementKey()
             )
             plan.activePathwayID = plan.pathways.first?.id
             errorMessage = nil
@@ -353,6 +447,7 @@ final class PlanStore: ObservableObject {
     func resume(_ saved: SavedStudentPlan) {
         plan = saved
         validateSelectedConcentration()
+        validateRequirementSelections()
         statusMessage = "Resumed \(saved.name)."
     }
 
@@ -397,6 +492,7 @@ final class PlanStore: ObservableObject {
                 }
                 catalog = refreshed
                 validateSelectedConcentration()
+                validateRequirementSelections()
                 isRefreshingCatalog = false
                 let majors = refreshed.programs.filter { $0.kind == .major && $0.requirementDataComplete }.count
                 let minors = refreshed.programs.filter { $0.kind == .minor && $0.requirementDataComplete }.count

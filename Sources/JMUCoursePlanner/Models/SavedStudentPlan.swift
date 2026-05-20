@@ -28,6 +28,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
     var pathways: [Pathway]
     var activePathwayID: String?
     var overrides: [ConflictOverride]
+    var requirementSelections: [String: [String]]
     var updatedAt: Date
 
     init(
@@ -42,6 +43,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
         pathways: [Pathway] = [],
         activePathwayID: String? = nil,
         overrides: [ConflictOverride] = [],
+        requirementSelections: [String: [String]] = [:],
         updatedAt: Date = Date()
     ) {
         self.id = id
@@ -55,12 +57,13 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
         self.pathways = pathways
         self.activePathwayID = activePathwayID
         self.overrides = overrides
+        self.requirementSelections = requirementSelections
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, programID, concentrationID, minors, minorProgramIDs
-        case workload, apScores, transferCredits, pathways, activePathwayID, overrides, updatedAt
+        case workload, apScores, transferCredits, pathways, activePathwayID, overrides, requirementSelections, updatedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -86,6 +89,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
         self.pathways = try container.decode([Pathway].self, forKey: .pathways)
         self.activePathwayID = try container.decodeIfPresent(String.self, forKey: .activePathwayID)
         self.overrides = try container.decode([ConflictOverride].self, forKey: .overrides)
+        self.requirementSelections = try container.decodeIfPresent([String: [String]].self, forKey: .requirementSelections) ?? [:]
         self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 
@@ -102,6 +106,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
         try container.encode(pathways, forKey: .pathways)
         try container.encodeIfPresent(activePathwayID, forKey: .activePathwayID)
         try container.encode(overrides, forKey: .overrides)
+        try container.encode(requirementSelections, forKey: .requirementSelections)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
 }

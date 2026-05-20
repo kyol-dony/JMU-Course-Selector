@@ -161,6 +161,14 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     public func parseCourseDetail(_ html: String) -> HTMLCourseDetail {
+        // The live JMU `preview_course.php` popup format does not wrap the
+        // description in `<p>` tags. Try the popup-format extractor first; if it
+        // finds a description, return it. Otherwise fall through to the
+        // `<acalog-page-content>` / `<p>` extractor that handles the print view.
+        if let popupDetail = parsePopupCourseDetail(html) {
+            return popupDetail
+        }
+
         let content = courseDetailContent(in: html)
         let paragraphs = paragraphTexts(in: content)
         var descriptionParts: [String] = []
@@ -190,6 +198,49 @@ public struct JMUHTMLCatalogParser: Sendable {
             description: description.isEmpty ? nil : description,
             prerequisiteText: prerequisiteText
         )
+    }
+
+    /// Handles the live JMU popup-style `preview_course.php` page. Format:
+    ///
+    ///     <h1 id='course_preview_title'>CODE 123. Title</h1>
+    ///     <br><em><strong>Credits</strong></em> <em>3.00</em> ... <hr>
+    ///     The actual course description as bare text, possibly with
+    ///     <a> links to other programs or courses.
+    ///     <br><br><br><hr>
+    ///
+    /// Returns nil if the popup-style markers are not present, so the caller
+    /// can fall back to the print-view parser.
+    private func parsePopupCourseDetail(_ html: String) -> HTMLCourseDetail? {
+        let pattern = #"(?is)<h1[^>]*id=['\"]course_preview_title['\"][^>]*>.*?</h1>(.*?)(?:<hr\b[^>]*>\s*<div|<hr\b[^>]*>\s*$|</body>)"#
+        guard let match = html.firstMatch(for: pattern), match.count > 1 else {
+            return nil
+        }
+        var segment = match[1]
+        // Drop the leading metadata block: <br><em><strong>Credits</strong></em>...<hr>
+        if let metaEnd = segment.range(of: #"(?is)<hr\b[^>]*>"#, options: .regularExpression) {
+            segment = String(segment[metaEnd.upperBound...])
+        }
+        // Strip trailing print/share button blocks that sit after the description.
+        if let printStart = segment.range(of: #"(?is)<div[^>]*float:\s*right"#, options: .regularExpression) {
+            segment = String(segment[..<printStart.lowerBound])
+        }
+
+        let cleaned = HTMLCleaner.clean(segment)
+        var description: String? = cleaned.isEmpty ? nil : cleaned
+        var prerequisiteText: String?
+
+        // If a prerequisite sentence is embedded inline, split it out.
+        if let desc = description,
+           let range = desc.range(of: #"(?is)Prerequisite\(s\)?:.*?(?=\.|$)"#, options: .regularExpression) {
+            let preq = String(desc[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            prerequisiteText = preq
+            let stripped = desc.replacingCharacters(in: range, with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            description = stripped.isEmpty ? nil : stripped
+        }
+
+        guard description != nil || prerequisiteText != nil else { return nil }
+        return HTMLCourseDetail(description: description, prerequisiteText: prerequisiteText)
     }
 
     private func courseDetailContent(in html: String) -> String {

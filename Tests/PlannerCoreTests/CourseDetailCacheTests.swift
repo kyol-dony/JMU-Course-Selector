@@ -150,4 +150,33 @@ struct CourseDetailCacheTests {
         #expect(withoutURLDetail.description == nil)
         #expect(withoutURLDetail.descriptionStatus == "Description unavailable until the catalog refresh discovers the official JMU course page.")
     }
+
+    @Test("popup-format preview_course.php parses description even without acalog-page-content wrapper")
+    func parsesPopupCoursePage() throws {
+        let html = """
+        <html><body>
+        <nav><a href="#course_preview_title" class="skip-nav">Skip to Content</a></nav>
+        <table class="toplevel_popup">
+        <tr><td><span class="n1_header">Introduction to African Studies</span></td></tr>
+        <tr><td>
+        <h1 id='course_preview_title'>AAAD 200. Introduction to African Studies [C4GE]</h1>
+        <br><em><strong>Credits</strong></em> <em>3.00</em>
+        <em><strong>PeopleSoft Course ID</strong></em> <em>011625</em>
+        <em><strong>Grading Basis</strong></em> <em>GRD</em>
+        <br><hr><br>
+        An introductory survey of basic theoretical concepts to analyze the Black experience, with special focus on the general historical process common to Africa and the African Diaspora. Prerequisite(s): None.
+        <br><br><br><hr>
+        <div style="float: right"><a href="javascript:void(0)">Print this Page</a></div>
+        </td></tr></table>
+        </body></html>
+        """
+
+        let detail = JMUHTMLCatalogParser().parseCourseDetail(html)
+
+        #expect(detail.description?.contains("An introductory survey of basic theoretical concepts") == true)
+        #expect(detail.description?.contains("Diaspora") == true)
+        #expect(detail.description?.contains("Print this Page") == false)
+        #expect(detail.description?.contains("Credits") == false)
+        #expect(detail.prerequisiteText?.contains("Prerequisite(s)") == true)
+    }
 }

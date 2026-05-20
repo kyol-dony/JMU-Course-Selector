@@ -186,10 +186,34 @@ final class PlanStore: ObservableObject {
             return
         }
         Task {
-            let detail = await detailService.detail(for: course)
+            var detail = await detailService.detail(for: course)
+            courseDetail = detail
+
+            // If the cached catalog doesn't carry a description for this course,
+            // try a live fetch against JMU's preview_course.php page. Updates the
+            // sheet in place when it succeeds and persists into the in-memory
+            // catalog so subsequent clicks during this session skip the network.
+            if detail.description == nil,
+               let live = await detailService.liveDescription(for: course) {
+                detail.description = live.description
+                detail.descriptionStatus = detailService.descriptionStatus(forLiveFetched: live.sourceURL)
+                persistLiveDescription(courseID: courseID, description: live.description, sourceURL: live.sourceURL)
+            }
+
             courseDetailCache[courseID] = detail
             courseDetail = detail
         }
+    }
+
+    private func persistLiveDescription(courseID: String, description: String, sourceURL: URL) {
+        guard var catalog else { return }
+        guard let index = catalog.courses.firstIndex(where: { $0.id == courseID }) else { return }
+        var course = catalog.courses[index]
+        course.description = description
+        course.descriptionSourceURL = sourceURL
+        course.detailRetrievedAt = Date()
+        catalog.courses[index] = course
+        self.catalog = catalog
     }
 
     func saveCurrentPlan() {

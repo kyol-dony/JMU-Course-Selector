@@ -160,11 +160,15 @@ struct CatalogRepository {
         try encoder.encode(catalog).write(to: url)
     }
 
-    /// Bump this whenever the cached catalog schema or the way we synthesize
-    /// requirements changes. Old cache files (e.g., the pre-Gen-Ed format) are
-    /// then ignored automatically and the app falls back to the bundled seed,
-    /// which in turn triggers a fresh HTML refresh on launch.
-    private static let cacheSchemaVersion = 3
+    /// Bump this whenever the cached catalog schema changes in a way that the
+    /// synthesized `Codable` decoder cannot tolerate. Purely additive optional
+    /// fields on `Course`/`Program` do NOT need a bump: Swift's synthesized
+    /// decoder handles missing optional keys transparently. The Gen-Ed
+    /// requirement layout change in v2 was the last breaking shape change;
+    /// the v3 bump was over-cautious and stranded users on the bundled seed
+    /// whenever the live HTML refresh hadn't completed yet. Keep this at v2
+    /// unless the requirement category shape or the program ID layout changes.
+    private static let cacheSchemaVersion = 2
 
     private func cachedHTMLCatalogURL() throws -> URL {
         let directory = try supportDirectory().appending(path: "Catalog", directoryHint: .isDirectory)

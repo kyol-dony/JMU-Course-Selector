@@ -120,6 +120,10 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
     public var verificationStatus: VerificationStatus
     public var note: String?
 
+    public var selectionKey: String {
+        "\(id)::\(name)"
+    }
+
     public init(
         id: String,
         name: String,
@@ -570,11 +574,12 @@ public struct ScheduleGenerator: Sendable {
         concentrationID: String? = nil,
         workload: WorkloadPreference,
         transferCredits: [TransferCredit],
-        starting start: SemesterIdentity = SemesterIdentity(year: Calendar.current.component(.year, from: Date()), term: .fall)
+        starting start: SemesterIdentity = SemesterIdentity(year: Calendar.current.component(.year, from: Date()), term: .fall),
+        requirementSelections: [String: [String]] = [:]
     ) throws -> [Pathway] {
         let program = try programForScheduling(programID, concentrationID: concentrationID)
         let completed = Set(transferCredits.flatMap(\.courseIDs))
-        let required = requiredCourseIDs(for: program, completed: completed)
+        let required = requiredCourseIDs(for: program, completed: completed, requirementSelections: requirementSelections)
         guard !required.isEmpty else {
             return (1...3).map { index in
                 Pathway(id: "path-\(index)", name: pathwayName(index), semesters: [])
@@ -631,13 +636,17 @@ public struct ScheduleGenerator: Sendable {
     /// `GNED123` awarded by AP Lit). Those satisfy any option in a Gen Ed
     /// category whose name carries the matching cluster tag (`[C2L]`), even
     /// though the GNED ID is not in the alternate list of any specific option.
-    private func requiredCourseIDs(for program: Program, completed: Set<String>) -> [String] {
+    private func requiredCourseIDs(
+        for program: Program,
+        completed: Set<String>,
+        requirementSelections: [String: [String]]
+    ) -> [String] {
         let completedClusterTags = Set(completed.compactMap { TransferCreditMapper.genEdCreditClusterTag(for: $0) })
         var seen: Set<String> = []
         var result: [String] = []
         for category in program.requirements {
             let categorySatisfiedByCluster = completedClusterTags.contains(where: category.name.contains)
-            for option in category.courseOptions {
+            for option in courseOptions(for: category, requirementSelections: requirementSelections) {
                 if categorySatisfiedByCluster { continue }
                 if option.contains(where: completed.contains) { continue }
                 guard let pick = option.first else { continue }
@@ -647,6 +656,19 @@ public struct ScheduleGenerator: Sendable {
             }
         }
         return result
+    }
+
+    private func courseOptions(
+        for category: RequirementCategory,
+        requirementSelections: [String: [String]]
+    ) -> [[String]] {
+        guard let selected = requirementSelections[category.selectionKey],
+              !selected.isEmpty,
+              category.courseOptions.contains(where: { Set($0).isSuperset(of: selected) })
+        else {
+            return category.courseOptions
+        }
+        return [selected]
     }
 
     private func buildSemesters(
@@ -849,7 +871,8 @@ public struct ProgressCalculator: Sendable {
         programID: String,
         concentrationID: String? = nil,
         pathway: Pathway,
-        transferCredits: [TransferCredit]
+        transferCredits: [TransferCredit],
+        requirementSelections: [String: [String]] = [:]
     ) throws -> GraduationProgress {
         guard let program = catalog.programsByID[programID] else {
             throw PlannerError.programNotFound(programID)
@@ -859,7 +882,7 @@ public struct ProgressCalculator: Sendable {
         let completedCourseIDs = Set(pathway.semesters.flatMap(\.courseIDs)).union(transferCredits.flatMap(\.courseIDs))
         let coursesByID = catalog.coursesByID
         let categories = effectiveProgram.requirements.map { category in
-            let completedCredits = category.courseOptions.reduce(0) { total, options in
+            let completedCredits = courseOptions(for: category, requirementSelections: requirementSelections).reduce(0) { total, options in
                 guard let completed = options.first(where: completedCourseIDs.contains),
                       let course = coursesByID[completed] else {
                     return total
@@ -876,6 +899,19 @@ public struct ProgressCalculator: Sendable {
         }
 
         return GraduationProgress(categories: categories, projectedGraduation: pathway.projectedGraduation)
+    }
+
+    private func courseOptions(
+        for category: RequirementCategory,
+        requirementSelections: [String: [String]]
+    ) -> [[String]] {
+        guard let selected = requirementSelections[category.selectionKey],
+              !selected.isEmpty,
+              category.courseOptions.contains(where: { Set($0).isSuperset(of: selected) })
+        else {
+            return category.courseOptions
+        }
+        return [selected]
     }
 }
 

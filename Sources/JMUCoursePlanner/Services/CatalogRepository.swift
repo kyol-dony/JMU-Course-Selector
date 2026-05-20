@@ -68,6 +68,7 @@ struct CatalogRepository {
             }
 
             var parsedRequirements = requirements?.requirements ?? []
+            let parsedConcentrations = requirements?.concentrations ?? []
             // Majors at JMU all require General Education unless the parsed page
             // already includes its own gen ed category. Append the shared cluster
             // set so progress tracking and schedule generation can see it.
@@ -77,6 +78,7 @@ struct CatalogRepository {
                 parsedRequirements.append(contentsOf: genEd)
             }
             let hasSchedulableCourses = parsedRequirements.contains { !$0.courseOptions.isEmpty }
+                || parsedConcentrations.flatMap(\.requirements).contains { !$0.courseOptions.isEmpty }
             let totalCredits = requirements?.totalCredits
                 ?? seedProgram.flatMap { existing in existing.kind == .major ? 120 : nil }
                 ?? (entry.kind == .major ? 120 : nil)
@@ -91,6 +93,7 @@ struct CatalogRepository {
                 catalogPage: seedProgram?.catalogPage,
                 totalCredits: totalCredits,
                 requirements: parsedRequirements,
+                concentrations: parsedConcentrations,
                 verificationStatus: parsedRequirements.isEmpty ? .unverified : .partial,
                 requirementDataComplete: hasSchedulableCourses,
                 sourceNote: sourceNote(for: entry, parsedRequirements: parsedRequirements, failed: failedPrograms.contains(entry.title))
@@ -119,7 +122,7 @@ struct CatalogRepository {
             retrievalNotes: [
                 "Program and requirement rows were parsed from official JMU catalog HTML pages.",
                 "Parsed \(refreshedPrograms.filter { $0.kind == .major }.count) majors and \(refreshedPrograms.filter { $0.kind == .minor }.count) minors from Programs of Study.",
-                "Sections that depend on prose, unrestricted electives, concentrations, or advisor-selected choices are marked partial instead of inferred."
+                "Course-bearing concentration sections are parsed as selectable concentrations. Prose-only, unrestricted elective, and advisor-selected sections are marked partial instead of inferred."
             ] + (failedPrograms.isEmpty ? [] : ["Failed to parse \(failedPrograms.count) program pages during the latest refresh."])
         )
 
@@ -173,15 +176,10 @@ struct CatalogRepository {
         try encoder.encode(catalog).write(to: url)
     }
 
-    /// Bump this whenever the cached catalog schema changes in a way that the
-    /// synthesized `Codable` decoder cannot tolerate. Purely additive optional
-    /// fields on `Course`/`Program` do NOT need a bump: Swift's synthesized
-    /// decoder handles missing optional keys transparently. The Gen-Ed
-    /// requirement layout change in v2 was the last breaking shape change;
-    /// the v3 bump was over-cautious and stranded users on the bundled seed
-    /// whenever the live HTML refresh hadn't completed yet. Keep this at v2
-    /// unless the requirement category shape or the program ID layout changes.
-    private static let cacheSchemaVersion = 2
+    /// Bump this whenever cached catalog requirement shape changes. v3 splits
+    /// concentration requirements out of parent major requirements, so older
+    /// flattened caches must not be reused.
+    private static let cacheSchemaVersion = 3
 
     private func cachedHTMLCatalogURL() throws -> URL {
         let directory = try supportDirectory().appending(path: "Catalog", directoryHint: .isDirectory)

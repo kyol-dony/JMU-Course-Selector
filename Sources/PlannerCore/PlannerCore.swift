@@ -375,17 +375,15 @@ public struct TransferCreditMapper: Sendable {
         program: Program?,
         completedCourseIDs: Set<String>
     ) -> [TransferCredit] {
-        return scores.compactMap { score in
-            // 1. Filter by exam name + qualifying score.
+        // Per-score candidate sets (top tier only).
+        let perScore: [(score: APScore, candidates: [TransferCreditRule])] = scores.map { score in
             let qualifying = catalog.apCreditRules.filter { rule in
                 guard case .apExam(let name, let minScore) = rule.source else { return false }
                 return name.caseInsensitiveCompare(score.examName) == .orderedSame
                     && score.score >= minScore
             }
-            guard !qualifying.isEmpty else { return nil }
-
-            // 2. Keep only the highest tier the student qualified for.
-            let highestTier: Int = qualifying.compactMap { rule -> Int? in
+            guard !qualifying.isEmpty else { return (score, []) }
+            let highestTier = qualifying.compactMap { rule -> Int? in
                 if case .apExam(_, let minScore) = rule.source { return minScore }
                 return nil
             }.max() ?? 0
@@ -393,70 +391,159 @@ public struct TransferCreditMapper: Sendable {
                 if case .apExam(_, let minScore) = rule.source { return minScore == highestTier }
                 return false
             }
+            return (score, topTier)
+        }
 
-            // 3. Score each surviving variant by graduation utility.
-            let scored = topTier.map { rule -> (rule: TransferCreditRule, key: (Int, Int, Int, Int)) in
-                let rescued = creditsRescued(by: rule, program: program, alreadyCompleted: completedCourseIDs)
-                let optionsHit = optionsSatisfied(by: rule, program: program, alreadyCompleted: completedCourseIDs)
+        // Pre-mark options already covered by non-AP transfer credits (dual
+        // enrollment). Option-key = (categoryID, optionIndex). Treated as
+        // claimed so AP variants don't pile onto the same option.
+        var claimedOptions: Set<OptionKey> = []
+        if let program {
+            for category in program.requirements {
+                for (idx, option) in category.courseOptions.enumerated() {
+                    if option.contains(where: completedCourseIDs.contains) {
+                        claimedOptions.insert(OptionKey(categoryID: category.id, index: idx))
+                    }
+                }
+            }
+        }
+
+        // Process scores in order of fewest variant choices first. Exams with a
+        // single forced placement (e.g., AP Lit -> GNED 123) get their option
+        // locked in before flexible exams that could go elsewhere. Stable
+        // alphabetical tiebreaker for determinism.
+        let processingOrder = perScore.enumerated().sorted { lhs, rhs in
+            if lhs.element.candidates.count != rhs.element.candidates.count {
+                return lhs.element.candidates.count < rhs.element.candidates.count
+            }
+            return lhs.element.score.examName < rhs.element.score.examName
+        }
+
+        var picksByOriginalIndex: [Int: TransferCreditRule] = [:]
+        for (originalIndex, entry) in processingOrder {
+            guard !entry.candidates.isEmpty else { continue }
+            let scored = entry.candidates.map { rule -> (rule: TransferCreditRule, key: (Int, Int, Int, Int)) in
+                let rescued = creditsRescued(by: rule, program: program, claimed: claimedOptions)
+                let optionsHit = optionsSatisfied(by: rule, program: program, claimed: claimedOptions)
                 let genEd = rule.meetsGeneralEducation ? 1 : 0
                 return (rule, (rescued, optionsHit, rule.credits, genEd))
             }
-            guard let best = scored.max(by: { $0.key < $1.key }) else { return nil }
-            guard case .apExam(let name, _) = best.rule.source else { return nil }
+            guard let best = scored.max(by: { $0.key < $1.key }) else { continue }
+            picksByOriginalIndex[originalIndex] = best.rule
 
+            // Reserve every option this rule satisfies so subsequent scores
+            // route their credit somewhere else.
+            for key in optionKeys(satisfiedBy: best.rule, program: program, claimed: claimedOptions) {
+                claimedOptions.insert(key)
+            }
+        }
+
+        // Emit results in the student's original score order.
+        return scores.enumerated().compactMap { index, score in
+            guard let rule = picksByOriginalIndex[index] else { return nil }
+            guard case .apExam(let name, _) = rule.source else { return nil }
             return TransferCredit(
                 sourceDescription: "AP \(name) score \(score.score)",
-                courseIDs: best.rule.awardedCourseIDs,
-                credits: best.rule.credits
+                courseIDs: rule.awardedCourseIDs,
+                credits: rule.credits
             )
         }
     }
 
-    /// Count of distinct requirement option groups this rule would satisfy.
-    /// Each option group counts at most once even if the rule names multiple
-    /// alternates inside it.
-    private func optionsSatisfied(
-        by rule: TransferCreditRule,
+    private struct OptionKey: Hashable {
+        var categoryID: String
+        var index: Int
+    }
+
+    /// JMU awards "GNED ###" placeholder courses for several AP exams to denote
+    /// "credit toward a specific Gen Ed cluster" without naming a specific
+    /// catalog course. Map each GNED ID to the cluster tag that lives inside
+    /// the Gen Ed category's display name (e.g., "General Education —
+    /// Literature [C2L]"). When scoring coverage we treat the GNED award as
+    /// satisfying any option in a category whose name contains the tag.
+    /// Public lookup used by `ScheduleGenerator` so it can recognize the same
+    /// GNED → cluster aliases the mapper uses when crediting options.
+    public static func genEdCreditClusterTag(for courseID: String) -> String? {
+        genEdCreditClusterTagTable[courseID]
+    }
+
+    private static let genEdCreditClusterTagTable: [String: String] = [
+        // Cluster Two
+        "GNED123": "[C2L]",   // Literature
+        "GNED124": "[C2L]",
+        "GNED129": "[C2L]",
+        "GNED130": "[C2HQC]", // Human Questions and Contexts
+        "GNED131": "[C2HQC]",
+        "GNED132": "[C2VPA]", // Visual and Performing Arts
+        // Cluster Four
+        "GNED140": "[C4AE]",  // American Experience
+        "GNED141": "[C4AE]",
+        "GNED142": "[C4GE]",  // Global Experience
+        "GNED143": "[C4GE]",
+        "GNED144": "[C4GE]",
+        // Cluster Five
+        "GNED150": "[C5SD]",  // Sociocultural Domain
+        "GNED151": "[C5SD]",
+        "GNED155": "[C5W]"    // Wellness Domain
+    ]
+
+    /// Returns the set of option-keys that this rule's awards would satisfy in
+    /// the given program, excluding options that are already in `claimed`.
+    /// Honors both exact-course-ID matches and GNED cluster aliases.
+    private func optionKeys(
+        satisfiedBy rule: TransferCreditRule,
         program: Program?,
-        alreadyCompleted: Set<String>
-    ) -> Int {
-        guard let program else { return 0 }
+        claimed: Set<OptionKey>
+    ) -> [OptionKey] {
+        guard let program else { return [] }
         let awarded = Set(rule.awardedCourseIDs)
-        var count = 0
+        let awardedClusterTags = Set(rule.awardedCourseIDs.compactMap { Self.genEdCreditClusterTag(for: $0) })
+        var keys: [OptionKey] = []
         for category in program.requirements {
-            for option in category.courseOptions {
-                // Skip options that were already satisfied by an unrelated credit.
-                if option.contains(where: alreadyCompleted.contains) { continue }
-                if option.contains(where: awarded.contains) {
-                    count += 1
+            let categoryClusterMatch = awardedClusterTags.contains(where: category.name.contains)
+            for (idx, option) in category.courseOptions.enumerated() {
+                let key = OptionKey(categoryID: category.id, index: idx)
+                if claimed.contains(key) { continue }
+                if option.contains(where: awarded.contains) || categoryClusterMatch {
+                    keys.append(key)
                 }
             }
         }
-        return count
+        return keys
     }
 
-    /// Estimated graduation credits this rule "rescues" by satisfying program
-    /// requirement options. Each satisfied option contributes its share of the
+    /// Count of distinct (unclaimed) requirement options this rule would
+    /// satisfy. Each option counts at most once.
+    private func optionsSatisfied(
+        by rule: TransferCreditRule,
+        program: Program?,
+        claimed: Set<OptionKey>
+    ) -> Int {
+        optionKeys(satisfiedBy: rule, program: program, claimed: claimed).count
+    }
+
+    /// Catalog credits "rescued" by routing this rule's award through the
+    /// given program. Each satisfied option contributes its share of the
     /// category's `requiredCredits` (split evenly across the category's
-    /// options). A 4-credit Physical Principles cluster with one option group
-    /// contributes 4. A 27-credit Lower-Level Core with nine options contributes
-    /// 3 per option satisfied. This is the metric the mapper should optimize:
-    /// the variant that rescues the most catalog credits is the one that gets
-    /// the student closest to graduation.
+    /// options). Options already in `claimed` are skipped so two different AP
+    /// scores cannot stack-claim the same option.
     private func creditsRescued(
         by rule: TransferCreditRule,
         program: Program?,
-        alreadyCompleted: Set<String>
+        claimed: Set<OptionKey>
     ) -> Int {
         guard let program else { return 0 }
         let awarded = Set(rule.awardedCourseIDs)
+        let awardedClusterTags = Set(rule.awardedCourseIDs.compactMap { Self.genEdCreditClusterTag(for: $0) })
         var rescued = 0
         for category in program.requirements {
             let optionCount = max(category.courseOptions.count, 1)
             let perOption = max(category.requiredCredits / optionCount, 1)
-            for option in category.courseOptions {
-                if option.contains(where: alreadyCompleted.contains) { continue }
-                if option.contains(where: awarded.contains) {
+            let categoryClusterMatch = awardedClusterTags.contains(where: category.name.contains)
+            for (idx, option) in category.courseOptions.enumerated() {
+                let key = OptionKey(categoryID: category.id, index: idx)
+                if claimed.contains(key) { continue }
+                if option.contains(where: awarded.contains) || categoryClusterMatch {
                     rescued += perOption
                 }
             }
@@ -531,11 +618,19 @@ public struct ScheduleGenerator: Sendable {
     /// pick for more than one option (e.g., MATH 220 appearing as both the
     /// QR cluster default and a major's stats requirement default), it is
     /// scheduled once and counts toward both options.
+    ///
+    /// `completed` may also contain JMU GNED placeholder course IDs (e.g.,
+    /// `GNED123` awarded by AP Lit). Those satisfy any option in a Gen Ed
+    /// category whose name carries the matching cluster tag (`[C2L]`), even
+    /// though the GNED ID is not in the alternate list of any specific option.
     private func requiredCourseIDs(for program: Program, completed: Set<String>) -> [String] {
+        let completedClusterTags = Set(completed.compactMap { TransferCreditMapper.genEdCreditClusterTag(for: $0) })
         var seen: Set<String> = []
         var result: [String] = []
         for category in program.requirements {
+            let categorySatisfiedByCluster = completedClusterTags.contains(where: category.name.contains)
             for option in category.courseOptions {
+                if categorySatisfiedByCluster { continue }
                 if option.contains(where: completed.contains) { continue }
                 guard let pick = option.first else { continue }
                 if seen.insert(pick).inserted {

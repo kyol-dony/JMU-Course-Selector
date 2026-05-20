@@ -70,6 +70,127 @@ struct ConflictAndProgressTests {
         #expect(progress.categories.first(where: { $0.id == "gen-ed" })?.remainingCredits == 3)
     }
 
+    @Test("AP Lit 5 awarding GNED 123 satisfies the C2L Literature cluster via alias and removes the default ENG course from the schedule")
+    func apLitSatisfiesLiteratureClusterViaAlias() throws {
+        let rules: [TransferCreditRule] = [
+            TransferCreditRule(
+                source: .apExam(name: "English Literature and Composition", minimumScore: 5),
+                awardedCourseIDs: ["GNED123"],
+                credits: 3,
+                meetsGeneralEducation: true,
+                sourceNote: "AP Lit awards GNED 123 toward C2L"
+            )
+        ]
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "ENG221", code: "ENG 221", title: "Literature Survey", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "any-bs",
+                title: "Some Major",
+                requirements: [
+                    RequirementCategory(
+                        id: "gened-c2l",
+                        name: "General Education — Literature [C2L]",
+                        requiredCredits: 3,
+                        courseOptions: [["ENG221"]]
+                    )
+                ]
+            ),
+            apRules: rules
+        )
+
+        let mapper = TransferCreditMapper(catalog: catalog)
+        let credits = mapper.credits(
+            forAPScores: [APScore(examName: "English Literature and Composition", score: 5)],
+            program: catalog.programs.first,
+            completedCourseIDs: []
+        )
+
+        #expect(credits.first?.courseIDs == ["GNED123"])
+
+        // Now run scheduler with the credit applied.
+        let scheduled = try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "any-bs",
+            workload: .standard,
+            transferCredits: credits
+        )
+        let scheduledCourses = scheduled.first?.semesters.flatMap(\.courseIDs) ?? []
+        #expect(!scheduledCourses.contains("ENG221"), "ENG 221 must NOT be scheduled because GNED 123 already covers the Literature cluster via alias")
+    }
+
+    @Test("global AP allocation spreads two complementary exams across distinct option groups instead of stacking both on the same one")
+    func globalAllocationSpreadsAPs() throws {
+        // Two AP scores. AP Physics C Mechanics can cover C3PP (PHYS150) +
+        // C3L (PHYS150L). AP Chemistry can also cover C3PP (CHEM131) +
+        // C3L (CHEM131L) AND C3NS (alias via GNED150-equivalent CHEM???
+        // For test simplicity: only one of them can hit C3NS. Set up so that
+        // Chemistry has a variant that covers C3NS uniquely, Physics has no
+        // such variant. Greedy must give Chemistry to C3NS-covering variant
+        // (or at least split so C3NS gets covered).
+        //
+        // Simpler: Both exams have a single tier with two awarded courses
+        // each. Physics awards [PHYS150, PHYS150L] (no C3NS overlap).
+        // Chemistry awards [CHEM131, CHEM131L, BIO140] where BIO140 is in
+        // C3NS alternates. Without joint allocation, both grab C3PP+C3L;
+        // C3NS stays uncovered. With joint allocation, mapper must let
+        // Physics take C3PP+C3L and Chemistry's BIO140 takes C3NS.
+        let rules: [TransferCreditRule] = [
+            TransferCreditRule(
+                source: .apExam(name: "Physics C: Mechanics", minimumScore: 4),
+                awardedCourseIDs: ["PHYS150", "PHYS150L"],
+                credits: 4,
+                meetsGeneralEducation: true,
+                sourceNote: "covers C3PP + C3L only"
+            ),
+            TransferCreditRule(
+                source: .apExam(name: "Chemistry", minimumScore: 5),
+                awardedCourseIDs: ["CHEM131", "CHEM131L", "BIO140"],
+                credits: 8,
+                meetsGeneralEducation: true,
+                sourceNote: "covers C3PP, C3L, or C3NS"
+            )
+        ]
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "PHYS150", code: "PHYS 150", title: "Physics", credits: 3, availability: nil, prerequisites: []),
+                Course(id: "PHYS150L", code: "PHYS 150L", title: "Physics Lab", credits: 1, availability: nil, prerequisites: []),
+                Course(id: "CHEM131", code: "CHEM 131", title: "Chemistry", credits: 3, availability: nil, prerequisites: []),
+                Course(id: "CHEM131L", code: "CHEM 131L", title: "Chem Lab", credits: 1, availability: nil, prerequisites: []),
+                Course(id: "BIO140", code: "BIO 140", title: "Biology", credits: 3, availability: nil, prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "sci-bs",
+                title: "Science Major",
+                requirements: [
+                    RequirementCategory(id: "c3pp", name: "Physical Principles [C3PP]", requiredCredits: 4, courseOptions: [["PHYS150", "CHEM131"]]),
+                    RequirementCategory(id: "c3l", name: "Lab Experience [C3L]", requiredCredits: 1, courseOptions: [["PHYS150L", "CHEM131L"]]),
+                    RequirementCategory(id: "c3ns", name: "Natural Systems [C3NS]", requiredCredits: 3, courseOptions: [["BIO140"]])
+                ]
+            ),
+            apRules: rules
+        )
+
+        let mapper = TransferCreditMapper(catalog: catalog)
+        let credits = mapper.credits(
+            forAPScores: [
+                APScore(examName: "Physics C: Mechanics", score: 5),
+                APScore(examName: "Chemistry", score: 5)
+            ],
+            program: catalog.programs.first,
+            completedCourseIDs: []
+        )
+
+        let awardedSet = Set(credits.flatMap(\.courseIDs))
+        // All three clusters must be covered between the two exams.
+        let coversC3PP = awardedSet.contains("PHYS150") || awardedSet.contains("CHEM131")
+        let coversC3L  = awardedSet.contains("PHYS150L") || awardedSet.contains("CHEM131L")
+        let coversC3NS = awardedSet.contains("BIO140")
+        #expect(coversC3PP, "C3PP must be covered")
+        #expect(coversC3L, "C3L must be covered")
+        #expect(coversC3NS, "C3NS must be covered: the joint allocation must route Chemistry's BIO 140 here instead of stacking both exams on C3PP+C3L")
+    }
+
     @Test("scheduler dedupes a course that's the default pick for multiple option groups")
     func schedulerDedupesCrossCategoryDefaults() throws {
         // MATH 220 is the first alternate in BOTH the QR gen-ed cluster

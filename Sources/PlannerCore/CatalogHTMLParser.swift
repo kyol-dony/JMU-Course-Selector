@@ -34,12 +34,20 @@ public struct HTMLProgramIndexEntry: Hashable, Sendable {
 public struct HTMLProgramRequirements: Sendable {
     public var title: String?
     public var requirements: [RequirementCategory]
+    public var concentrations: [Concentration]
     public var courses: [Course]
     public var totalCredits: Int?
 
-    public init(title: String?, requirements: [RequirementCategory], courses: [Course], totalCredits: Int?) {
+    public init(
+        title: String?,
+        requirements: [RequirementCategory],
+        concentrations: [Concentration] = [],
+        courses: [Course],
+        totalCredits: Int?
+    ) {
         self.title = title
         self.requirements = requirements
+        self.concentrations = concentrations
         self.courses = courses
         self.totalCredits = totalCredits
     }
@@ -105,56 +113,37 @@ public struct JMUHTMLCatalogParser: Sendable {
         var coursesByID: [String: Course] = [:]
         var usedCategoryIDs: Set<String> = []
         var categories: [RequirementCategory] = []
+        let blocks = requirementBlocks(in: requirementSlice)
+        let split = splitConcentrationBlocks(blocks)
 
-        for block in requirementBlocks(in: requirementSlice) {
-            let courseItems = courseItems(in: block.body, catoid: catoid)
-            let courses = courseItems.compactMap { item -> Course? in
-                if case .course(let course) = item { return course }
-                return nil
+        for block in split.shared {
+            if let parsed = category(from: block, catoid: catoid, usedCategoryIDs: &usedCategoryIDs, coursesByID: &coursesByID) {
+                categories.append(parsed)
             }
+        }
 
-            // Skip non-requirement sections (descriptions, totals, admission, etc).
-            // Umbrella headings like "Major Requirements" are skipped ONLY when their
-            // body has no course rows — some catalog pages place the core required
-            // courses directly under the umbrella heading with no child acalog-core div.
-            guard !shouldIgnoreRequirementHeading(block.heading, hasCourses: !courses.isEmpty) else {
-                continue
-            }
-
-            for item in courseItems {
-                if case .course(let course) = item {
-                    coursesByID[course.id] = course
+        var usedConcentrationIDs: Set<String> = []
+        let concentrations = split.concentrationRuns.compactMap { run -> Concentration? in
+            var usedRequirementIDs: Set<String> = []
+            var requirements: [RequirementCategory] = []
+            for block in run.blocks {
+                if let parsed = category(from: block, catoid: catoid, usedCategoryIDs: &usedRequirementIDs, coursesByID: &coursesByID) {
+                    requirements.append(parsed)
                 }
             }
-
-            let selectionCount = choiceSelectionCount(heading: block.heading, body: block.body)
-
-            let requiredCredits = parseCredits(from: block.heading)
-                ?? parseTotalCreditsFromBody(block.body)
-                ?? inferredCredits(for: courseItems, selectionCount: selectionCount)
-
-            guard requiredCredits > 0 || !courses.isEmpty else { continue }
-
-            let options = courseOptions(
-                from: courseItems,
-                selectionCount: selectionCount
+            guard !requirements.isEmpty else { return nil }
+            return Concentration(
+                id: uniqueID(slug(from: run.name), used: &usedConcentrationIDs),
+                name: run.name,
+                requirements: requirements,
+                verificationStatus: .partial
             )
-            let categoryID = uniqueID(slug(from: block.heading), used: &usedCategoryIDs)
-            let note = note(for: block, options: options, courses: courses)
-
-            categories.append(RequirementCategory(
-                id: categoryID,
-                name: block.heading,
-                requiredCredits: requiredCredits,
-                courseOptions: options,
-                verificationStatus: .partial,
-                note: note
-            ))
         }
 
         return HTMLProgramRequirements(
             title: title,
             requirements: categories,
+            concentrations: concentrations,
             courses: coursesByID.values.sorted { $0.code < $1.code },
             totalCredits: parseProgramTotal(from: html)
         )
@@ -372,6 +361,7 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private struct RequirementBlock {
+        var level: Int
         var heading: String
         var body: String
     }
@@ -387,12 +377,97 @@ public struct JMUHTMLCatalogParser: Sendable {
                 return nil
             }
 
+            let markerMatch = String(html[markerRange]).firstMatch(for: #"(?is)<h([2-5])\b"#)
+            let level = markerMatch?.dropFirst().first.flatMap(Int.init) ?? 3
             let heading = HTMLCleaner.clean(String(segment[..<headingEnd.lowerBound]))
             guard !heading.isEmpty else { return nil }
             let body = String(segment[headingEnd.upperBound...])
                 .replacingOccurrences(of: #"(?is)^\s*<hr\s*/?>"#, with: "", options: .regularExpression)
-            return RequirementBlock(heading: heading, body: body)
+            return RequirementBlock(level: level, heading: heading, body: body)
         }
+    }
+
+    private func splitConcentrationBlocks(_ blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])]) {
+        guard let concentrationIndex = blocks.firstIndex(where: { $0.heading.caseInsensitiveCompare("Concentrations") == .orderedSame }) else {
+            return (blocks, [])
+        }
+
+        let shared = Array(blocks[..<concentrationIndex])
+        let tail = Array(blocks[(concentrationIndex + 1)...])
+        var runs: [(name: String, blocks: [RequirementBlock])] = []
+        var currentName: String?
+        var currentBlocks: [RequirementBlock] = []
+
+        for block in tail {
+            if isConcreteConcentrationHeading(block.heading) {
+                if let currentName, !currentBlocks.isEmpty {
+                    runs.append((currentName, currentBlocks))
+                }
+                currentName = block.heading
+                currentBlocks = [block]
+            } else if currentName != nil {
+                currentBlocks.append(block)
+            }
+        }
+
+        if let currentName, !currentBlocks.isEmpty {
+            runs.append((currentName, currentBlocks))
+        }
+
+        return (shared, runs)
+    }
+
+    private func isConcreteConcentrationHeading(_ heading: String) -> Bool {
+        let lower = heading.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return lower != "concentrations" && lower.hasSuffix("concentration")
+    }
+
+    private func category(
+        from block: RequirementBlock,
+        catoid: String,
+        usedCategoryIDs: inout Set<String>,
+        coursesByID: inout [String: Course]
+    ) -> RequirementCategory? {
+        let courseItems = courseItems(in: block.body, catoid: catoid)
+        let courses = courseItems.compactMap { item -> Course? in
+            if case .course(let course) = item { return course }
+            return nil
+        }
+
+        // Skip non-requirement sections (descriptions, totals, admission, etc).
+        // Umbrella headings like "Major Requirements" are skipped ONLY when their
+        // body has no course rows — some catalog pages place the core required
+        // courses directly under the umbrella heading with no child acalog-core div.
+        guard !shouldIgnoreRequirementHeading(block.heading, hasCourses: !courses.isEmpty) else {
+            return nil
+        }
+
+        for course in courses {
+            coursesByID[course.id] = course
+        }
+
+        let selectionCount = choiceSelectionCount(heading: block.heading, body: block.body)
+        let requiredCredits = parseCredits(from: block.heading)
+            ?? parseTotalCreditsFromBody(block.body)
+            ?? inferredCredits(for: courseItems, selectionCount: selectionCount)
+
+        guard requiredCredits > 0 || !courses.isEmpty else { return nil }
+
+        let options = courseOptions(
+            from: courseItems,
+            selectionCount: selectionCount
+        )
+        let categoryID = uniqueID(slug(from: block.heading), used: &usedCategoryIDs)
+        let note = note(for: block, options: options, courses: courses)
+
+        return RequirementCategory(
+            id: categoryID,
+            name: block.heading,
+            requiredCredits: requiredCredits,
+            courseOptions: options,
+            verificationStatus: .partial,
+            note: note
+        )
     }
 
     private func shouldIgnoreRequirementHeading(_ heading: String, hasCourses: Bool) -> Bool {

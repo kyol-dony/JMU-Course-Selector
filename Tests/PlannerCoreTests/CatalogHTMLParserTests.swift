@@ -141,4 +141,42 @@ struct CatalogHTMLParserTests {
         #expect(electives.courseOptions == [["CS343"], ["CS374"], ["CS444"]])
         #expect(electives.note?.contains("choice requirement") == true)
     }
+
+    @Test("major concentrations are split out of parent requirements")
+    func parsesConcentrationsSeparatelyFromParentRequirements() throws {
+        let html = """
+        <h1 id="acalog-content">Physics, B.S.</h1>
+        <div class="acalog-core"><h2><a name="DegreeAndMajorRequirements"></a>Degree and Major Requirements</h2><hr></div>
+        <div class="acalog-core"><h3><a name="PhysicsCore"></a>Physics Core: 4 Credit Hours</h3><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '1',this, 'x'); return false;">PHYS 240. University Physics I</a> <em><strong>Credits:</strong></em> <em>4.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="Concentrations"></a>Concentrations</h2><hr></div>
+        <div class="acalog-core"><h3><a name="AppliedPhysicsConcentration"></a>Applied Physics Concentration</h3><hr></div>
+        <div class="acalog-core"><h4><a name="AppliedPhysicsRequiredCourses"></a>Applied Physics Required Courses: 3 Credit Hours</h4><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '2',this, 'x'); return false;">PHYS 360. Modern Physics</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h3><a name="FundamentalStudiesConcentration"></a>Fundamental Studies Concentration</h3><hr></div>
+        <div class="acalog-core"><h4><a name="FundamentalStudiesRequiredCourses"></a>Fundamental Studies Required Courses: 3 Credit Hours</h4><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '3',this, 'x'); return false;">PHYS 390. Advanced Seminar</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="RecommendedScheduleForMajors"></a>Recommended Schedule for Majors</h2><hr></div>
+        """
+
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=27000&returnto=3541"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+
+        #expect(parsed.requirements.map(\.name) == ["Physics Core: 4 Credit Hours"])
+        #expect(parsed.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["PHYS240"])
+        #expect(parsed.concentrations.map(\.name) == ["Applied Physics Concentration", "Fundamental Studies Concentration"])
+        #expect(parsed.concentrations[0].requirements.map(\.name) == ["Applied Physics Required Courses: 3 Credit Hours"])
+        #expect(parsed.concentrations[0].requirements.flatMap(\.courseOptions).flatMap { $0 } == ["PHYS360"])
+        #expect(parsed.concentrations[1].requirements.flatMap(\.courseOptions).flatMap { $0 } == ["PHYS390"])
+        #expect(parsed.courses.map(\.id).sorted() == ["PHYS240", "PHYS360", "PHYS390"])
+    }
 }

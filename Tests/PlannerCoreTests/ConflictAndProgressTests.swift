@@ -70,6 +70,91 @@ struct ConflictAndProgressTests {
         #expect(progress.categories.first(where: { $0.id == "gen-ed" })?.remainingCredits == 3)
     }
 
+    @Test("scheduler skips an option group when any alternate is already completed")
+    func schedulerHonorsAnyAlternateMatch() throws {
+        // The Physical Principles cluster offers ASTR 120 as its first
+        // alternate and CHEM 131 deeper in the list. With CHEM 131 already
+        // granted by AP transfer credit, the scheduler must NOT schedule
+        // ASTR 120 just because it is the first listed alternate.
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "ASTR120", code: "ASTR 120", title: "Astronomy", credits: 4, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "CHEM131", code: "CHEM 131", title: "General Chemistry", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "cis-bba",
+                title: "CIS, B.B.A.",
+                requirements: [
+                    RequirementCategory(
+                        id: "gened-c3pp",
+                        name: "Physical Principles",
+                        requiredCredits: 4,
+                        courseOptions: [["ASTR120", "CHEM131"]]
+                    )
+                ]
+            )
+        )
+
+        let scheduler = ScheduleGenerator(catalog: catalog)
+        let pathways = try scheduler.generatePathways(
+            for: "cis-bba",
+            workload: .standard,
+            transferCredits: [TransferCredit(sourceDescription: "AP Chem", courseIDs: ["CHEM131"], credits: 3)]
+        )
+
+        let scheduledCourses = pathways.first?.semesters.flatMap(\.courseIDs) ?? []
+        #expect(!scheduledCourses.contains("ASTR120"), "ASTR 120 must NOT be scheduled: CHEM 131 already satisfies the Physical Principles option")
+        #expect(!scheduledCourses.contains("CHEM131"), "CHEM 131 must NOT be re-scheduled either; it is already a transfer credit")
+    }
+
+    @Test("AP mapper weights coverage by credits the variant would rescue")
+    func apMapperWeightsByRescuedCredits() throws {
+        // Two AP variants. Variant A satisfies a 1cr Lab Experience option.
+        // Variant B satisfies a 4cr Physical Principles option. Both award
+        // 3 nominal credits, both meet gen ed. Optimizer must pick variant B
+        // because it knocks out more catalog credits toward graduation.
+        let rules: [TransferCreditRule] = [
+            TransferCreditRule(
+                source: .apExam(name: "Chemistry", minimumScore: 4),
+                awardedCourseIDs: ["CHEM131L"],
+                credits: 3,
+                meetsGeneralEducation: true,
+                sourceNote: "variant A: 1-credit lab"
+            ),
+            TransferCreditRule(
+                source: .apExam(name: "Chemistry", minimumScore: 4),
+                awardedCourseIDs: ["CHEM131"],
+                credits: 3,
+                meetsGeneralEducation: true,
+                sourceNote: "variant B: 4-credit physical principles"
+            )
+        ]
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "CHEM131", code: "CHEM 131", title: "Gen Chem", credits: 3, availability: nil, prerequisites: []),
+                Course(id: "CHEM131L", code: "CHEM 131L", title: "Gen Chem Lab", credits: 1, availability: nil, prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "bio-bs",
+                title: "Bio",
+                requirements: [
+                    RequirementCategory(id: "c3pp", name: "Physical Principles", requiredCredits: 4, courseOptions: [["CHEM131"]]),
+                    RequirementCategory(id: "c3l", name: "Lab Experience", requiredCredits: 1, courseOptions: [["CHEM131L"]])
+                ]
+            ),
+            apRules: rules
+        )
+
+        let mapper = TransferCreditMapper(catalog: catalog)
+        let credits = mapper.credits(
+            forAPScores: [APScore(examName: "Chemistry", score: 5)],
+            program: catalog.programs.first,
+            completedCourseIDs: []
+        )
+
+        #expect(credits.first?.courseIDs == ["CHEM131"], "must pick variant B; rescues 4 catalog credits vs variant A's 1")
+    }
+
     @Test("AP credit mapper routes a multi-variant exam to the variant that satisfies the most major requirements")
     func apMapperPicksHighestCoverageVariant() throws {
         // Same exam, same score tier, two `or`-style variants.

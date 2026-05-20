@@ -375,10 +375,6 @@ public struct TransferCreditMapper: Sendable {
         program: Program?,
         completedCourseIDs: Set<String>
     ) -> [TransferCredit] {
-        let requiredCourseIDs: Set<String> = program.map { program in
-            Set(program.requirements.flatMap { $0.courseOptions.flatMap { $0 } })
-        } ?? []
-
         return scores.compactMap { score in
             // 1. Filter by exam name + qualifying score.
             let qualifying = catalog.apCreditRules.filter { rule in
@@ -399,12 +395,11 @@ public struct TransferCreditMapper: Sendable {
             }
 
             // 3. Score each surviving variant by graduation utility.
-            let scored = topTier.map { rule -> (rule: TransferCreditRule, key: (Int, Int, Int)) in
-                let coverage = rule.awardedCourseIDs.filter { id in
-                    requiredCourseIDs.contains(id) && !completedCourseIDs.contains(id)
-                }.count
+            let scored = topTier.map { rule -> (rule: TransferCreditRule, key: (Int, Int, Int, Int)) in
+                let rescued = creditsRescued(by: rule, program: program, alreadyCompleted: completedCourseIDs)
+                let optionsHit = optionsSatisfied(by: rule, program: program, alreadyCompleted: completedCourseIDs)
                 let genEd = rule.meetsGeneralEducation ? 1 : 0
-                return (rule, (coverage, rule.credits, genEd))
+                return (rule, (rescued, optionsHit, rule.credits, genEd))
             }
             guard let best = scored.max(by: { $0.key < $1.key }) else { return nil }
             guard case .apExam(let name, _) = best.rule.source else { return nil }
@@ -415,6 +410,58 @@ public struct TransferCreditMapper: Sendable {
                 credits: best.rule.credits
             )
         }
+    }
+
+    /// Count of distinct requirement option groups this rule would satisfy.
+    /// Each option group counts at most once even if the rule names multiple
+    /// alternates inside it.
+    private func optionsSatisfied(
+        by rule: TransferCreditRule,
+        program: Program?,
+        alreadyCompleted: Set<String>
+    ) -> Int {
+        guard let program else { return 0 }
+        let awarded = Set(rule.awardedCourseIDs)
+        var count = 0
+        for category in program.requirements {
+            for option in category.courseOptions {
+                // Skip options that were already satisfied by an unrelated credit.
+                if option.contains(where: alreadyCompleted.contains) { continue }
+                if option.contains(where: awarded.contains) {
+                    count += 1
+                }
+            }
+        }
+        return count
+    }
+
+    /// Estimated graduation credits this rule "rescues" by satisfying program
+    /// requirement options. Each satisfied option contributes its share of the
+    /// category's `requiredCredits` (split evenly across the category's
+    /// options). A 4-credit Physical Principles cluster with one option group
+    /// contributes 4. A 27-credit Lower-Level Core with nine options contributes
+    /// 3 per option satisfied. This is the metric the mapper should optimize:
+    /// the variant that rescues the most catalog credits is the one that gets
+    /// the student closest to graduation.
+    private func creditsRescued(
+        by rule: TransferCreditRule,
+        program: Program?,
+        alreadyCompleted: Set<String>
+    ) -> Int {
+        guard let program else { return 0 }
+        let awarded = Set(rule.awardedCourseIDs)
+        var rescued = 0
+        for category in program.requirements {
+            let optionCount = max(category.courseOptions.count, 1)
+            let perOption = max(category.requiredCredits / optionCount, 1)
+            for option in category.courseOptions {
+                if option.contains(where: alreadyCompleted.contains) { continue }
+                if option.contains(where: awarded.contains) {
+                    rescued += perOption
+                }
+            }
+        }
+        return rescued
     }
 }
 
@@ -433,7 +480,7 @@ public struct ScheduleGenerator: Sendable {
     ) throws -> [Pathway] {
         let program = try programForScheduling(programID)
         let completed = Set(transferCredits.flatMap(\.courseIDs))
-        let required = requiredCourseIDs(for: program).filter { !completed.contains($0) }
+        let required = requiredCourseIDs(for: program, completed: completed)
         guard !required.isEmpty else {
             return (1...3).map { index in
                 Pathway(id: "path-\(index)", name: pathwayName(index), semesters: [])
@@ -471,9 +518,21 @@ public struct ScheduleGenerator: Sendable {
         return program
     }
 
-    private func requiredCourseIDs(for program: Program) -> [String] {
+    /// Returns the list of courses the student still needs to schedule.
+    ///
+    /// Each `courseOptions` entry is an OR group: completing ANY of its
+    /// alternates satisfies the option. If a student has transfer credit (or
+    /// any other "completed" mark) on `BIO 103` and `BIO 103` is one of twelve
+    /// alternates in the Natural Systems option, that option is done; we do
+    /// not also schedule `ANTH 196` just because it's first in the list. When
+    /// the option is not yet satisfied, we still default to the first
+    /// alternate, which lets the catalog drive a consistent default pick.
+    private func requiredCourseIDs(for program: Program, completed: Set<String>) -> [String] {
         program.requirements.flatMap { category in
-            category.courseOptions.compactMap(\.first)
+            category.courseOptions.compactMap { option -> String? in
+                if option.contains(where: completed.contains) { return nil }
+                return option.first
+            }
         }
     }
 

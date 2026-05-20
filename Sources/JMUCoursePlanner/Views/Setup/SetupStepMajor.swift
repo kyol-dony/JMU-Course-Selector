@@ -65,38 +65,68 @@ struct SetupStepMajor: View {
 
     private func programRow(_ program: Program) -> some View {
         let isSelected = store.plan.programID == program.id
-        return Button {
-            store.selectProgram(program)
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(program.title)
-                        .font(DesignTokens.Typography.body)
-                        .foregroundStyle(DesignTokens.Colors.textPrimary)
-                    HStack(spacing: DesignTokens.Spacing.s) {
-                        if let degree = program.degreeType {
-                            StatusPill(text: degree, tone: .info)
+        return VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
+            Button {
+                store.selectProgram(program)
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(program.title)
+                            .font(DesignTokens.Typography.body)
+                            .foregroundStyle(DesignTokens.Colors.textPrimary)
+                        HStack(spacing: DesignTokens.Spacing.s) {
+                            if let degree = program.degreeType {
+                                StatusPill(text: degree, tone: .info)
+                            }
+                            StatusPill(
+                                text: program.requirementDataComplete ? "Verified" : "Partial",
+                                tone: program.requirementDataComplete ? .success : .warning
+                            )
+                            if !program.concentrations.isEmpty {
+                                StatusPill(text: "Concentration required", tone: .warning)
+                            }
                         }
-                        StatusPill(
-                            text: program.requirementDataComplete ? "Verified" : "Partial",
-                            tone: program.requirementDataComplete ? .success : .warning
-                        )
+                    }
+                    Spacer(minLength: 0)
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(DesignTokens.Colors.brandPurple)
                     }
                 }
-                Spacer(minLength: 0)
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(DesignTokens.Colors.brandPurple)
+                .padding(.vertical, 6)
+                .padding(.horizontal, DesignTokens.Spacing.s)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isSelected ? DesignTokens.Colors.brandPurpleSoft : .clear)
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isSelected, !program.concentrations.isEmpty {
+                concentrationPicker(for: program)
+            }
+        }
+    }
+
+    private func concentrationPicker(for program: Program) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Concentration")
+                .font(DesignTokens.Typography.label)
+                .foregroundStyle(DesignTokens.Colors.textSecondary)
+            Picker("Concentration", selection: Binding(
+                get: { store.plan.concentrationID ?? "" },
+                set: { store.selectConcentration(id: $0.isEmpty ? nil : $0) }
+            )) {
+                Text("Select concentration").tag("")
+                ForEach(program.concentrations) { concentration in
+                    Text(concentration.name).tag(concentration.id)
                 }
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, DesignTokens.Spacing.s)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isSelected ? DesignTokens.Colors.brandPurpleSoft : .clear)
-            )
-            .contentShape(Rectangle())
+            .labelsHidden()
+            .pickerStyle(.menu)
         }
-        .buttonStyle(.plain)
+        .padding(.leading, DesignTokens.Spacing.l)
+        .padding(.bottom, DesignTokens.Spacing.s)
     }
 }

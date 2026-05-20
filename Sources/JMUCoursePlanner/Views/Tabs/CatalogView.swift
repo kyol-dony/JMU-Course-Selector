@@ -116,6 +116,9 @@ struct CatalogView: View {
                     ForEach(program.requirements) { requirement in
                         requirementCard(requirement)
                     }
+                    if !program.concentrations.isEmpty {
+                        concentrationSection(program)
+                    }
                 }
                 .padding(DesignTokens.Spacing.xl)
                 .frame(maxWidth: 980, alignment: .leading)
@@ -153,6 +156,22 @@ struct CatalogView: View {
                 Text(program.sourceNote)
                     .font(DesignTokens.Typography.caption)
                     .foregroundStyle(DesignTokens.Colors.textTertiary)
+            }
+        }
+    }
+
+    private func concentrationSection(_ program: Program) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.m) {
+            SectionHeader("Concentrations")
+            ForEach(program.concentrations) { concentration in
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
+                    Text(concentration.name)
+                        .font(DesignTokens.Typography.bodyEmphasized)
+                        .foregroundStyle(DesignTokens.Colors.textPrimary)
+                    ForEach(concentration.requirements) { requirement in
+                        requirementCard(requirement)
+                    }
+                }
             }
         }
     }

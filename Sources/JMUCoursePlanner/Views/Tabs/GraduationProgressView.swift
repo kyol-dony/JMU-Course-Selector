@@ -10,7 +10,7 @@ struct GraduationProgressView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.xl) {
                     donut(progress: progress)
-                    categoryList(progress: progress, program: program)
+                    categoryList(progress: progress, program: store.effectiveActiveProgram ?? program)
                 }
                 .padding(DesignTokens.Spacing.xl)
                 .frame(maxWidth: 980, alignment: .leading)

@@ -85,7 +85,7 @@ struct SetupSheet: View {
                     advance()
                 }
                 .buttonStyle(.dtPrimary)
-                .disabled(step == 0 && store.plan.programID == nil)
+                .disabled(step == 0 && !store.majorSelectionComplete)
             } else {
                 Button("Generate Plan") {
                     store.generateSchedules()
@@ -94,7 +94,7 @@ struct SetupSheet: View {
                     }
                 }
                 .buttonStyle(.dtPrimary)
-                .disabled(store.plan.programID == nil)
+                .disabled(!store.majorSelectionComplete)
             }
         }
         .padding(.horizontal, DesignTokens.Spacing.xl)

@@ -272,6 +272,8 @@ public struct Pathway: Codable, Hashable, Identifiable, Sendable {
 public enum PlannerError: Error, LocalizedError, Equatable {
     case programNotFound(String)
     case programRequirementsUnavailable(String)
+    case concentrationRequired(String)
+    case concentrationNotFound(programTitle: String, concentrationID: String)
     case impossibleSchedule(String)
 
     public var errorDescription: String? {
@@ -280,6 +282,10 @@ public enum PlannerError: Error, LocalizedError, Equatable {
             "Program not found: \(id)"
         case .programRequirementsUnavailable(let title):
             "\(title) is in the catalog list, but its detailed requirements have not been verified yet."
+        case .concentrationRequired(let title):
+            "\(title) requires a concentration before generating a plan."
+        case .concentrationNotFound(let title, let concentrationID):
+            "\(title) does not include concentration \(concentrationID). Choose a current concentration."
         case .impossibleSchedule(let message):
             message
         }
@@ -561,11 +567,12 @@ public struct ScheduleGenerator: Sendable {
 
     public func generatePathways(
         for programID: String,
+        concentrationID: String? = nil,
         workload: WorkloadPreference,
         transferCredits: [TransferCredit],
         starting start: SemesterIdentity = SemesterIdentity(year: Calendar.current.component(.year, from: Date()), term: .fall)
     ) throws -> [Pathway] {
-        let program = try programForScheduling(programID)
+        let program = try programForScheduling(programID, concentrationID: concentrationID)
         let completed = Set(transferCredits.flatMap(\.courseIDs))
         let required = requiredCourseIDs(for: program, completed: completed)
         guard !required.isEmpty else {
@@ -591,10 +598,11 @@ public struct ScheduleGenerator: Sendable {
         return pathways
     }
 
-    private func programForScheduling(_ programID: String) throws -> Program {
-        guard let program = catalog.programsByID[programID] else {
+    private func programForScheduling(_ programID: String, concentrationID: String?) throws -> Program {
+        guard let rawProgram = catalog.programsByID[programID] else {
             throw PlannerError.programNotFound(programID)
         }
+        let program = try rawProgram.effectiveProgram(concentrationID: concentrationID)
         // Only block when there is literally nothing schedulable. If any requirement
         // exposes course options, build a schedule from what we have — the UI surfaces
         // partial/unverified statuses so the student can see the gaps.
@@ -837,14 +845,20 @@ public struct ProgressCalculator: Sendable {
         self.catalog = catalog
     }
 
-    public func progress(programID: String, pathway: Pathway, transferCredits: [TransferCredit]) throws -> GraduationProgress {
+    public func progress(
+        programID: String,
+        concentrationID: String? = nil,
+        pathway: Pathway,
+        transferCredits: [TransferCredit]
+    ) throws -> GraduationProgress {
         guard let program = catalog.programsByID[programID] else {
             throw PlannerError.programNotFound(programID)
         }
+        let effectiveProgram = try program.effectiveProgram(concentrationID: concentrationID)
 
         let completedCourseIDs = Set(pathway.semesters.flatMap(\.courseIDs)).union(transferCredits.flatMap(\.courseIDs))
         let coursesByID = catalog.coursesByID
-        let categories = program.requirements.map { category in
+        let categories = effectiveProgram.requirements.map { category in
             let completedCredits = category.courseOptions.reduce(0) { total, options in
                 guard let completed = options.first(where: completedCourseIDs.contains),
                       let course = coursesByID[completed] else {
@@ -883,7 +897,26 @@ public extension Catalog {
 }
 
 public extension Program {
-    static func fixture(id: String, title: String, requirements: [RequirementCategory]) -> Program {
+    func effectiveProgram(concentrationID: String?) throws -> Program {
+        guard !concentrations.isEmpty else { return self }
+        guard let concentrationID else {
+            throw PlannerError.concentrationRequired(title)
+        }
+        guard let concentration = concentrations.first(where: { $0.id == concentrationID }) else {
+            throw PlannerError.concentrationNotFound(programTitle: title, concentrationID: concentrationID)
+        }
+        var effective = self
+        effective.requirements = requirements + concentration.requirements
+        effective.sourceNote = "\(sourceNote) Selected concentration: \(concentration.name)."
+        return effective
+    }
+
+    static func fixture(
+        id: String,
+        title: String,
+        requirements: [RequirementCategory],
+        concentrations: [Concentration] = []
+    ) -> Program {
         Program(
             id: id,
             title: title,
@@ -894,6 +927,7 @@ public extension Program {
             catalogPage: nil,
             totalCredits: requirements.reduce(0) { $0 + $1.requiredCredits },
             requirements: requirements,
+            concentrations: concentrations,
             verificationStatus: .verified,
             requirementDataComplete: true,
             sourceNote: "Test fixture"

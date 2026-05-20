@@ -70,6 +70,56 @@ struct ConflictAndProgressTests {
         #expect(progress.categories.first(where: { $0.id == "gen-ed" })?.remainingCredits == 3)
     }
 
+    @Test("progress includes selected concentration and excludes siblings")
+    func progressUsesSelectedConcentrationOnly() throws {
+        let program = Program(
+            id: "physics-bs",
+            title: "Physics, B.S.",
+            degreeType: "B.S.",
+            kind: .major,
+            college: "College of Science and Mathematics",
+            department: "Physics and Astronomy",
+            catalogPage: nil,
+            totalCredits: 120,
+            requirements: [
+                RequirementCategory(id: "core", name: "Physics Core", requiredCredits: 4, courseOptions: [["PHYS240"]])
+            ],
+            concentrations: [
+                Concentration(id: "applied-physics-concentration", name: "Applied Physics Concentration", requirements: [
+                    RequirementCategory(id: "applied", name: "Applied Physics Required Courses", requiredCredits: 3, courseOptions: [["PHYS360"]])
+                ]),
+                Concentration(id: "fundamental-studies-concentration", name: "Fundamental Studies Concentration", requirements: [
+                    RequirementCategory(id: "fundamental", name: "Fundamental Studies Required Courses", requiredCredits: 3, courseOptions: [["PHYS390"]])
+                ])
+            ],
+            verificationStatus: .partial,
+            requirementDataComplete: true,
+            sourceNote: "Fixture"
+        )
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "PHYS240", code: "PHYS 240", title: "University Physics I", credits: 4, availability: nil, prerequisites: []),
+                Course(id: "PHYS360", code: "PHYS 360", title: "Modern Physics", credits: 3, availability: nil, prerequisites: []),
+                Course(id: "PHYS390", code: "PHYS 390", title: "Advanced Seminar", credits: 3, availability: nil, prerequisites: [])
+            ],
+            program: program
+        )
+        let pathway = Pathway(id: "p", name: "Path", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: ["PHYS240", "PHYS360"])
+        ])
+
+        let progress = try ProgressCalculator(catalog: catalog).progress(
+            programID: "physics-bs",
+            concentrationID: "applied-physics-concentration",
+            pathway: pathway,
+            transferCredits: []
+        )
+
+        #expect(progress.categories.map(\.id) == ["core", "applied"])
+        #expect(progress.overallRequiredCredits == 7)
+        #expect(progress.overallCompletedCredits == 7)
+    }
+
     @Test("AP Lit 5 awarding GNED 123 satisfies the C2L Literature cluster via alias and removes the default ENG course from the schedule")
     func apLitSatisfiesLiteratureClusterViaAlias() throws {
         let rules: [TransferCreditRule] = [

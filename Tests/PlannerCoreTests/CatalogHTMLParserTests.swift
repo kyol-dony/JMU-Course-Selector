@@ -173,7 +173,7 @@ struct CatalogHTMLParserTests {
 
         #expect(parsed.requirements.map(\.name) == ["Physics Core: 4 Credit Hours"])
         #expect(parsed.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["PHYS240"])
-        #expect(parsed.concentrations.map(\.name) == ["Applied Physics Concentration", "Fundamental Studies Concentration"])
+        #expect(parsed.concentrations.map(\.name) == ["Applied Physics", "Fundamental Studies"])
         #expect(parsed.concentrations[0].requirements.map(\.name) == ["Applied Physics Required Courses: 3 Credit Hours"])
         #expect(parsed.concentrations[0].requirements.flatMap(\.courseOptions).flatMap { $0 } == ["PHYS360"])
         #expect(parsed.concentrations[1].requirements.flatMap(\.courseOptions).flatMap { $0 } == ["PHYS390"])
@@ -216,7 +216,7 @@ struct CatalogHTMLParserTests {
 
         #expect(parsed.requirements.map(\.name) == ["Major Requirements"])
         #expect(parsed.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["CIS221"])
-        #expect(parsed.concentrations.map(\.name) == ["Information and Cybersecurity Management Concentration"])
+        #expect(parsed.concentrations.map(\.name) == ["Information and Cybersecurity Management"])
         let cybersecurity = try #require(parsed.concentrations.first)
         #expect(cybersecurity.requirements.map(\.name) == [
             "Information and Cybersecurity Management Concentration",

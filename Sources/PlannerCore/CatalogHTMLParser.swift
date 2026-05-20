@@ -132,9 +132,11 @@ public struct JMUHTMLCatalogParser: Sendable {
                 }
             }
             guard !requirements.isEmpty else { return nil }
+            let cleanName = JMUHTMLCatalogParser.cleanConcentrationName(run.name)
+            let displayName = cleanName.isEmpty ? run.name : cleanName
             return Concentration(
-                id: uniqueID(slug(from: run.name), used: &usedConcentrationIDs),
-                name: run.name,
+                id: uniqueID(slug(from: displayName), used: &usedConcentrationIDs),
+                name: displayName,
                 requirements: requirements,
                 verificationStatus: .partial
             )
@@ -388,24 +390,49 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func splitConcentrationBlocks(_ blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])]) {
-        guard let concentrationIndex = blocks.firstIndex(where: isConcentrationSectionHeading) else {
+        // Two layouts in the catalog:
+        //
+        // 1. Explicit umbrella section ("Concentrations" / "Required Concentration")
+        //    followed by N concrete concentration sub-blocks.
+        // 2. No umbrella: each concentration sits as a sibling heading inside
+        //    the major's requirement list (Physics B.S. uses this shape).
+        //
+        // First-try the umbrella path; if absent, fall back to scanning for
+        // sibling concrete-concentration headings and treating the first such
+        // heading as the partition point.
+        if let umbrellaIndex = blocks.firstIndex(where: isConcentrationSectionHeading) {
+            return partitionAfter(umbrellaIndex: umbrellaIndex, blocks: blocks)
+        }
+        guard let firstConcentration = blocks.firstIndex(where: { isConcreteConcentrationHeading($0.heading) }) else {
             return (blocks, [])
         }
+        return partitionInline(firstConcentration: firstConcentration, blocks: blocks)
+    }
 
-        let sectionLevel = blocks[concentrationIndex].level
-        let shared = Array(blocks[..<concentrationIndex])
-        let tail = Array(blocks[(concentrationIndex + 1)...])
+    private func partitionAfter(umbrellaIndex: Int, blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])]) {
+        let sectionLevel = blocks[umbrellaIndex].level
+        let shared = Array(blocks[..<umbrellaIndex])
+        let tail = Array(blocks[(umbrellaIndex + 1)...])
         var runs: [(name: String, blocks: [RequirementBlock])] = []
         var currentName: String?
+        var currentCleanName: String?
         var currentBlocks: [RequirementBlock] = []
 
         for block in tail {
             guard block.level > sectionLevel else { break }
             if isConcreteConcentrationHeading(block.heading) {
+                let candidateClean = JMUHTMLCatalogParser.cleanConcentrationName(block.heading)
+                if let cleaned = currentCleanName,
+                   !candidateClean.isEmpty,
+                   candidateClean.lowercased().hasPrefix(cleaned.lowercased()) {
+                    currentBlocks.append(block)
+                    continue
+                }
                 if let currentName, !currentBlocks.isEmpty {
                     runs.append((currentName, currentBlocks))
                 }
                 currentName = block.heading
+                currentCleanName = candidateClean.isEmpty ? block.heading : candidateClean
                 currentBlocks = [block]
             } else if currentName != nil {
                 currentBlocks.append(block)
@@ -415,18 +442,88 @@ public struct JMUHTMLCatalogParser: Sendable {
         if let currentName, !currentBlocks.isEmpty {
             runs.append((currentName, currentBlocks))
         }
+        return (shared, runs)
+    }
 
+    private func partitionInline(firstConcentration: Int, blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])]) {
+        let shared = Array(blocks[..<firstConcentration])
+        let tail = Array(blocks[firstConcentration...])
+        var runs: [(name: String, blocks: [RequirementBlock])] = []
+        var currentName: String?
+        var currentCleanName: String?
+        var currentBlocks: [RequirementBlock] = []
+
+        for block in tail {
+            if isConcreteConcentrationHeading(block.heading) {
+                let candidateClean = JMUHTMLCatalogParser.cleanConcentrationName(block.heading)
+                if let cleaned = currentCleanName,
+                   !candidateClean.isEmpty,
+                   candidateClean.lowercased().hasPrefix(cleaned.lowercased()) {
+                    // Sub-block of the currently-open concentration (e.g.,
+                    // "Information and Cybersecurity Management Concentration
+                    // Electives" rolling up under "Information and Cybersecurity
+                    // Management Concentration"). Fold in, don't start new run.
+                    currentBlocks.append(block)
+                    continue
+                }
+                if let name = currentName, !currentBlocks.isEmpty {
+                    runs.append((name, currentBlocks))
+                }
+                currentName = block.heading
+                currentCleanName = candidateClean.isEmpty ? block.heading : candidateClean
+                currentBlocks = [block]
+            } else if currentName != nil {
+                // Append non-concentration sibling (electives, sub-options) to
+                // the currently-open concentration. Keeps "Choose from the
+                // following research courses" with its parent concentration.
+                currentBlocks.append(block)
+            }
+        }
+        if let name = currentName, !currentBlocks.isEmpty {
+            runs.append((name, currentBlocks))
+        }
         return (shared, runs)
     }
 
     private func isConcentrationSectionHeading(_ block: RequirementBlock) -> Bool {
         let lower = block.heading.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return lower == "concentrations" || lower == "required concentration" || lower == "required concentrations"
+        return lower == "concentrations"
+            || lower == "tracks"
+            || lower == "areas of emphasis"
+            || lower == "required concentration"
+            || lower == "required concentrations"
     }
 
     private func isConcreteConcentrationHeading(_ heading: String) -> Bool {
         let lower = heading.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return lower != "concentrations" && lower.hasSuffix("concentration")
+        guard !["concentrations", "tracks", "areas of emphasis"].contains(lower) else { return false }
+        // Catalog headings carry the noun anywhere in the line, often before
+        // "Required Courses" or a credit-hour suffix.
+        return lower.contains("concentration")
+            || lower.contains(" track")
+            || lower.hasSuffix("track")
+            || lower.contains("emphasis")
+            || lower.contains("specialization")
+    }
+
+    /// Strip catalog boilerplate ("Required Courses", credit-hour suffix,
+    /// "(in addition to core requirements)") and the concentration noun itself
+    /// so the picker shows clean labels like "Applied Physics".
+    public static func cleanConcentrationName(_ raw: String) -> String {
+        var name = raw
+        let strippers: [String] = [
+            #"(?i)\s*:\s*\d+(?:\s*-\s*\d+)?\s+Credit\s+Hours.*$"#,
+            #"(?i)\s*\(in addition to[^)]*\)\s*$"#,
+            #"(?i)\s*Required Courses.*$"#,
+            #"(?i)\s*Concentration\s*$"#,
+            #"(?i)\s*Track\s*$"#,
+            #"(?i)\s*Emphasis\s*$"#,
+            #"(?i)\s*Specialization\s*$"#
+        ]
+        for pattern in strippers {
+            name = name.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+        }
+        return name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func category(

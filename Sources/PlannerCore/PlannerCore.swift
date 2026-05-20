@@ -81,6 +81,9 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
     public var prerequisites: [String]
     public var verificationStatus: VerificationStatus
     public var registrarURL: URL?
+    public var description: String?
+    public var descriptionSourceURL: URL?
+    public var detailRetrievedAt: Date?
 
     public init(
         id: String,
@@ -90,7 +93,10 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
         availability: Set<SemesterTerm>?,
         prerequisites: [String],
         verificationStatus: VerificationStatus = .verified,
-        registrarURL: URL? = nil
+        registrarURL: URL? = nil,
+        description: String? = nil,
+        descriptionSourceURL: URL? = nil,
+        detailRetrievedAt: Date? = nil
     ) {
         self.id = id
         self.code = code
@@ -100,6 +106,9 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
         self.prerequisites = prerequisites
         self.verificationStatus = verificationStatus
         self.registrarURL = registrarURL
+        self.description = description
+        self.descriptionSourceURL = descriptionSourceURL
+        self.detailRetrievedAt = detailRetrievedAt
     }
 }
 

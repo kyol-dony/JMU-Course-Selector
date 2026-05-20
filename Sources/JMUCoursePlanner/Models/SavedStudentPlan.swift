@@ -5,6 +5,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
     var id: UUID
     var name: String
     var programID: String?
+    var concentrationID: String?
     var minorProgramIDs: [String]
     var workload: WorkloadPreference
     var apScores: [APScore]
@@ -18,6 +19,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
         id: UUID = UUID(),
         name: String = "My JMU Plan",
         programID: String? = nil,
+        concentrationID: String? = nil,
         minorProgramIDs: [String] = [],
         workload: WorkloadPreference = .standard,
         apScores: [APScore] = [],
@@ -30,6 +32,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
         self.id = id
         self.name = name
         self.programID = programID
+        self.concentrationID = concentrationID
         self.minorProgramIDs = minorProgramIDs
         self.workload = workload
         self.apScores = apScores

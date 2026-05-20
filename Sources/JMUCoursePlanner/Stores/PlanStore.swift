@@ -27,6 +27,28 @@ final class PlanStore: ObservableObject {
         return catalog.programsByID[programID]
     }
 
+    var activeConcentration: Concentration? {
+        guard let activeProgram, let concentrationID = plan.concentrationID else { return nil }
+        return activeProgram.concentrations.first { $0.id == concentrationID }
+    }
+
+    var requiresConcentrationSelection: Bool {
+        guard let activeProgram else { return false }
+        return !activeProgram.concentrations.isEmpty
+    }
+
+    var majorSelectionComplete: Bool {
+        guard let activeProgram else { return false }
+        guard !activeProgram.concentrations.isEmpty else { return true }
+        guard let concentrationID = plan.concentrationID else { return false }
+        return activeProgram.concentrations.contains { $0.id == concentrationID }
+    }
+
+    var effectiveActiveProgram: Program? {
+        guard let activeProgram else { return nil }
+        return try? activeProgram.effectiveProgram(concentrationID: plan.concentrationID)
+    }
+
     var activePathway: Pathway? {
         guard let id = plan.activePathwayID else { return plan.pathways.first }
         return plan.pathways.first(where: { $0.id == id }) ?? plan.pathways.first
@@ -39,7 +61,12 @@ final class PlanStore: ObservableObject {
 
     var progress: GraduationProgress? {
         guard let catalog, let programID = plan.programID, let activePathway else { return nil }
-        return try? ProgressCalculator(catalog: catalog).progress(programID: programID, pathway: activePathway, transferCredits: plan.transferCredits)
+        return try? ProgressCalculator(catalog: catalog).progress(
+            programID: programID,
+            concentrationID: plan.concentrationID,
+            pathway: activePathway,
+            transferCredits: plan.transferCredits
+        )
     }
 
     /// Set of course IDs the student has completed (transfer credit + scheduled in active pathway).
@@ -70,6 +97,7 @@ final class PlanStore: ObservableObject {
             savedPlans = try loadPlans()
             if let autosave = savedPlans.first(where: { $0.name == "Autosave" }) {
                 plan = autosave
+                validateSelectedConcentration()
             }
             statusMessage = "Catalog loaded from the 2025-2026 JMU undergraduate catalog cache."
         } catch {
@@ -95,11 +123,31 @@ final class PlanStore: ObservableObject {
     }
 
     func selectProgram(_ program: Program) {
+        let previousConcentrationID = plan.concentrationID
         plan.programID = program.id
+        if let previousConcentrationID,
+           program.concentrations.contains(where: { $0.id == previousConcentrationID }) {
+            plan.concentrationID = previousConcentrationID
+        } else {
+            plan.concentrationID = nil
+        }
         plan.pathways = []
         plan.activePathwayID = nil
         // Re-route any previously-entered AP credits through the optimizer now
         // that we know which major to optimize for.
+        recomputeAPCredits()
+        autosave()
+    }
+
+    func selectConcentration(id: String?) {
+        guard let activeProgram else { return }
+        if let id, activeProgram.concentrations.contains(where: { $0.id == id }) {
+            plan.concentrationID = id
+        } else {
+            plan.concentrationID = nil
+        }
+        plan.pathways = []
+        plan.activePathwayID = nil
         recomputeAPCredits()
         autosave()
     }
@@ -116,7 +164,7 @@ final class PlanStore: ObservableObject {
     }
 
     func addAPScore(examName: String, score: Int) {
-        guard let catalog else { return }
+        guard catalog != nil else { return }
         plan.apScores.append(APScore(examName: examName, score: score))
         recomputeAPCredits()
         autosave()
@@ -136,7 +184,7 @@ final class PlanStore: ObservableObject {
             .flatMap(\.courseIDs))
         let apCredits = TransferCreditMapper(catalog: catalog).credits(
             forAPScores: plan.apScores,
-            program: activeProgram,
+            program: effectiveActiveProgram,
             completedCourseIDs: dualEnrollmentCourses
         )
         // Replace only the AP-sourced credits; preserve any dual enrollment entries.
@@ -156,10 +204,17 @@ final class PlanStore: ObservableObject {
             errorMessage = "Choose a major before generating a plan."
             return
         }
+        guard majorSelectionComplete else {
+            errorMessage = requiresConcentrationSelection
+                ? "Choose a concentration before generating a plan."
+                : "Choose a major before generating a plan."
+            return
+        }
 
         do {
             plan.pathways = try ScheduleGenerator(catalog: catalog).generatePathways(
                 for: programID,
+                concentrationID: plan.concentrationID,
                 workload: plan.workload,
                 transferCredits: plan.transferCredits,
                 starting: SemesterIdentity(year: 2026, term: .fall)
@@ -264,6 +319,7 @@ final class PlanStore: ObservableObject {
 
     func resume(_ saved: SavedStudentPlan) {
         plan = saved
+        validateSelectedConcentration()
         statusMessage = "Resumed \(saved.name)."
     }
 
@@ -307,6 +363,7 @@ final class PlanStore: ObservableObject {
                     self.statusMessage = "Parsing \(progress.current) of \(progress.total): \(progress.programTitle)"
                 }
                 catalog = refreshed
+                validateSelectedConcentration()
                 isRefreshingCatalog = false
                 let majors = refreshed.programs.filter { $0.kind == .major && $0.requirementDataComplete }.count
                 let minors = refreshed.programs.filter { $0.kind == .minor && $0.requirementDataComplete }.count
@@ -321,6 +378,22 @@ final class PlanStore: ObservableObject {
     private var activePathwayIndex: Int? {
         guard let activePathway else { return nil }
         return plan.pathways.firstIndex(where: { $0.id == activePathway.id })
+    }
+
+    private func validateSelectedConcentration() {
+        guard let activeProgram else { return }
+        if activeProgram.concentrations.isEmpty {
+            plan.concentrationID = nil
+            return
+        }
+        guard let concentrationID = plan.concentrationID,
+              activeProgram.concentrations.contains(where: { $0.id == concentrationID })
+        else {
+            plan.concentrationID = nil
+            plan.pathways = []
+            plan.activePathwayID = nil
+            return
+        }
     }
 
     private func autosave() {

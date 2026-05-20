@@ -88,7 +88,7 @@ struct CatalogRepository {
             }
         }
 
-        let detailEnrichments = await fetchCourseDetailEnrichments(for: Array(coursesByID.values))
+        let detailEnrichments = try await fetchCourseDetailEnrichments(for: Array(coursesByID.values))
         for enrichment in detailEnrichments.values {
             guard var course = coursesByID[enrichment.courseID] else { continue }
             course.description = enrichment.description
@@ -96,6 +96,7 @@ struct CatalogRepository {
             course.detailRetrievedAt = enrichment.retrievedAt
             coursesByID[enrichment.courseID] = course
         }
+        try Task.checkCancellation()
 
         let catalogSource = CatalogSource(
             catalogYear: seed.source.catalogYear,
@@ -203,7 +204,7 @@ struct CatalogRepository {
         "C5SD": 3, "C5W": 3
     ]
 
-    private func fetchCourseDetailEnrichments(for courses: [Course]) async -> [String: CourseDetailEnrichment] {
+    private func fetchCourseDetailEnrichments(for courses: [Course]) async throws -> [String: CourseDetailEnrichment] {
         let candidates = courses
             .filter { $0.registrarURL != nil }
             .filter { ($0.description ?? "").isEmpty }
@@ -214,7 +215,7 @@ struct CatalogRepository {
         let parser = htmlParser
         let limit = 4
 
-        return await withTaskGroup(
+        return try await withThrowingTaskGroup(
             of: CourseDetailEnrichment?.self,
             returning: [String: CourseDetailEnrichment].self
         ) { group in
@@ -240,6 +241,8 @@ struct CatalogRepository {
                             sourceURL: url,
                             retrievedAt: Date()
                         )
+                    } catch let error as CancellationError {
+                        throw error
                     } catch {
                         return nil
                     }
@@ -251,7 +254,7 @@ struct CatalogRepository {
             }
 
             var results: [String: CourseDetailEnrichment] = [:]
-            while let enrichment = await group.next() {
+            while let enrichment = try await group.next() {
                 if let enrichment {
                     results[enrichment.courseID] = enrichment
                 }

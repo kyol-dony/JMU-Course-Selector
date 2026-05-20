@@ -21,9 +21,10 @@
 
 ## Course details and Rate My Professor
 
-- Course detail panels do not hard-code official descriptions. When a registrar description is not cached, the app shows an unavailable state and links to the parsed JMU course page when available.
-- Rate My Professor data is not fabricated. Because RMP does not provide a stable public API for this use case, the current app shows an unavailable state instead of scraping aggressively.
-- Professor lists and RMP profile links are therefore not populated yet.
+- Course detail panels show official JMU descriptions when the catalog HTML refresh has cached the course's registrar detail page.
+- Courses without a discovered JMU registrar course URL show an unavailable description state and should be verified through the registrar before registration.
+- Rate My Professor data is not scraped or fabricated. The app links to the James Madison University professor search page so students can manually look up instructors.
+- Professor lists and automatic RMP ratings are not populated without a future curated local dataset.
 
 ## Export
 

@@ -70,6 +70,53 @@ struct ConflictAndProgressTests {
         #expect(progress.categories.first(where: { $0.id == "gen-ed" })?.remainingCredits == 3)
     }
 
+    @Test("AP credit mapper routes a multi-variant exam to the variant that satisfies the most major requirements")
+    func apMapperPicksHighestCoverageVariant() throws {
+        // Same exam, same score tier, two `or`-style variants.
+        // Only the second variant's courses appear in the major requirements.
+        // The mapper must pick the second variant even though both qualify.
+        let rules: [TransferCreditRule] = [
+            TransferCreditRule(
+                source: .apExam(name: "Statistics", minimumScore: 4),
+                awardedCourseIDs: ["ISAT251"],
+                credits: 3,
+                meetsGeneralEducation: true,
+                sourceNote: "OR alternative #1"
+            ),
+            TransferCreditRule(
+                source: .apExam(name: "Statistics", minimumScore: 4),
+                awardedCourseIDs: ["MATH220"],
+                credits: 3,
+                meetsGeneralEducation: true,
+                sourceNote: "OR alternative #2"
+            )
+        ]
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "ISAT251", code: "ISAT 251", title: "Stats", credits: 3, availability: nil, prerequisites: []),
+                Course(id: "MATH220", code: "MATH 220", title: "Elementary Stats", credits: 3, availability: nil, prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "psyc-bs",
+                title: "Psychology, B.S.",
+                requirements: [
+                    RequirementCategory(id: "stats", name: "Stats Requirement", requiredCredits: 3, courseOptions: [["MATH220"]])
+                ]
+            ),
+            apRules: rules
+        )
+
+        let mapper = TransferCreditMapper(catalog: catalog)
+        let credits = mapper.credits(
+            forAPScores: [APScore(examName: "Statistics", score: 5)],
+            program: catalog.programs.first,
+            completedCourseIDs: []
+        )
+
+        #expect(credits.count == 1)
+        #expect(credits.first?.courseIDs == ["MATH220"], "mapper should pick MATH220 because it's in the program's stats requirement")
+    }
+
     @Test("AP credit mapper grants only the highest qualifying tier per exam")
     func apMapperPicksHighestTier() throws {
         let rules: [TransferCreditRule] = [

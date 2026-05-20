@@ -347,29 +347,72 @@ public struct TransferCreditMapper: Sendable {
         self.catalog = catalog
     }
 
+    /// Legacy entry point retained for tests and callers that do not have a
+    /// declared major yet. Picks the highest qualifying tier per exam; among
+    /// tiers, prefers the rule that awards the most credits.
     public func credits(forAPScores scores: [APScore]) -> [TransferCredit] {
-        // For each (exam name + score) the student reports, find the rule with
-        // the HIGHEST `minimumScore` the student qualifies for. This prevents
-        // double-counting when JMU's chart lists multiple score tiers per exam
-        // (e.g., AP Chemistry: a score of 5 must not also grant the score-3
-        // course set on top of the score-4/5 set).
-        scores.compactMap { score in
-            let candidates = catalog.apCreditRules.filter { rule in
-                guard case .apExam(let name, let minimumScore) = rule.source else { return false }
+        credits(forAPScores: scores, program: nil, completedCourseIDs: [])
+    }
+
+    /// Maps a list of AP scores to concrete `TransferCredit` awards.
+    ///
+    /// JMU's AP chart frequently fans an exam name out into multiple variants:
+    /// score tiers (3 / 4 / 5), major vs non-major tracks, and `or` alternatives
+    /// inside a single cell. The student should never have to pick the variant
+    /// manually. This mapper picks the variant that gets the student closest to
+    /// graduation:
+    ///
+    /// 1. Filter candidates to rules whose canonical exam name matches and
+    ///    whose `minimumScore` the student met.
+    /// 2. Keep only the highest qualifying `minimumScore` (no tier stacking).
+    /// 3. Among the surviving tier's variants, pick the one that satisfies the
+    ///    most of the active program's required courses (using the supplied
+    ///    `program` and `completedCourseIDs` so we don't double-credit a
+    ///    course the student has already accounted for elsewhere).
+    /// 4. Tiebreaker 1: most `credits`. Tiebreaker 2: meets General Education.
+    public func credits(
+        forAPScores scores: [APScore],
+        program: Program?,
+        completedCourseIDs: Set<String>
+    ) -> [TransferCredit] {
+        let requiredCourseIDs: Set<String> = program.map { program in
+            Set(program.requirements.flatMap { $0.courseOptions.flatMap { $0 } })
+        } ?? []
+
+        return scores.compactMap { score in
+            // 1. Filter by exam name + qualifying score.
+            let qualifying = catalog.apCreditRules.filter { rule in
+                guard case .apExam(let name, let minScore) = rule.source else { return false }
                 return name.caseInsensitiveCompare(score.examName) == .orderedSame
-                    && score.score >= minimumScore
+                    && score.score >= minScore
             }
-            guard let best = candidates.max(by: { lhs, rhs in
-                guard case .apExam(_, let lhsMin) = lhs.source,
-                      case .apExam(_, let rhsMin) = rhs.source
-                else { return false }
-                return lhsMin < rhsMin
-            }) else { return nil }
-            guard case .apExam(let name, _) = best.source else { return nil }
+            guard !qualifying.isEmpty else { return nil }
+
+            // 2. Keep only the highest tier the student qualified for.
+            let highestTier: Int = qualifying.compactMap { rule -> Int? in
+                if case .apExam(_, let minScore) = rule.source { return minScore }
+                return nil
+            }.max() ?? 0
+            let topTier = qualifying.filter { rule in
+                if case .apExam(_, let minScore) = rule.source { return minScore == highestTier }
+                return false
+            }
+
+            // 3. Score each surviving variant by graduation utility.
+            let scored = topTier.map { rule -> (rule: TransferCreditRule, key: (Int, Int, Int)) in
+                let coverage = rule.awardedCourseIDs.filter { id in
+                    requiredCourseIDs.contains(id) && !completedCourseIDs.contains(id)
+                }.count
+                let genEd = rule.meetsGeneralEducation ? 1 : 0
+                return (rule, (coverage, rule.credits, genEd))
+            }
+            guard let best = scored.max(by: { $0.key < $1.key }) else { return nil }
+            guard case .apExam(let name, _) = best.rule.source else { return nil }
+
             return TransferCredit(
                 sourceDescription: "AP \(name) score \(score.score)",
-                courseIDs: best.awardedCourseIDs,
-                credits: best.credits
+                courseIDs: best.rule.awardedCourseIDs,
+                credits: best.rule.credits
             )
         }
     }

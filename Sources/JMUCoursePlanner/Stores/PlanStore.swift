@@ -98,6 +98,9 @@ final class PlanStore: ObservableObject {
         plan.programID = program.id
         plan.pathways = []
         plan.activePathwayID = nil
+        // Re-route any previously-entered AP credits through the optimizer now
+        // that we know which major to optimize for.
+        recomputeAPCredits()
         autosave()
     }
 
@@ -115,8 +118,32 @@ final class PlanStore: ObservableObject {
     func addAPScore(examName: String, score: Int) {
         guard let catalog else { return }
         plan.apScores.append(APScore(examName: examName, score: score))
-        plan.transferCredits = TransferCreditMapper(catalog: catalog).credits(forAPScores: plan.apScores)
+        recomputeAPCredits()
         autosave()
+    }
+
+    /// Rerun the AP credit mapper with the current active program in context so
+    /// the optimizer can route each AP score to the variant that knocks out the
+    /// most major-required courses. Called whenever the AP score list changes
+    /// or the active program changes.
+    private func recomputeAPCredits() {
+        guard let catalog else { return }
+        // Don't double-count an AP-awarded course against a dual-enrollment
+        // entry for the same course: treat dual-enrollment course IDs as
+        // already-completed when scoring AP variants.
+        let dualEnrollmentCourses = Set(plan.transferCredits
+            .filter { credit in !plan.apScores.contains(where: { credit.sourceDescription.contains("AP \($0.examName)") }) }
+            .flatMap(\.courseIDs))
+        let apCredits = TransferCreditMapper(catalog: catalog).credits(
+            forAPScores: plan.apScores,
+            program: activeProgram,
+            completedCourseIDs: dualEnrollmentCourses
+        )
+        // Replace only the AP-sourced credits; preserve any dual enrollment entries.
+        let dualOnly = plan.transferCredits.filter { credit in
+            !plan.apScores.contains(where: { credit.sourceDescription.contains("AP \($0.examName)") })
+        }
+        plan.transferCredits = apCredits + dualOnly
     }
 
     func addDualEnrollment(label: String, courseID: String, credits: Int) {

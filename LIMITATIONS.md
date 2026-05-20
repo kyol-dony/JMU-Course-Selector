@@ -1,5 +1,26 @@
 # Known Limitations
 
+## User interface
+
+- The 2026-05-19 UI overhaul replaces the previous sidebar layout with a tabbed dashboard (My Plan, Schedule, Catalog, Progress) and a modal setup sheet. Old views (`OnboardingView`, `ScheduleView`, `ProgressPanel`, `ProgramPickerView`, `CourseDetailView`, `TransferCreditView`) are removed; their logic lives in the new structure.
+- Color, typography, and spacing now flow through `DesignTokens.swift`. Light/dark mode auto-follows macOS appearance.
+- The design spec calls for the Inter typeface; the app ships with the system SF Pro fallback rather than bundling a font file, so headlines render in SF Pro at the spec's weights. Substituting Inter later only requires bundling the font and updating the `Typography` enum.
+- The Progress tab renders an overall completion donut and per-category `ProgressRail` cards. Each progress rail lists up to 5 remaining required courses beneath the bar; categories without parsed course options show a credit-only helper line.
+- Drag-and-drop between semesters is preserved. Inline warning strips appear under prerequisite and known semester-conflict course chips with a "Keep" override link. Unknown semester availability warnings are hidden on the schedule board to keep the plan scannable.
+
+## Manual smoke checklist
+
+After each rebuild, verify by hand:
+
+- Setup sheet opens on first launch.
+- Picking a major, completing setup, and clicking Generate Plan lands in My Plan with real numbers.
+- Each tab renders without an error alert.
+- Dragging a course between semesters updates credit totals and re-evaluates warnings.
+- Clicking a category bar in My Plan switches to Schedule and highlights matching chips.
+- Course detail sheet opens from any course chip, shows the JMU registrar link, and closes via Esc or the X button.
+- Toggling macOS appearance in System Settings updates colors live.
+- "Reset App Data" in the menu wipes the cache and reloads.
+
 ## Catalog requirements
 
 - The app lists JMU undergraduate majors and minors from the official 2025-2026 Undergraduate Catalog table of contents (200+ programs).
@@ -12,7 +33,7 @@
 
 - The official catalog PDF used here did not provide reliable Fall/Spring offering patterns for each course.
 - Seeded courses therefore show `availability unknown`.
-- The generator does not fabricate availability. The UI keeps an availability warning visible for unknown or conflicting placements.
+- The generator does not fabricate availability. The Schedule tab hides unknown-availability warnings to reduce clutter, but still surfaces warnings for known Fall/Spring conflicts.
 
 ## Transfer credit
 

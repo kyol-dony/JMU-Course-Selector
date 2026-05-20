@@ -13,6 +13,10 @@ final class PlanStore: ObservableObject {
     @Published var statusMessage = "Loading JMU catalog data..."
     @Published var errorMessage: String?
     @Published var isRefreshingCatalog = false
+    @Published var selectedTab: AppTab = .myPlan
+    @Published var setupSheetPresented: Bool = false
+    @Published var catalogSelectedProgramID: String?
+    @Published var scheduleCategoryFilter: String?
 
     private let catalogRepository = CatalogRepository()
     private let detailService = CourseDetailService()
@@ -36,6 +40,28 @@ final class PlanStore: ObservableObject {
     var progress: GraduationProgress? {
         guard let catalog, let programID = plan.programID, let activePathway else { return nil }
         return try? ProgressCalculator(catalog: catalog).progress(programID: programID, pathway: activePathway, transferCredits: plan.transferCredits)
+    }
+
+    /// Set of course IDs the student has completed (transfer credit + scheduled in active pathway).
+    var completedCourseIDs: Set<String> {
+        var ids = Set(plan.transferCredits.flatMap(\.courseIDs))
+        if let activePathway {
+            ids.formUnion(activePathway.semesters.flatMap(\.courseIDs))
+        }
+        return ids
+    }
+
+    /// Course codes still required for a given requirement category, derived from the catalog.
+    func remainingCourses(in category: RequirementCategory) -> [String] {
+        guard let catalog else { return [] }
+        let completed = completedCourseIDs
+        let courses = catalog.coursesByID
+
+        return category.courseOptions.compactMap { option in
+            guard !option.contains(where: completed.contains) else { return nil }
+            guard let firstID = option.first, let course = courses[firstID] else { return nil }
+            return course.code
+        }
     }
 
     func load() async {
@@ -154,6 +180,7 @@ final class PlanStore: ObservableObject {
     func showCourse(_ courseID: String) {
         guard let course = catalog?.coursesByID[courseID] else { return }
         selectedCourse = course
+        courseDetail = nil
         if let cached = courseDetailCache[courseID] {
             courseDetail = cached
             return

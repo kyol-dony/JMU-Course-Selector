@@ -22,7 +22,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PlannerCoreTests",
-            dependencies: ["PlannerCore"],
+            dependencies: ["PlannerCore", "JMUCoursePlanner"],
             path: "Tests/PlannerCoreTests",
             exclude: [
                 "_live_accounting.html",

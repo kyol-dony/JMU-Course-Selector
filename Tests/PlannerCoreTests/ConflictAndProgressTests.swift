@@ -69,4 +69,46 @@ struct ConflictAndProgressTests {
         #expect(progress.categories.first(where: { $0.id == "major-core" })?.remainingCredits == 0)
         #expect(progress.categories.first(where: { $0.id == "gen-ed" })?.remainingCredits == 3)
     }
+
+    @Test("AP credit mapper grants only the highest qualifying tier per exam")
+    func apMapperPicksHighestTier() throws {
+        let rules: [TransferCreditRule] = [
+            TransferCreditRule(
+                source: .apExam(name: "Chemistry", minimumScore: 3),
+                awardedCourseIDs: ["CHEM120"],
+                credits: 4,
+                meetsGeneralEducation: true,
+                sourceNote: "score 3 tier"
+            ),
+            TransferCreditRule(
+                source: .apExam(name: "Chemistry", minimumScore: 4),
+                awardedCourseIDs: ["CHEM131", "CHEM132"],
+                credits: 6,
+                meetsGeneralEducation: true,
+                sourceNote: "score 4 tier"
+            )
+        ]
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "CHEM120", code: "CHEM 120", title: "Gen Chem", credits: 4, availability: nil, prerequisites: []),
+                Course(id: "CHEM131", code: "CHEM 131", title: "Gen Chem I", credits: 3, availability: nil, prerequisites: []),
+                Course(id: "CHEM132", code: "CHEM 132", title: "Gen Chem II", credits: 3, availability: nil, prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "chem-bs",
+                title: "Chemistry, B.S.",
+                requirements: [
+                    RequirementCategory(id: "core", name: "Major Core", requiredCredits: 6, courseOptions: [["CHEM131"], ["CHEM132"]])
+                ]
+            ),
+            apRules: rules
+        )
+
+        let mapper = TransferCreditMapper(catalog: catalog)
+        let credits = mapper.credits(forAPScores: [APScore(examName: "Chemistry", score: 5)])
+
+        #expect(credits.count == 1, "score 5 must dedupe to a single rule, not stack the score-3 and score-4 awards")
+        #expect(credits.first?.courseIDs == ["CHEM131", "CHEM132"])
+        #expect(credits.first?.credits == 6)
+    }
 }

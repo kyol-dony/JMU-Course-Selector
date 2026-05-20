@@ -348,12 +348,29 @@ public struct TransferCreditMapper: Sendable {
     }
 
     public func credits(forAPScores scores: [APScore]) -> [TransferCredit] {
-        scores.flatMap { score in
-            catalog.apCreditRules.compactMap { rule in
-                guard case .apExam(let name, let minimumScore) = rule.source else { return nil }
-                guard name.caseInsensitiveCompare(score.examName) == .orderedSame, score.score >= minimumScore else { return nil }
-                return TransferCredit(sourceDescription: "AP \(name) score \(score.score)", courseIDs: rule.awardedCourseIDs, credits: rule.credits)
+        // For each (exam name + score) the student reports, find the rule with
+        // the HIGHEST `minimumScore` the student qualifies for. This prevents
+        // double-counting when JMU's chart lists multiple score tiers per exam
+        // (e.g., AP Chemistry: a score of 5 must not also grant the score-3
+        // course set on top of the score-4/5 set).
+        scores.compactMap { score in
+            let candidates = catalog.apCreditRules.filter { rule in
+                guard case .apExam(let name, let minimumScore) = rule.source else { return false }
+                return name.caseInsensitiveCompare(score.examName) == .orderedSame
+                    && score.score >= minimumScore
             }
+            guard let best = candidates.max(by: { lhs, rhs in
+                guard case .apExam(_, let lhsMin) = lhs.source,
+                      case .apExam(_, let rhsMin) = rhs.source
+                else { return false }
+                return lhsMin < rhsMin
+            }) else { return nil }
+            guard case .apExam(let name, _) = best.source else { return nil }
+            return TransferCredit(
+                sourceDescription: "AP \(name) score \(score.score)",
+                courseIDs: best.awardedCourseIDs,
+                credits: best.credits
+            )
         }
     }
 }

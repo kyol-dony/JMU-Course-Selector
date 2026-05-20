@@ -7,7 +7,20 @@ struct CatalogRepository {
     private let htmlParser = JMUHTMLCatalogParser()
 
     func loadCatalog() throws -> Catalog {
-        if let cached = try? loadCachedHTMLCatalog() {
+        if var cached = try? loadCachedHTMLCatalog() {
+            // AP credit rules ship in the bundled seed (sourced from the JMU AP
+            // chart) and may evolve between releases without a full catalog
+            // refresh. Always overlay the seed's rules onto the cached catalog
+            // so updates to the chart roll out on the next launch without
+            // requiring the user to hit Refresh Requirements.
+            if let bundled = try? loadBundledCatalog() {
+                cached = Catalog(
+                    source: cached.source,
+                    programs: cached.programs,
+                    courses: cached.courses,
+                    apCreditRules: bundled.apCreditRules
+                )
+            }
             return cached
         }
         return try loadBundledCatalog()

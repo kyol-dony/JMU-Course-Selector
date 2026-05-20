@@ -133,7 +133,10 @@ struct MyPlanView: View {
     @ViewBuilder
     private var categoryBreakdown: some View {
         if let progress = store.progress, let program = store.activeProgram {
-            let lookup = Dictionary(uniqueKeysWithValues: program.requirements.map { ($0.id, $0) })
+            let lookup = Dictionary(
+                program.requirements.map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
             Card {
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.l) {
                     SectionHeader("Requirement progress")

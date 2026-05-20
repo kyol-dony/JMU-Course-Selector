@@ -527,13 +527,23 @@ public struct ScheduleGenerator: Sendable {
     /// not also schedule `ANTH 196` just because it's first in the list. When
     /// the option is not yet satisfied, we still default to the first
     /// alternate, which lets the catalog drive a consistent default pick.
+    /// The returned list is deduplicated: if the same course is the default
+    /// pick for more than one option (e.g., MATH 220 appearing as both the
+    /// QR cluster default and a major's stats requirement default), it is
+    /// scheduled once and counts toward both options.
     private func requiredCourseIDs(for program: Program, completed: Set<String>) -> [String] {
-        program.requirements.flatMap { category in
-            category.courseOptions.compactMap { option -> String? in
-                if option.contains(where: completed.contains) { return nil }
-                return option.first
+        var seen: Set<String> = []
+        var result: [String] = []
+        for category in program.requirements {
+            for option in category.courseOptions {
+                if option.contains(where: completed.contains) { continue }
+                guard let pick = option.first else { continue }
+                if seen.insert(pick).inserted {
+                    result.append(pick)
+                }
             }
         }
+        return result
     }
 
     private func buildSemesters(

@@ -70,6 +70,39 @@ struct ConflictAndProgressTests {
         #expect(progress.categories.first(where: { $0.id == "gen-ed" })?.remainingCredits == 3)
     }
 
+    @Test("scheduler dedupes a course that's the default pick for multiple option groups")
+    func schedulerDedupesCrossCategoryDefaults() throws {
+        // MATH 220 is the first alternate in BOTH the QR gen-ed cluster
+        // and the major's Stats requirement. Without dedupe, generatePathways
+        // would queue it twice, producing a pathway with duplicate course IDs
+        // that downstream Dictionary(uniqueKeysWithValues:) calls in
+        // GraduationProgressView crash on.
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "MATH220", code: "MATH 220", title: "Elementary Stats", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "ISAT251", code: "ISAT 251", title: "Stats", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "psyc-bs",
+                title: "Psych",
+                requirements: [
+                    RequirementCategory(id: "qr", name: "QR", requiredCredits: 3, courseOptions: [["MATH220", "ISAT251"]]),
+                    RequirementCategory(id: "stats", name: "Stats Req", requiredCredits: 3, courseOptions: [["MATH220", "ISAT251"]])
+                ]
+            )
+        )
+
+        let pathways = try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "psyc-bs",
+            workload: .standard,
+            transferCredits: []
+        )
+
+        let scheduled = pathways.first?.semesters.flatMap(\.courseIDs) ?? []
+        let mathCount = scheduled.filter { $0 == "MATH220" }.count
+        #expect(mathCount == 1, "MATH 220 must be scheduled exactly once even though it's the default for two option groups")
+    }
+
     @Test("scheduler skips an option group when any alternate is already completed")
     func schedulerHonorsAnyAlternateMatch() throws {
         // The Physical Principles cluster offers ASTR 120 as its first

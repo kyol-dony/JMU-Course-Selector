@@ -71,7 +71,13 @@ struct GraduationProgressView: View {
     }
 
     private func categoryList(progress: GraduationProgress, program: Program) -> some View {
-        let requirementsByID = Dictionary(uniqueKeysWithValues: program.requirements.map { ($0.id, $0) })
+        // Defensive uniquing: requirement IDs SHOULD be unique within a program
+        // but parser regressions or appended Gen Ed clusters could collide;
+        // keep the first occurrence rather than crashing the whole tab.
+        let requirementsByID = Dictionary(
+            program.requirements.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         return VStack(alignment: .leading, spacing: DesignTokens.Spacing.m) {
             SectionHeader("By category")
             ForEach(progress.categories) { category in
@@ -142,9 +148,15 @@ struct GraduationProgressView: View {
     private func contributions(for requirement: RequirementCategory?) -> [CourseContribution] {
         guard let requirement else { return [] }
         let transferIDs = Set(store.plan.transferCredits.flatMap(\.courseIDs))
-        let scheduled = Dictionary(uniqueKeysWithValues: (store.activePathway?.semesters ?? []).flatMap { semester in
-            semester.courseIDs.map { ($0, semester.id.displayName) }
-        })
+        // If a course shows up in more than one semester of the pathway (e.g.,
+        // after a manual drag that introduced a duplicate), keep the earliest
+        // placement rather than crashing with a duplicate-key precondition.
+        let scheduled = Dictionary(
+            (store.activePathway?.semesters ?? [])
+                .sorted { $0.id < $1.id }
+                .flatMap { semester in semester.courseIDs.map { ($0, semester.id.displayName) } },
+            uniquingKeysWith: { first, _ in first }
+        )
         return requirement.courseOptions.compactMap { option in
             if let transferID = option.first(where: transferIDs.contains),
                let course = catalog.coursesByID[transferID] {

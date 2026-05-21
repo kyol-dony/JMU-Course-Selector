@@ -110,6 +110,9 @@ struct CatalogRepository {
             course.description = enrichment.description
             course.descriptionSourceURL = enrichment.sourceURL
             course.detailRetrievedAt = enrichment.retrievedAt
+            if let text = enrichment.prerequisiteText, !text.isEmpty {
+                course.rawPrerequisiteText = text
+            }
             coursesByID[enrichment.courseID] = course
         }
         try Task.checkCancellation()
@@ -254,6 +257,7 @@ struct CatalogRepository {
                         return CourseDetailEnrichment(
                             courseID: course.id,
                             description: description,
+                            prerequisiteText: detail.prerequisiteText,
                             sourceURL: url,
                             retrievedAt: Date()
                         )
@@ -411,6 +415,7 @@ struct CatalogRefreshProgress: Sendable {
 private struct CourseDetailEnrichment: Sendable {
     var courseID: String
     var description: String
+    var prerequisiteText: String?
     var sourceURL: URL
     var retrievedAt: Date
 }

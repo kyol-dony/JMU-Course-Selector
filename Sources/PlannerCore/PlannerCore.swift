@@ -87,6 +87,10 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
     public var prerequisiteExpr: PrereqExpr
     public var corequisiteExpr: PrereqExpr
     public var hasUnknownPrereqTokens: Bool
+    /// Raw prereq sentence scraped from the catalog detail page, retained until
+    /// Pass 2 of catalog parsing structures it into `prerequisiteExpr`. Not user
+    /// facing; absent when the course's detail page hasn't been fetched yet.
+    public var rawPrerequisiteText: String?
 
     public init(
         id: String,
@@ -102,7 +106,8 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
         detailRetrievedAt: Date? = nil,
         prerequisiteExpr: PrereqExpr = .empty,
         corequisiteExpr: PrereqExpr = .empty,
-        hasUnknownPrereqTokens: Bool = false
+        hasUnknownPrereqTokens: Bool = false,
+        rawPrerequisiteText: String? = nil
     ) {
         self.id = id
         self.code = code
@@ -118,12 +123,13 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
         self.prerequisiteExpr = prerequisiteExpr
         self.corequisiteExpr = corequisiteExpr
         self.hasUnknownPrereqTokens = hasUnknownPrereqTokens
+        self.rawPrerequisiteText = rawPrerequisiteText
     }
 
     private enum CourseCodingKeys: String, CodingKey {
         case id, code, title, credits, availability, prerequisites, verificationStatus,
              registrarURL, description, descriptionSourceURL, detailRetrievedAt,
-             prerequisiteExpr, corequisiteExpr, hasUnknownPrereqTokens
+             prerequisiteExpr, corequisiteExpr, hasUnknownPrereqTokens, rawPrerequisiteText
     }
 
     public init(from decoder: Decoder) throws {
@@ -142,6 +148,7 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
         self.prerequisiteExpr = try c.decodeIfPresent(PrereqExpr.self, forKey: .prerequisiteExpr) ?? .empty
         self.corequisiteExpr = try c.decodeIfPresent(PrereqExpr.self, forKey: .corequisiteExpr) ?? .empty
         self.hasUnknownPrereqTokens = try c.decodeIfPresent(Bool.self, forKey: .hasUnknownPrereqTokens) ?? false
+        self.rawPrerequisiteText = try c.decodeIfPresent(String.self, forKey: .rawPrerequisiteText)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -160,6 +167,7 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
         try c.encode(prerequisiteExpr, forKey: .prerequisiteExpr)
         try c.encode(corequisiteExpr, forKey: .corequisiteExpr)
         try c.encode(hasUnknownPrereqTokens, forKey: .hasUnknownPrereqTokens)
+        try c.encodeIfPresent(rawPrerequisiteText, forKey: .rawPrerequisiteText)
     }
 }
 

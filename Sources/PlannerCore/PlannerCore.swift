@@ -984,11 +984,14 @@ public struct ConflictDetector: Sendable {
 
     public func warnings(for pathway: Pathway, overrides: [ConflictOverride]) -> [ConflictWarning] {
         let coursesByID = catalog.coursesByID
-        var completed = Set<String>()
+        var completedBefore = Set<String>()
         var warnings: [ConflictWarning] = []
 
         for semester in pathway.semesters.sorted(by: { $0.id < $1.id }) {
-            for courseID in semester.courseIDs {
+            let realInThisTerm = Set(semester.courseIDs.filter { !PathwayPlaceholder.isPlaceholder($0) })
+            let evaluator = PrereqEvaluator(completedBefore: completedBefore, scheduledThisTerm: realInThisTerm)
+
+            for courseID in semester.courseIDs where !PathwayPlaceholder.isPlaceholder(courseID) {
                 guard let course = coursesByID[courseID] else { continue }
 
                 if course.availability == nil {
@@ -1009,21 +1012,85 @@ public struct ConflictDetector: Sendable {
                     ))
                 }
 
-                let missing = course.prerequisites.filter { !completed.contains($0) }
-                if !missing.isEmpty {
+                let prereqExpr = Self.effectivePrerequisiteExpr(for: course)
+                if case .unmet(let missing, let original) = evaluator.evaluate(prereqExpr, mode: .prereq) {
                     warnings.append(warning(
                         courseID: courseID,
                         semester: semester.id,
                         kind: .missingPrerequisite,
-                        message: "\(course.code) is scheduled before: \(missing.joined(separator: ", ")).",
+                        message: Self.prereqMessage(
+                            original: original,
+                            missing: missing,
+                            hasUnknown: course.hasUnknownPrereqTokens,
+                            coursesByID: coursesByID,
+                            satisfied: completedBefore
+                        ),
+                        overrides: overrides
+                    ))
+                }
+
+                if case .unmet(let missing, _) = evaluator.evaluate(course.corequisiteExpr, mode: .coreq) {
+                    let rendered = missing.displayString(coursesByID: coursesByID)
+                    warnings.append(warning(
+                        courseID: courseID,
+                        semester: semester.id,
+                        kind: .missingCorequisite,
+                        message: "Take alongside this course: \(rendered).",
                         overrides: overrides
                     ))
                 }
             }
-            completed.formUnion(semester.courseIDs)
+            completedBefore.formUnion(realInThisTerm)
         }
 
         return warnings
+    }
+
+    private static func effectivePrerequisiteExpr(for course: Course) -> PrereqExpr {
+        if case .empty = course.prerequisiteExpr {
+            switch course.prerequisites.count {
+            case 0:
+                return .empty
+            case 1:
+                return .course(course.prerequisites[0])
+            default:
+                return .all(course.prerequisites.map(PrereqExpr.course))
+            }
+        }
+        return course.prerequisiteExpr
+    }
+
+    private static func prereqMessage(
+        original: PrereqExpr,
+        missing: PrereqExpr,
+        hasUnknown: Bool,
+        coursesByID: [String: Course],
+        satisfied: Set<String>
+    ) -> String {
+        let originalText = original.displayString(coursesByID: coursesByID)
+        let missingText = missing.displayString(coursesByID: coursesByID)
+        let satisfiedLeaves = collectCourseLeaves(original).filter { satisfied.contains($0) }
+        let satisfiedText = satisfiedLeaves.compactMap { coursesByID[$0]?.code ?? $0 }.joined(separator: ", ")
+        var message = "Needs \(originalText)."
+        if !satisfiedText.isEmpty {
+            message += " You have \(satisfiedText);"
+        }
+        message += " still missing \(missingText)."
+        if hasUnknown {
+            message += " Some prereqs couldn't be parsed; verify with the catalog."
+        }
+        return message
+    }
+
+    private static func collectCourseLeaves(_ expr: PrereqExpr) -> [String] {
+        switch expr {
+        case .course(let id):
+            return [id]
+        case .all(let children), .any(let children):
+            return children.flatMap(collectCourseLeaves)
+        default:
+            return []
+        }
     }
 
     private func warning(courseID: String, semester: SemesterIdentity, kind: ConflictKind, message: String, overrides: [ConflictOverride]) -> ConflictWarning {

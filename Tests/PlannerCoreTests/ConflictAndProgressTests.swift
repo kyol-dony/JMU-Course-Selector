@@ -449,3 +449,52 @@ struct ConflictAndProgressTests {
         #expect(credits.first?.credits == 6)
     }
 }
+
+@Suite("Conflict detector prereq/coreq expression wiring")
+struct ConflictDetectorPrereqWiringTests {
+    @Test("unmet parsed prerequisite emits warning")
+    func unmetPrereqInLaterTermFiresWarning() throws {
+        let pathway = Pathway(id: "p", name: "P", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2025, term: .fall), courseIDs: ["cs-240"])
+        ])
+
+        let warnings = ConflictDetector(catalog: Self.catalog).warnings(for: pathway, overrides: [])
+
+        #expect(warnings.contains { $0.kind == .missingPrerequisite && $0.courseID == "cs-240" })
+    }
+
+    @Test("missing parsed corequisite emits warning")
+    func coreqViolationFires() throws {
+        let pathway = Pathway(id: "p", name: "P", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2025, term: .fall), courseIDs: ["cs-240"])
+        ])
+
+        let warnings = ConflictDetector(catalog: Self.catalog).warnings(for: pathway, overrides: [])
+
+        #expect(warnings.contains { $0.kind == .missingCorequisite && $0.courseID == "cs-240" })
+    }
+
+    @Test("parsed prerequisite satisfied by earlier term")
+    func prereqSatisfiedByEarlierTerm() throws {
+        let pathway = Pathway(id: "p", name: "P", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2024, term: .fall), courseIDs: ["cs-159", "math-235"]),
+            SemesterPlan(id: SemesterIdentity(year: 2025, term: .fall), courseIDs: ["cs-240"])
+        ])
+
+        let warnings = ConflictDetector(catalog: Self.catalog).warnings(for: pathway, overrides: [])
+
+        #expect(!warnings.contains { $0.kind == .missingPrerequisite && $0.courseID == "cs-240" })
+    }
+
+    private static let catalog: Catalog = {
+        let cs159 = Course(id: "cs-159", code: "CS 159", title: "Intro", credits: 3, availability: nil, prerequisites: [])
+        var cs240 = Course(id: "cs-240", code: "CS 240", title: "Data", credits: 3, availability: nil, prerequisites: ["cs-159"])
+        cs240.prerequisiteExpr = .course("cs-159")
+        cs240.corequisiteExpr = .course("math-235")
+        let math235 = Course(id: "math-235", code: "MATH 235", title: "Calc I", credits: 3, availability: nil, prerequisites: [])
+        return Catalog.fixture(
+            courses: [cs159, cs240, math235],
+            program: Program.fixture(id: "cs-bs", title: "Computer Science, B.S.", requirements: [])
+        )
+    }()
+}

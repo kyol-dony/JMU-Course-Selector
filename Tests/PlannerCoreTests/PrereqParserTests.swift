@@ -169,3 +169,67 @@ final class PrereqLexerTests: XCTestCase {
         XCTAssertTrue(PrereqLexer.tokenize("   ").isEmpty)
     }
 }
+
+final class PrereqGrammarTests: XCTestCase {
+    private static let stubCatalog: [String: Course] = [
+        "cs-159": Course(id: "cs-159", code: "CS 159", title: "", credits: 3, availability: nil, prerequisites: []),
+        "cs-149": Course(id: "cs-149", code: "CS 149", title: "", credits: 3, availability: nil, prerequisites: []),
+        "math-235": Course(id: "math-235", code: "MATH 235", title: "", credits: 3, availability: nil, prerequisites: []),
+        "math-236": Course(id: "math-236", code: "MATH 236", title: "", credits: 3, availability: nil, prerequisites: [])
+    ]
+
+    private func parse(_ text: String, coursesByID: [String: Course] = stubCatalog) -> ParseResult {
+        PrereqParser(coursesByID: coursesByID).parse(text)
+    }
+
+    func testAtomic() {
+        XCTAssertEqual(parse("Prerequisite: CS 159.").prerequisiteExpr, .course("cs-159"))
+    }
+
+    func testAnd() {
+        XCTAssertEqual(parse("CS 159 and MATH 235").prerequisiteExpr,
+                       .all([.course("cs-159"), .course("math-235")]))
+    }
+
+    func testOr() {
+        XCTAssertEqual(parse("CS 159 or CS 149").prerequisiteExpr,
+                       .any([.course("cs-159"), .course("cs-149")]))
+    }
+
+    func testNested() {
+        XCTAssertEqual(parse("CS 159 and (MATH 235 or MATH 236)").prerequisiteExpr,
+                       .all([.course("cs-159"), .any([.course("math-235"), .course("math-236")])]))
+    }
+
+    func testCommaIsAnd() {
+        XCTAssertEqual(parse("CS 159, MATH 235").prerequisiteExpr,
+                       .all([.course("cs-159"), .course("math-235")]))
+    }
+
+    func testSemicolonIsAnd() {
+        XCTAssertEqual(parse("CS 159; MATH 235").prerequisiteExpr,
+                       .all([.course("cs-159"), .course("math-235")]))
+    }
+
+    func testUnknownToken() {
+        let result = parse("CS 159 or instructor permission")
+        XCTAssertEqual(result.prerequisiteExpr, .any([.course("cs-159"), .unknown("instructor permission")]))
+        XCTAssertTrue(result.hasUnknownTokens)
+    }
+
+    func testUnresolvedCourseRefBecomesUnknown() {
+        let result = parse("CS 159 or MATH 100")
+        XCTAssertEqual(result.prerequisiteExpr, .any([.course("cs-159"), .unknown("MATH 100")]))
+        XCTAssertTrue(result.hasUnknownTokens)
+    }
+
+    func testEmptyInput() {
+        XCTAssertEqual(parse("").prerequisiteExpr, .empty)
+        XCTAssertFalse(parse("").hasUnknownTokens)
+    }
+
+    func testNormalizationFlattensNestedAnd() {
+        XCTAssertEqual(parse("CS 159 and MATH 235 and MATH 236").prerequisiteExpr,
+                       .all([.course("cs-159"), .course("math-235"), .course("math-236")]))
+    }
+}

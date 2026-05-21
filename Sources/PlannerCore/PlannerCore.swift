@@ -856,7 +856,7 @@ public struct ScheduleGenerator: Sendable {
         var semester = start
         var result: [SemesterPlan] = []
         var emptySemesterCount = 0
-        let parser = PrereqParser(coursesByID: catalog.coursesByID, activeProgramTitle: activeProgramTitle)
+        let resolver = PrereqRuleResolver(catalog: catalog)
 
         while !remaining.isEmpty {
             var selected: [String] = []
@@ -874,7 +874,7 @@ public struct ScheduleGenerator: Sendable {
                 } else if let course = catalog.coursesByID[courseID] {
                     courseCredits = course.credits
                     courseAvailability = course.availability
-                    prerequisiteExpr = effectivePrerequisiteExpr(for: course, parser: parser)
+                    prerequisiteExpr = resolver.rule(for: course, activeProgramTitle: activeProgramTitle).prerequisiteExpr
                 } else {
                     continue
                 }
@@ -912,24 +912,6 @@ public struct ScheduleGenerator: Sendable {
         }
 
         return result
-    }
-
-    private func effectivePrerequisiteExpr(for course: Course, parser: PrereqParser) -> PrereqExpr {
-        if let raw = course.rawPrerequisiteText,
-           !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return parser.parse(raw).prerequisiteExpr
-        }
-        if course.prerequisiteExpr != .empty {
-            return course.prerequisiteExpr
-        }
-        switch course.prerequisites.count {
-        case 0:
-            return .empty
-        case 1:
-            return .course(course.prerequisites[0])
-        default:
-            return .all(course.prerequisites.map(PrereqExpr.course))
-        }
     }
 
     private func pathwayName(_ index: Int) -> String {

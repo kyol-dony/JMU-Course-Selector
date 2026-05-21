@@ -291,4 +291,47 @@ struct ScheduleGeneratorParsedPrereqTests {
             )
         )
     }
+
+    @Test("curated overlay any-prereq rule wins during schedule placement")
+    func curatedOverlayAnyPrereqWinsDuringSchedulePlacement() throws {
+        let cs149 = Course(id: "cs-149", code: "CS 149", title: "Intro", credits: 3, availability: [.fall, .spring], prerequisites: [])
+        let cs159 = Course(id: "cs-159", code: "CS 159", title: "Advanced", credits: 3, availability: [.fall, .spring], prerequisites: [])
+        var cs240 = Course(id: "cs-240", code: "CS 240", title: "Data", credits: 3, availability: [.fall, .spring], prerequisites: [])
+        cs240.rawPrerequisiteText = "Prerequisite: CS 159."
+        let overlay = PrereqRuleOverlay(schemaVersion: 1, rules: [
+            PrereqRule(
+                courseID: "cs-240",
+                prerequisiteExpr: .any([.course("cs-149"), .course("cs-159")]),
+                corequisiteExpr: .empty,
+                confidence: .curated,
+                basis: .explicit,
+                sourceURL: URL(string: "https://catalog.jmu.edu/preview_course.php?catoid=62&coid=123&print")!,
+                sourceText: "Prerequisite: CS 149 or CS 159.",
+                notes: "Curated OR group should replace stale parser fallback."
+            )
+        ])
+        let catalog = Catalog.fixture(
+            courses: [cs149, cs159, cs240],
+            program: Program.fixture(
+                id: "cs-bs",
+                title: "Computer Science, B.S.",
+                requirements: [
+                    RequirementCategory(id: "core", name: "Core", requiredCredits: 6, courseOptions: [["cs-149"], ["cs-240"]])
+                ]
+            ),
+            prereqRuleOverlay: overlay
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog, strictPrereqs: true).generatePathways(
+            for: "cs-bs",
+            workload: .standard,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        ).first)
+
+        let cs149Semester = try #require(pathway.semesters.first { $0.courseIDs.contains("cs-149") }?.id)
+        let cs240Semester = try #require(pathway.semesters.first { $0.courseIDs.contains("cs-240") }?.id)
+        #expect(cs149Semester < cs240Semester)
+        #expect(!pathway.semesters.flatMap(\.courseIDs).contains("cs-159"))
+    }
 }

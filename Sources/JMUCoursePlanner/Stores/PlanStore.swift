@@ -17,6 +17,8 @@ final class PlanStore: ObservableObject {
     @Published var setupSheetPresented: Bool = false
     @Published var catalogSelectedProgramID: String?
     @Published var scheduleCategoryFilter: String?
+    @Published private var pendingRequirementSelections: [String: [String]] = [:]
+    @Published private var clearedPendingRequirementSelectionKeys: Set<String> = []
 
     private let catalogRepository = CatalogRepository()
     private let detailService = CourseDetailService()
@@ -107,7 +109,7 @@ final class PlanStore: ObservableObject {
     }
 
     func selectedRequirementOption(for key: String, in category: RequirementCategory) -> [String]? {
-        guard let selected = plan.requirementSelections[key],
+        guard let selected = effectiveRequirementSelections()[key],
               isValidRequirementSelection(selected, in: category)
         else {
             return nil
@@ -127,19 +129,21 @@ final class PlanStore: ObservableObject {
 
     func selectRequirementOption(key: String, courseIDs: [String]?) {
         if let courseIDs {
-            plan.requirementSelections[key] = courseIDs
+            pendingRequirementSelections[key] = courseIDs
+            clearedPendingRequirementSelectionKeys.remove(key)
         } else {
-            plan.requirementSelections.removeValue(forKey: key)
+            pendingRequirementSelections.removeValue(forKey: key)
+            clearedPendingRequirementSelectionKeys.insert(key)
         }
-        autosave()
     }
 
     func activeRequirementSelectionsByRequirementKey() -> [String: [String]] {
         guard let effectiveActiveProgram else { return [:] }
+        let selections = effectiveRequirementSelections()
         var result: [String: [String]] = [:]
         for category in effectiveActiveProgram.requirements {
             guard let storageKey = majorRequirementSelectionKey(for: category),
-                  let selected = selectedRequirementOption(for: storageKey, in: category)
+                  let selected = selectedRequirementOption(for: storageKey, in: category, selections: selections)
             else {
                 continue
             }
@@ -148,9 +152,46 @@ final class PlanStore: ObservableObject {
         return result
     }
 
+    private func effectiveRequirementSelections() -> [String: [String]] {
+        var selections = plan.requirementSelections
+        for key in clearedPendingRequirementSelectionKeys {
+            selections.removeValue(forKey: key)
+        }
+        for (key, value) in pendingRequirementSelections {
+            selections[key] = value
+        }
+        return selections
+    }
+
+    private func selectedRequirementOption(
+        for key: String,
+        in category: RequirementCategory,
+        selections: [String: [String]]
+    ) -> [String]? {
+        guard let selected = selections[key],
+              isValidRequirementSelection(selected, in: category)
+        else {
+            return nil
+        }
+        return selected
+    }
+
+    private func commitPendingRequirementSelections() {
+        for key in clearedPendingRequirementSelectionKeys {
+            plan.requirementSelections.removeValue(forKey: key)
+        }
+        for (key, value) in pendingRequirementSelections {
+            plan.requirementSelections[key] = value
+        }
+        pendingRequirementSelections = [:]
+        clearedPendingRequirementSelectionKeys = []
+    }
+
     func validateRequirementSelections() {
         guard let effectiveActiveProgram else {
             plan.requirementSelections = [:]
+            pendingRequirementSelections = [:]
+            clearedPendingRequirementSelectionKeys = []
             return
         }
         let validMajorSelections = Set(effectiveActiveProgram.requirements.compactMap { category -> String? in
@@ -162,6 +203,12 @@ final class PlanStore: ObservableObject {
             return storageKey
         })
         plan.requirementSelections = plan.requirementSelections.filter { key, _ in
+            validMajorSelections.contains(key)
+        }
+        pendingRequirementSelections = pendingRequirementSelections.filter { key, _ in
+            validMajorSelections.contains(key)
+        }
+        clearedPendingRequirementSelectionKeys = clearedPendingRequirementSelectionKeys.filter { key in
             validMajorSelections.contains(key)
         }
     }
@@ -354,15 +401,17 @@ final class PlanStore: ObservableObject {
         }
 
         do {
+            let requirementSelections = activeRequirementSelectionsByRequirementKey()
             plan.pathways = try ScheduleGenerator(catalog: catalog).generatePathways(
                 for: programID,
                 concentrationID: plan.concentrationID,
                 workload: plan.workload,
                 transferCredits: plan.transferCredits,
                 starting: SemesterIdentity(year: 2026, term: .fall),
-                requirementSelections: activeRequirementSelectionsByRequirementKey(),
+                requirementSelections: requirementSelections,
                 additionalPrograms: selectedMinorPrograms()
             )
+            commitPendingRequirementSelections()
             plan.activePathwayID = plan.pathways.first?.id
             errorMessage = nil
             autosave()

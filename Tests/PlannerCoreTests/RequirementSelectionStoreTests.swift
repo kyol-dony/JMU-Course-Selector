@@ -30,7 +30,7 @@ struct RequirementSelectionStoreTests {
     }
 
     @Test
-    func selectingRequirementOptionPersistsChoiceAndLeavesPathwaysUnchanged() {
+    func selectingRequirementOptionStagesChoiceAndLeavesPlanPathwaysUnchanged() {
         let store = PlanStore()
         store.catalog = requirementSelectionStoreCatalog()
         store.plan.programID = "cis-bba"
@@ -45,14 +45,15 @@ struct RequirementSelectionStoreTests {
 
         store.selectRequirementOption(key: key, courseIDs: ["CIS-484"])
 
-        #expect(store.plan.requirementSelections[key] == ["CIS-484"])
+        #expect(store.plan.requirementSelections[key] == nil)
+        #expect(store.selectedRequirementOption(for: key, in: requirement) == ["CIS-484"])
         #expect(store.plan.pathways.count == 1)
         #expect(store.plan.activePathwayID == "path-1")
         #expect(store.plan.pathways[0].semesters[0].courseIDs == ["CIS-464"])
     }
 
     @Test
-    func clearingRequirementOptionRemovesChoiceAndLeavesPathwaysUnchanged() {
+    func clearingRequirementOptionStagesDefaultAndLeavesPlanPathwaysUnchanged() {
         let store = PlanStore()
         store.catalog = requirementSelectionStoreCatalog()
         store.plan.programID = "cis-bba"
@@ -68,7 +69,8 @@ struct RequirementSelectionStoreTests {
 
         store.selectRequirementOption(key: key, courseIDs: nil)
 
-        #expect(store.plan.requirementSelections[key] == nil)
+        #expect(store.plan.requirementSelections[key] == ["CIS-484"])
+        #expect(store.selectedRequirementOption(for: key, in: requirement) == nil)
         #expect(store.plan.pathways.count == 1)
         #expect(store.plan.activePathwayID == "path-1")
         #expect(store.plan.pathways[0].semesters[0].courseIDs == ["CIS-484"])
@@ -90,7 +92,8 @@ struct RequirementSelectionStoreTests {
 
         store.selectRequirementOption(key: key, courseIDs: ["CIS-484"])
 
-        #expect(store.plan.requirementSelections[key] == ["CIS-484"])
+        #expect(store.plan.requirementSelections[key] == nil)
+        #expect(store.selectedRequirementOption(for: key, in: requirement) == ["CIS-484"])
         #expect(store.plan.pathways.count == 1)
         #expect(store.plan.activePathwayID == "path-1")
         #expect(store.plan.pathways[0].semesters[0].courseIDs.isEmpty)
@@ -135,6 +138,8 @@ struct RequirementSelectionStoreTests {
         store.selectRequirementOption(key: key, courseIDs: ["CHEM-131"])
 
         #expect(store.plan.pathways.count == 1)
+        #expect(store.plan.requirementSelections[key] == nil)
+        #expect(store.selectedRequirementOption(for: key, in: requirement) == ["CHEM-131"])
         #expect(store.plan.activePathwayID == "path-1")
         #expect(store.plan.pathways[0].semesters[0].courseIDs == ["BIO-140"])
         #expect(store.progress?.overallCompletedCredits == progressBefore?.overallCompletedCredits)
@@ -151,6 +156,7 @@ struct RequirementSelectionStoreTests {
 
         store.generateSchedules()
 
+        #expect(store.plan.requirementSelections[key] == ["CHEM-131"])
         #expect(store.activePathway?.semesters.flatMap(\.courseIDs).contains("CHEM-131") == true)
         #expect(store.activePathway?.semesters.flatMap(\.courseIDs).contains("ANTH-196") == false)
         #expect(store.progress?.overallCompletedCredits == 3)

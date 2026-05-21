@@ -917,6 +917,64 @@ public struct ConflictWarning: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// Evaluates whether a `PrereqExpr` is satisfied given the set of courses
+/// the student has completed before this term (`completedBefore`) and the
+/// set scheduled in the same term (`scheduledThisTerm`). Prereq mode only
+/// honors `completedBefore`; coreq mode honors their union.
+public struct PrereqEvaluator: Sendable {
+    public enum Mode: Sendable { case prereq, coreq }
+    public enum Outcome: Sendable, Equatable {
+        case satisfied
+        case unmet(missing: PrereqExpr, original: PrereqExpr)
+    }
+
+    public let completedBefore: Set<String>
+    public let scheduledThisTerm: Set<String>
+
+    public init(completedBefore: Set<String>, scheduledThisTerm: Set<String>) {
+        self.completedBefore = completedBefore
+        self.scheduledThisTerm = scheduledThisTerm
+    }
+
+    public func evaluate(_ expr: PrereqExpr, mode: Mode) -> Outcome {
+        let pool = (mode == .prereq) ? completedBefore : completedBefore.union(scheduledThisTerm)
+        let trimmed = prune(expr, pool: pool)
+        if case .empty = trimmed { return .satisfied }
+        return .unmet(missing: trimmed, original: expr)
+    }
+
+    /// Walk the tree returning the still-missing sub-expression. Empty
+    /// means fully satisfied.
+    private func prune(_ expr: PrereqExpr, pool: Set<String>) -> PrereqExpr {
+        switch expr {
+        case .empty:
+            return .empty
+        case .course(let id):
+            return pool.contains(id) ? .empty : .course(id)
+        case .unknown:
+            return expr  // unknowns are never satisfied
+        case .all(let xs):
+            let trimmed = xs.compactMap { child -> PrereqExpr? in
+                let pruned = prune(child, pool: pool)
+                if case .empty = pruned { return nil }
+                return pruned
+            }
+            if trimmed.isEmpty { return .empty }
+            if trimmed.count == 1 { return trimmed[0] }
+            return .all(trimmed)
+        case .any(let xs):
+            // If any branch is empty post-prune, the whole group is satisfied.
+            for branch in xs {
+                if case .empty = prune(branch, pool: pool) { return .empty }
+            }
+            // None satisfied: keep all branches so the warning lists every option.
+            let trimmed = xs.map { prune($0, pool: pool) }
+            if trimmed.count == 1 { return trimmed[0] }
+            return .any(trimmed)
+        }
+    }
+}
+
 public struct ConflictDetector: Sendable {
     public var catalog: Catalog
 

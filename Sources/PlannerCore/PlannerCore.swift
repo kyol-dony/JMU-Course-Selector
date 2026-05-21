@@ -709,6 +709,12 @@ public struct ScheduleGenerator: Sendable {
         self.strictPrereqs = strictPrereqs
     }
 
+    private struct ScheduleCandidate: Sendable {
+        var courseID: String
+        var credits: Int
+        var variantOrder: Int
+    }
+
     public func generatePathways(
         for programID: String,
         concentrationID: String? = nil,
@@ -854,6 +860,7 @@ public struct ScheduleGenerator: Sendable {
         var remaining = courseIDs
         var completed = completedAtStart
         var semester = start
+        var semesterOffset = 0
         var result: [SemesterPlan] = []
         var emptySemesterCount = 0
         let resolver = PrereqRuleResolver(catalog: catalog)
@@ -862,8 +869,9 @@ public struct ScheduleGenerator: Sendable {
             var selected: [String] = []
             var credits = 0
             let maxCredits = workload.creditRange.upperBound
+            let target = targetLevel(for: semesterOffset)
 
-            for courseID in remaining {
+            let ready = remaining.enumerated().compactMap { order, courseID -> ScheduleCandidate? in
                 let courseCredits: Int
                 let courseAvailability: Set<SemesterTerm>?
                 let prerequisiteExpr: PrereqExpr
@@ -876,15 +884,23 @@ public struct ScheduleGenerator: Sendable {
                     courseAvailability = course.availability
                     prerequisiteExpr = resolver.rule(for: course, activeProgramTitle: activeProgramTitle).prerequisiteExpr
                 } else {
-                    continue
+                    return nil
                 }
                 guard case .satisfied = PrereqEvaluator(
                     completedBefore: completed,
                     scheduledThisTerm: []
-                ).evaluate(prerequisiteExpr, mode: .prereq) else { continue }
-                if let availability = courseAvailability, !availability.contains(semester.term) { continue }
+                ).evaluate(prerequisiteExpr, mode: .prereq) else { return nil }
+                if let availability = courseAvailability, !availability.contains(semester.term) { return nil }
+                return ScheduleCandidate(courseID: courseID, credits: courseCredits, variantOrder: order)
+            }
+            .sorted { lhs, rhs in
+                compare(lhs, rhs, targetLevel: target, placeholders: placeholders)
+            }
+
+            for candidate in ready {
+                let courseCredits = candidate.credits
                 guard credits + courseCredits <= maxCredits else { continue }
-                selected.append(courseID)
+                selected.append(candidate.courseID)
                 credits += courseCredits
             }
 
@@ -902,6 +918,7 @@ public struct ScheduleGenerator: Sendable {
                     throw PlannerError.impossibleSchedule("Could not place the remaining courses while respecting prerequisites and semester availability.")
                 }
                 semester = semester.next
+                semesterOffset += 1
                 continue
             }
 
@@ -909,9 +926,76 @@ public struct ScheduleGenerator: Sendable {
             remaining.removeAll { selected.contains($0) }
             completed.formUnion(selected)
             semester = semester.next
+            semesterOffset += 1
         }
 
         return result
+    }
+
+    private func compare(
+        _ lhs: ScheduleCandidate,
+        _ rhs: ScheduleCandidate,
+        targetLevel: Int,
+        placeholders: [String: PlaceholderSpec]
+    ) -> Bool {
+        let lhsLevel = courseLevel(for: lhs.courseID, placeholders: placeholders)
+        let rhsLevel = courseLevel(for: rhs.courseID, placeholders: placeholders)
+        let lhsDistance = abs(lhsLevel - targetLevel)
+        let rhsDistance = abs(rhsLevel - targetLevel)
+        if lhsDistance != rhsDistance {
+            return lhsDistance < rhsDistance
+        }
+        if lhsLevel != rhsLevel {
+            return lhsLevel < rhsLevel
+        }
+        if lhs.variantOrder != rhs.variantOrder {
+            return lhs.variantOrder < rhs.variantOrder
+        }
+        return lhs.courseID < rhs.courseID
+    }
+
+    private func courseLevel(for courseID: String, placeholders: [String: PlaceholderSpec]) -> Int {
+        if let spec = placeholders[courseID] {
+            return medianAlternateLevel(for: spec.alternates)
+        }
+        guard let course = catalog.coursesByID[courseID],
+              let level = Self.courseLevel(fromCode: course.code)
+        else { return 200 }
+        return level
+    }
+
+    private func medianAlternateLevel(for alternates: [String]) -> Int {
+        let levels = alternates.compactMap { id -> Int? in
+            guard let course = catalog.coursesByID[id] else { return nil }
+            return Self.courseLevel(fromCode: course.code)
+        }
+        .sorted()
+
+        guard !levels.isEmpty else { return 200 }
+        let middle = levels.count / 2
+        if levels.count % 2 == 1 {
+            return levels[middle]
+        }
+        let median = Double(levels[middle - 1] + levels[middle]) / 2.0
+        return Self.roundToNearestHundred(median)
+    }
+
+    private func targetLevel(for semesterOffset: Int) -> Int {
+        let clampedOffset = min(max(semesterOffset, 0), 7)
+        let raw = 100.0 + (Double(clampedOffset) / 7.0) * 300.0
+        return Self.roundToNearestHundred(raw)
+    }
+
+    private static func courseLevel(fromCode code: String) -> Int? {
+        guard let range = code.range(of: #"\d{3}"#, options: .regularExpression),
+              let number = Int(code[range])
+        else { return nil }
+        let bucket = (number / 100) * 100
+        return min(max(bucket, 100), 400)
+    }
+
+    private static func roundToNearestHundred(_ value: Double) -> Int {
+        Int((value / 100.0).rounded()) * 100
     }
 
     private func pathwayName(_ index: Int) -> String {

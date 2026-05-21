@@ -335,3 +335,122 @@ struct ScheduleGeneratorParsedPrereqTests {
         #expect(!pathway.semesters.flatMap(\.courseIDs).contains("cs-159"))
     }
 }
+
+@Suite("Schedule generator course level ramp")
+struct ScheduleGeneratorLevelRampTests {
+    @Test("scheduler prefers lower-level courses in earlier semesters")
+    func schedulerPrefersLowerLevelCoursesEarlier() throws {
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "CS440", code: "CS 440", title: "Advanced Systems", credits: 7, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "CS340", code: "CS 340", title: "Databases", credits: 7, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "CS240", code: "CS 240", title: "Data Structures", credits: 7, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "CS140", code: "CS 140", title: "Intro Computing", credits: 7, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "cs-bs",
+                title: "Computer Science, B.S.",
+                requirements: [
+                    RequirementCategory(
+                        id: "core",
+                        name: "Core",
+                        requiredCredits: 28,
+                        courseOptions: [["CS440"], ["CS340"], ["CS240"], ["CS140"]]
+                    )
+                ]
+            )
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "cs-bs",
+            workload: .light,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        ).first)
+
+        #expect(pathway.semesters.map(\.courseIDs) == [["CS140"], ["CS240"], ["CS340"], ["CS440"]])
+    }
+
+    @Test("availability can still force an upper-level course into an early semester")
+    func availabilityCanForceUpperLevelEarly() throws {
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "CS340", code: "CS 340", title: "Databases", credits: 7, availability: [.fall], prerequisites: []),
+                Course(id: "CS140", code: "CS 140", title: "Intro Computing", credits: 7, availability: [.spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "cs-bs",
+                title: "Computer Science, B.S.",
+                requirements: [
+                    RequirementCategory(id: "core", name: "Core", requiredCredits: 14, courseOptions: [["CS340"], ["CS140"]])
+                ]
+            )
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog, strictPrereqs: true).generatePathways(
+            for: "cs-bs",
+            workload: .light,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        ).first)
+
+        #expect(pathway.semesters.map(\.courseIDs) == [["CS340"], ["CS140"]])
+    }
+
+    @Test("prerequisites still control high-level course placement")
+    func prerequisitesStillControlHighLevelPlacement() throws {
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "CS440", code: "CS 440", title: "Advanced Systems", credits: 7, availability: [.fall, .spring], prerequisites: ["CS140"]),
+                Course(id: "CS140", code: "CS 140", title: "Intro Computing", credits: 7, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "cs-bs",
+                title: "Computer Science, B.S.",
+                requirements: [
+                    RequirementCategory(id: "core", name: "Core", requiredCredits: 14, courseOptions: [["CS440"], ["CS140"]])
+                ]
+            )
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog, strictPrereqs: true).generatePathways(
+            for: "cs-bs",
+            workload: .light,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        ).first)
+
+        #expect(pathway.semesters.map(\.courseIDs) == [["CS140"], ["CS440"]])
+    }
+
+    @Test("placeholder level uses median level of dropdown alternates")
+    func placeholderLevelUsesMedianAlternateLevel() throws {
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "CS440", code: "CS 440", title: "Advanced Systems", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "CS441", code: "CS 441", title: "Advanced Security", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "WRTC103", code: "WRTC 103", title: "Writing", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "HIST150", code: "HIST 150", title: "History", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "any-bs",
+                title: "Any Major, B.S.",
+                requirements: [
+                    RequirementCategory(id: "upper-elective", name: "Upper Elective", requiredCredits: 7, courseOptions: [["CS440", "CS441", "MISSING400"]]),
+                    RequirementCategory(id: "lower-gened", name: "Lower Gen Ed", requiredCredits: 7, courseOptions: [["WRTC103", "HIST150", "MISSING100"]])
+                ]
+            )
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "any-bs",
+            workload: .light,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        ).first)
+
+        let firstPlaceholderID = try #require(pathway.semesters.first?.courseIDs.first)
+        let firstSpec = try #require(pathway.placeholders[firstPlaceholderID])
+        #expect(firstSpec.categoryName == "Lower Gen Ed")
+    }
+}

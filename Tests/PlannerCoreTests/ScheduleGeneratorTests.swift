@@ -252,3 +252,43 @@ struct ScheduleGeneratorBestEffortTests {
         )
     }
 }
+
+@Suite("Schedule generator parsed prereq expressions")
+struct ScheduleGeneratorParsedPrereqTests {
+    @Test("one-of-following prereq only needs one completed option")
+    func oneOfFollowingPrereqOnlyNeedsOneCompletedOption() throws {
+        let catalog = Self.catalogWithOneOfFollowingPrereq()
+        let generator = ScheduleGenerator(catalog: catalog, strictPrereqs: true)
+
+        let pathway = try #require(try generator.generatePathways(
+            for: "cs-bs",
+            workload: .standard,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        ).first)
+
+        let flattened = pathway.semesters.flatMap(\.courseIDs)
+        #expect(flattened.contains("cs-149"))
+        #expect(flattened.contains("cs-240"))
+        let cs149Semester = try #require(pathway.semesters.first { $0.courseIDs.contains("cs-149") }?.id)
+        let cs240Semester = try #require(pathway.semesters.first { $0.courseIDs.contains("cs-240") }?.id)
+        #expect(cs149Semester < cs240Semester)
+    }
+
+    private static func catalogWithOneOfFollowingPrereq() -> Catalog {
+        let cs149 = Course(id: "cs-149", code: "CS 149", title: "Intro", credits: 3, availability: [.fall, .spring], prerequisites: [])
+        let cs159 = Course(id: "cs-159", code: "CS 159", title: "Advanced", credits: 3, availability: [.fall, .spring], prerequisites: [])
+        var cs240 = Course(id: "cs-240", code: "CS 240", title: "Data", credits: 3, availability: [.fall, .spring], prerequisites: [])
+        cs240.rawPrerequisiteText = "Prerequisite: a grade of C or better in one of the following: CS 149, CS 159."
+        return Catalog.fixture(
+            courses: [cs149, cs159, cs240],
+            program: Program.fixture(
+                id: "cs-bs",
+                title: "Computer Science, B.S.",
+                requirements: [
+                    RequirementCategory(id: "core", name: "Core", requiredCredits: 6, courseOptions: [["cs-240"], ["cs-149"]])
+                ]
+            )
+        )
+    }
+}

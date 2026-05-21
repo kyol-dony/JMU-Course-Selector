@@ -715,7 +715,14 @@ public struct ScheduleGenerator: Sendable {
         ]
 
         for (index, variant) in variants.enumerated() {
-            let semesters = try buildSemesters(courseIDs: variant, completedAtStart: completed, workload: workload, starting: start, placeholders: placeholders)
+            let semesters = try buildSemesters(
+                courseIDs: variant,
+                completedAtStart: completed,
+                workload: workload,
+                starting: start,
+                placeholders: placeholders,
+                activeProgramTitle: program.title
+            )
             pathways.append(Pathway(
                 id: "path-\(index + 1)",
                 name: pathwayName(index + 1),
@@ -811,13 +818,15 @@ public struct ScheduleGenerator: Sendable {
         completedAtStart: Set<String>,
         workload: WorkloadPreference,
         starting start: SemesterIdentity,
-        placeholders: [String: PlaceholderSpec] = [:]
+        placeholders: [String: PlaceholderSpec] = [:],
+        activeProgramTitle: String? = nil
     ) throws -> [SemesterPlan] {
         var remaining = courseIDs
         var completed = completedAtStart
         var semester = start
         var result: [SemesterPlan] = []
         var emptySemesterCount = 0
+        let parser = PrereqParser(coursesByID: catalog.coursesByID, activeProgramTitle: activeProgramTitle)
 
         while !remaining.isEmpty {
             var selected: [String] = []
@@ -827,19 +836,22 @@ public struct ScheduleGenerator: Sendable {
             for courseID in remaining {
                 let courseCredits: Int
                 let courseAvailability: Set<SemesterTerm>?
-                let coursePrereqs: [String]
+                let prerequisiteExpr: PrereqExpr
                 if let spec = placeholders[courseID] {
                     courseCredits = spec.credits
                     courseAvailability = nil
-                    coursePrereqs = []
+                    prerequisiteExpr = .empty
                 } else if let course = catalog.coursesByID[courseID] {
                     courseCredits = course.credits
                     courseAvailability = course.availability
-                    coursePrereqs = course.prerequisites
+                    prerequisiteExpr = effectivePrerequisiteExpr(for: course, parser: parser)
                 } else {
                     continue
                 }
-                guard coursePrereqs.allSatisfy(completed.contains) else { continue }
+                guard case .satisfied = PrereqEvaluator(
+                    completedBefore: completed,
+                    scheduledThisTerm: []
+                ).evaluate(prerequisiteExpr, mode: .prereq) else { continue }
                 if let availability = courseAvailability, !availability.contains(semester.term) { continue }
                 guard credits + courseCredits <= maxCredits else { continue }
                 selected.append(courseID)
@@ -870,6 +882,24 @@ public struct ScheduleGenerator: Sendable {
         }
 
         return result
+    }
+
+    private func effectivePrerequisiteExpr(for course: Course, parser: PrereqParser) -> PrereqExpr {
+        if let raw = course.rawPrerequisiteText,
+           !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return parser.parse(raw).prerequisiteExpr
+        }
+        if course.prerequisiteExpr != .empty {
+            return course.prerequisiteExpr
+        }
+        switch course.prerequisites.count {
+        case 0:
+            return .empty
+        case 1:
+            return .course(course.prerequisites[0])
+        default:
+            return .all(course.prerequisites.map(PrereqExpr.course))
+        }
     }
 
     private func pathwayName(_ index: Int) -> String {
@@ -992,10 +1022,15 @@ public struct ConflictDetector: Sendable {
         self.catalog = catalog
     }
 
-    public func warnings(for pathway: Pathway, overrides: [ConflictOverride]) -> [ConflictWarning] {
+    public func warnings(
+        for pathway: Pathway,
+        overrides: [ConflictOverride],
+        activeProgramTitle: String? = nil
+    ) -> [ConflictWarning] {
         let coursesByID = catalog.coursesByID
         var completedBefore = Set<String>()
         var warnings: [ConflictWarning] = []
+        let parser = PrereqParser(coursesByID: coursesByID, activeProgramTitle: activeProgramTitle)
 
         for semester in pathway.semesters.sorted(by: { $0.id < $1.id }) {
             let realInThisTerm = Set(semester.courseIDs.filter { !PathwayPlaceholder.isPlaceholder($0) })
@@ -1022,7 +1057,7 @@ public struct ConflictDetector: Sendable {
                     ))
                 }
 
-                let prereqExpr = Self.effectivePrerequisiteExpr(for: course)
+                let prereqExpr = Self.effectivePrerequisiteExpr(for: course, parser: parser)
                 if case .unmet(let missing, let original) = evaluator.evaluate(prereqExpr, mode: .prereq) {
                     warnings.append(warning(
                         courseID: courseID,
@@ -1039,7 +1074,8 @@ public struct ConflictDetector: Sendable {
                     ))
                 }
 
-                if case .unmet(let missing, _) = evaluator.evaluate(course.corequisiteExpr, mode: .coreq) {
+                let coreqExpr = Self.effectiveCorequisiteExpr(for: course, parser: parser)
+                if case .unmet(let missing, _) = evaluator.evaluate(coreqExpr, mode: .coreq) {
                     let rendered = missing.displayString(coursesByID: coursesByID)
                     warnings.append(warning(
                         courseID: courseID,
@@ -1056,18 +1092,30 @@ public struct ConflictDetector: Sendable {
         return warnings
     }
 
-    private static func effectivePrerequisiteExpr(for course: Course) -> PrereqExpr {
-        if case .empty = course.prerequisiteExpr {
-            switch course.prerequisites.count {
-            case 0:
-                return .empty
-            case 1:
-                return .course(course.prerequisites[0])
-            default:
-                return .all(course.prerequisites.map(PrereqExpr.course))
-            }
+    private static func effectivePrerequisiteExpr(for course: Course, parser: PrereqParser) -> PrereqExpr {
+        if let raw = course.rawPrerequisiteText,
+           !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return parser.parse(raw).prerequisiteExpr
         }
-        return course.prerequisiteExpr
+        if course.prerequisiteExpr != .empty {
+            return course.prerequisiteExpr
+        }
+        switch course.prerequisites.count {
+        case 0:
+            return .empty
+        case 1:
+            return .course(course.prerequisites[0])
+        default:
+            return .all(course.prerequisites.map(PrereqExpr.course))
+        }
+    }
+
+    private static func effectiveCorequisiteExpr(for course: Course, parser: PrereqParser) -> PrereqExpr {
+        if let raw = course.rawPrerequisiteText,
+           !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return parser.parse(raw).corequisiteExpr
+        }
+        return course.corequisiteExpr
     }
 
     private static func prereqMessage(

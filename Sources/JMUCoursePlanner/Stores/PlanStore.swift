@@ -56,7 +56,11 @@ final class PlanStore: ObservableObject {
 
     var warnings: [ConflictWarning] {
         guard let catalog, let activePathway else { return [] }
-        return ConflictDetector(catalog: catalog).warnings(for: activePathway, overrides: plan.overrides)
+        return ConflictDetector(catalog: catalog).warnings(
+            for: activePathway,
+            overrides: plan.overrides,
+            activeProgramTitle: effectiveActiveProgram?.title
+        )
     }
 
     var progress: GraduationProgress? {

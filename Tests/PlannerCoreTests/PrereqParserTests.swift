@@ -258,6 +258,60 @@ final class PrereqCoreqTests: XCTestCase {
     }
 }
 
+final class PrereqIrregularTextTests: XCTestCase {
+    private static let stubCatalog: [String: Course] = [
+        "cs-149": Course(id: "cs-149", code: "CS 149", title: "", credits: 3, availability: nil, prerequisites: []),
+        "cs-159": Course(id: "cs-159", code: "CS 159", title: "", credits: 3, availability: nil, prerequisites: []),
+        "math-220": Course(id: "math-220", code: "MATH 220", title: "", credits: 3, availability: nil, prerequisites: []),
+        "math-235": Course(id: "math-235", code: "MATH 235", title: "", credits: 3, availability: nil, prerequisites: [])
+    ]
+
+    func testGradePhraseBeforeOneOfFollowingDoesNotBecomeUnknown() {
+        let r = PrereqParser(coursesByID: Self.stubCatalog)
+            .parse("Prerequisite: a grade of C or better in one of the following: CS 149, MATH 235.")
+
+        XCTAssertEqual(r.prerequisiteExpr, .any([.course("cs-149"), .course("math-235")]))
+        XCTAssertFalse(r.hasUnknownTokens)
+    }
+
+    func testCoreqGradePhraseBeforeOneOfFollowingParsesCourseList() {
+        let r = PrereqParser(coursesByID: Self.stubCatalog)
+            .parse("Corequisite: a grade of C or better in one of the following: CS 149 or MATH 235.")
+
+        XCTAssertEqual(r.corequisiteExpr, .any([.course("cs-149"), .course("math-235")]))
+        XCTAssertFalse(r.hasUnknownTokens)
+    }
+
+    func testMatchingMajorUsesMajorSpecificClause() {
+        let r = PrereqParser(coursesByID: Self.stubCatalog, activeProgramTitle: "Computer Science, B.S.")
+            .parse("Prerequisite: For Computer Science majors: CS 159. For non Computer Science majors: MATH 235.")
+
+        XCTAssertEqual(r.prerequisiteExpr, .course("cs-159"))
+    }
+
+    func testNonMatchingMajorUsesNonMajorClause() {
+        let r = PrereqParser(coursesByID: Self.stubCatalog, activeProgramTitle: "Computer Information Systems, B.B.A.")
+            .parse("Prerequisite: For Computer Science majors: CS 159. For non Computer Science majors: MATH 235.")
+
+        XCTAssertEqual(r.prerequisiteExpr, .course("math-235"))
+    }
+
+    func testNoActiveMajorPrefersNonMajorClause() {
+        let r = PrereqParser(coursesByID: Self.stubCatalog)
+            .parse("Prerequisite: For Computer Science majors: CS 159. For non Computer Science majors: MATH 235.")
+
+        XCTAssertEqual(r.prerequisiteExpr, .course("math-235"))
+    }
+
+    func testUnrelatedMajorSpecificClauseIsIgnoredWhenNoNonMajorClauseExists() {
+        let r = PrereqParser(coursesByID: Self.stubCatalog, activeProgramTitle: "Psychology, B.S.")
+            .parse("Prerequisite: For Computer Science majors: CS 159.")
+
+        XCTAssertEqual(r.prerequisiteExpr, .empty)
+        XCTAssertFalse(r.hasUnknownTokens)
+    }
+}
+
 /// Regression suite mirroring the prereq-text patterns observed in JMU's
 /// course detail pages. The `_live_*.html` fixtures are program-listing
 /// HTML and do not embed prereq sentences themselves; the catalog parses

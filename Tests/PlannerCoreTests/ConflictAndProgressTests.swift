@@ -498,3 +498,49 @@ struct ConflictDetectorPrereqWiringTests {
         )
     }()
 }
+
+@Suite("Conflict detector conditional prereq clauses")
+struct ConflictDetectorConditionalPrereqTests {
+    @Test("matching major uses major-specific prereq branch")
+    func matchingMajorUsesMajorSpecificBranch() {
+        let pathway = Pathway(id: "p", name: "P", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2024, term: .fall), courseIDs: ["math-235"]),
+            SemesterPlan(id: SemesterIdentity(year: 2025, term: .fall), courseIDs: ["cs-240"])
+        ])
+
+        let warnings = ConflictDetector(catalog: Self.catalog).warnings(
+            for: pathway,
+            overrides: [],
+            activeProgramTitle: "Computer Science, B.S."
+        )
+
+        #expect(warnings.contains { $0.kind == .missingPrerequisite && $0.courseID == "cs-240" })
+    }
+
+    @Test("non-matching major uses non-major prereq branch")
+    func nonMatchingMajorUsesNonMajorBranch() {
+        let pathway = Pathway(id: "p", name: "P", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2024, term: .fall), courseIDs: ["math-235"]),
+            SemesterPlan(id: SemesterIdentity(year: 2025, term: .fall), courseIDs: ["cs-240"])
+        ])
+
+        let warnings = ConflictDetector(catalog: Self.catalog).warnings(
+            for: pathway,
+            overrides: [],
+            activeProgramTitle: "Computer Information Systems, B.B.A."
+        )
+
+        #expect(!warnings.contains { $0.kind == .missingPrerequisite && $0.courseID == "cs-240" })
+    }
+
+    private static let catalog: Catalog = {
+        let cs159 = Course(id: "cs-159", code: "CS 159", title: "Intro", credits: 3, availability: nil, prerequisites: [])
+        let math235 = Course(id: "math-235", code: "MATH 235", title: "Calc I", credits: 3, availability: nil, prerequisites: [])
+        var cs240 = Course(id: "cs-240", code: "CS 240", title: "Data", credits: 3, availability: nil, prerequisites: [])
+        cs240.rawPrerequisiteText = "Prerequisite: For Computer Science majors: CS 159. For non Computer Science majors: MATH 235."
+        return Catalog.fixture(
+            courses: [cs159, math235, cs240],
+            program: Program.fixture(id: "cs-bs", title: "Computer Science, B.S.", requirements: [])
+        )
+    }()
+}

@@ -47,3 +47,30 @@ final class PrereqEvaluatorPrereqModeTests: XCTestCase {
         } else { XCTFail("expected unmet") }
     }
 }
+
+final class PrereqEvaluatorCoreqModeTests: XCTestCase {
+    func testCoreqSatisfiedBySameTerm() {
+        let e = PrereqEvaluator(completedBefore: [], scheduledThisTerm: ["math-235"])
+        if case .satisfied = e.evaluate(.course("math-235"), mode: .coreq) { /* ok */ }
+        else { XCTFail("expected satisfied") }
+    }
+
+    func testCoreqSatisfiedByEarlierTerm() {
+        let e = PrereqEvaluator(completedBefore: ["math-235"], scheduledThisTerm: [])
+        if case .satisfied = e.evaluate(.course("math-235"), mode: .coreq) { /* ok */ }
+        else { XCTFail("expected satisfied") }
+    }
+
+    func testCoreqUnsatisfiedWhenAbsent() {
+        let e = PrereqEvaluator(completedBefore: [], scheduledThisTerm: ["cs-159"])
+        if case .unmet(let missing, _) = e.evaluate(.course("math-235"), mode: .coreq) {
+            XCTAssertEqual(missing, .course("math-235"))
+        } else { XCTFail("expected unmet") }
+    }
+
+    func testPrereqDoesNotAcceptSameTerm() {
+        let e = PrereqEvaluator(completedBefore: [], scheduledThisTerm: ["cs-159"])
+        if case .unmet = e.evaluate(.course("cs-159"), mode: .prereq) { /* ok */ }
+        else { XCTFail("expected unmet in prereq mode") }
+    }
+}

@@ -128,17 +128,52 @@ final class PlanStore: ObservableObject {
 
     func selectRequirementOption(key: String, courseIDs: [String]?, in category: RequirementCategory) {
         let previousSelection = selectedRequirementOption(for: key, in: category)
+        var updatedPlan = plan
         if let courseIDs {
-            plan.requirementSelections[key] = courseIDs
+            updatedPlan.requirementSelections[key] = courseIDs
         } else {
-            plan.requirementSelections.removeValue(forKey: key)
+            updatedPlan.requirementSelections.removeValue(forKey: key)
         }
         swapRequirementChoiceInExistingPathways(
+            plan: &updatedPlan,
             category: category,
             previousCourseIDs: previousSelection,
             newCourseIDs: courseIDs
         )
+        plan = updatedPlan
         autosave()
+    }
+
+    private func swapRequirementChoiceInExistingPathways(
+        plan updatedPlan: inout SavedStudentPlan,
+        category: RequirementCategory,
+        previousCourseIDs: [String]?,
+        newCourseIDs: [String]?
+    ) {
+        let defaultCourseIDs = selectableCourseOptions(in: category).first ?? Array(category.courseOptions.first?.prefix(1) ?? [])
+        let oldCourseIDs = previousCourseIDs ?? defaultCourseIDs
+        let replacementCourseIDs = newCourseIDs ?? defaultCourseIDs
+        let oldSet = Set(oldCourseIDs)
+        let replacementSet = Set(replacementCourseIDs)
+        guard !oldSet.isEmpty, !replacementCourseIDs.isEmpty else { return }
+        guard oldCourseIDs != replacementCourseIDs else { return }
+
+        for pathwayIndex in updatedPlan.pathways.indices {
+            guard let insertionPoint = firstScheduledCourse(in: updatedPlan.pathways[pathwayIndex], matching: oldSet) else {
+                continue
+            }
+
+            var pathway = updatedPlan.pathways[pathwayIndex]
+            for semesterIndex in pathway.semesters.indices {
+                pathway.semesters[semesterIndex].courseIDs.removeAll { courseID in
+                    oldSet.contains(courseID) || replacementSet.contains(courseID)
+                }
+            }
+
+            let insertionIndex = min(insertionPoint.courseIndex, pathway.semesters[insertionPoint.semesterIndex].courseIDs.count)
+            pathway.semesters[insertionPoint.semesterIndex].courseIDs.insert(contentsOf: replacementCourseIDs, at: insertionIndex)
+            updatedPlan.pathways[pathwayIndex] = pathway
+        }
     }
 
     func activeRequirementSelectionsByRequirementKey() -> [String: [String]] {

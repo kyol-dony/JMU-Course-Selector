@@ -97,6 +97,27 @@ struct RequirementSelectionStoreTests {
     }
 
     @Test
+    func selectingRequirementOptionKeepsGeneratedPathwaysActive() {
+        let store = PlanStore()
+        store.catalog = requirementSelectionStoreCatalog()
+        store.plan.programID = "cis-bba"
+        store.plan.workload = .light
+        store.generateSchedules()
+        let requirement = store.effectiveActiveProgram!.requirements[0]
+        let key = store.majorRequirementSelectionKey(for: requirement)!
+        let originalPathwayIDs = store.plan.pathways.map(\.id)
+        let originalActivePathwayID = store.plan.activePathwayID
+
+        store.selectRequirementOption(key: key, courseIDs: ["CIS-484"], in: requirement)
+
+        #expect(store.plan.pathways.map(\.id) == originalPathwayIDs)
+        #expect(store.plan.activePathwayID == originalActivePathwayID)
+        #expect(store.activePathway?.semesters.flatMap(\.courseIDs).contains("CIS-484") == true)
+        #expect(store.activePathway?.semesters.flatMap(\.courseIDs).contains("CIS-464") == false)
+        #expect(store.progress != nil)
+    }
+
+    @Test
     func normalizedSelectionsUseRequirementSelectionKeyOnlyForCurrentProgram() {
         let store = PlanStore()
         store.catalog = requirementSelectionStoreCatalog()

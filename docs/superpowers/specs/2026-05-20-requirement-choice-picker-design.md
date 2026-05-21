@@ -9,7 +9,7 @@ Students should be able to choose preferred courses for requirements that alread
 - Choices are limited to parsed catalog options. No free-form course assignment in this feature.
 - Store choices on the saved plan, not on the catalog.
 - A choice applies to one effective requirement in the selected major/concentration/minor context.
-- Changing a requirement choice clears generated pathways, because the plan must regenerate.
+- Changing a requirement choice must not clear generated pathways or hide existing schedule/progress/catalog views. The choice is staged and applied only when the student clicks regenerate.
 - Transfer credit can still satisfy a requirement and prevent duplicate scheduling.
 
 ## Architecture
@@ -27,7 +27,7 @@ The key is a stable requirement scope plus requirement ID, such as:
 
 The value is the selected parsed option course IDs. Using `[String]` supports single-course choices, OR groups, and future multi-course option groups without changing the schema.
 
-`PlanStore` owns selection updates and validation. PlannerCore receives the selection map and applies it while building required course IDs.
+`PlanStore` owns selection updates and validation. PlannerCore receives the committed selection map during pathway generation and applies it while building required course IDs.
 
 ## Components
 
@@ -41,7 +41,7 @@ Invalid selections should not crash. If a saved selected option no longer matche
 
 `SavedStudentPlan` adds `requirementSelections` with default empty dictionary and Codable migration support. Existing saved plans decode as empty.
 
-Changing major, concentration, minors, minor pathway, transfer credit, or requirement selections should clear generated pathways where existing pathways could become stale.
+Changing major, concentration, minors, minor pathway, or transfer credit should clear generated pathways where existing pathways could become stale. Requirement selections should not clear generated pathways; they remain pending until the student regenerates.
 
 ### Store
 
@@ -53,7 +53,7 @@ Changing major, concentration, minors, minor pathway, transfer credit, or requir
 - `clearRequirementSelection(key:)`
 - validation that removes selections for requirements or options no longer present in the effective plan
 
-`remainingCourses(in:)`, progress display helpers, and schedule generation should use the selected option when present so the UI and scheduler agree.
+My Plan can show pending selected options, but Schedule and Progress must continue to reflect the currently generated pathway until the student regenerates. Schedule generation uses the pending/committed selection map when regeneration is explicitly requested.
 
 ### UI
 
@@ -73,9 +73,9 @@ No picker appears for requirements with empty `courseOptions`; those remain part
 
 ### Progress and Schedule
 
-Progress should still count completion by category. A selected option narrows what the app lists as remaining and what the scheduler queues, but transfer credit or manually scheduled matching alternates still satisfy the requirement.
+Progress should still count completion by category based on the currently generated pathway. Pending selected options should not change Progress or Schedule before regeneration. During regeneration, a selected option narrows what the scheduler queues, but transfer credit or manually scheduled matching alternates still satisfy the requirement.
 
-Schedule highlighting should continue to use effective requirement categories. If a category has a selected option, highlighting should prioritize selected option courses.
+Schedule highlighting should continue to use effective requirement categories from the current generated pathway. Pending selections should not change Schedule highlighting before regeneration.
 
 ## Data Flow
 
@@ -83,15 +83,16 @@ Schedule highlighting should continue to use effective requirement categories. I
 2. App renders requirement progress.
 3. For choice requirements, app shows picker from parsed options.
 4. User selects one parsed option.
-5. Store writes `requirementSelections[key] = selectedCourseIDs`.
-6. Store clears generated pathways.
-7. User regenerates plan.
-8. Scheduler applies selected option while building required course list.
-9. Generated schedule includes selected elective and excludes unselected parsed alternatives.
+5. Store stages the selected course IDs without mutating generated pathways.
+6. Schedule, Progress, and Catalog remain viewable and unchanged.
+7. User can stage additional requirement choices.
+8. User clicks `Regenerate pathways`.
+9. Store commits staged choices and scheduler applies selected options while building the required course list.
+10. Generated schedule includes selected electives and excludes unselected parsed alternatives.
 
 ## Error Handling
 
-If selected option no longer exists after catalog refresh, remove the selection and clear generated pathways.
+If selected option no longer exists after catalog refresh, remove the selection. Do not clear existing generated pathways solely because a requirement selection changed.
 
 If selected option contains courses missing from `catalog.coursesByID`, ignore missing course IDs and surface existing partial-verification status; do not fail the whole schedule.
 
@@ -102,7 +103,8 @@ If all parsed options for a requirement become unavailable or empty, remove the 
 - Scheduler test: selected option is scheduled instead of first parsed option.
 - Scheduler test: unselected alternatives are excluded.
 - Scheduler test: transfer credit for selected option prevents duplicate scheduling.
-- Store test: selecting a requirement option persists map entry and clears pathways.
+- Store test: selecting a requirement option stages a pending choice and leaves pathways unchanged.
+- Store test: regenerating commits staged choices and applies them to the generated pathway.
 - Store test: invalid requirement selection is removed after catalog/effective-plan validation.
 - UI/store test: prose-only requirement has no selectable options.
 - Progress/remaining test: remaining courses reflect selected option.
@@ -121,4 +123,4 @@ Update `LIMITATIONS.md` during implementation:
 
 - Requirement choices are limited to parsed catalog options.
 - Prose-only requirements still require advisor review.
-- Generated pathways must be regenerated after changing a requirement choice.
+- Requirement choices are staged until the student explicitly regenerates pathways.

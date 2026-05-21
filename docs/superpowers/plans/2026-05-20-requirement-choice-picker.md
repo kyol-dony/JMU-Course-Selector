@@ -23,7 +23,7 @@
   - Build scoped storage keys.
   - Expose selected option, selectable options, display labels, remaining-course helpers, and mutation API.
   - Normalize selections for `PlannerCore`.
-  - Clear generated pathways when a requirement selection changes.
+  - Stage requirement selections without clearing generated pathways; apply them only when regenerating.
   - Validate selections after loading catalog/plans and after major/concentration changes.
 - Modify `Sources/JMUCoursePlanner/Views/Tabs/MyPlanView.swift`
   - Replace the single button-wrapped requirement row with a row containing a clickable progress rail plus a picker for selectable requirements.
@@ -34,7 +34,7 @@
 - Create `Tests/PlannerCoreTests/RequirementSelectionCoreTests.swift`
   - Core scheduler/progress tests for selected parsed options.
 - Create `Tests/PlannerCoreTests/RequirementSelectionStoreTests.swift`
-  - App/store tests for persistence, normalization, pathway invalidation, and stale-selection pruning.
+  - App/store tests for persistence, staging, normalization, no-clear pathway behavior, regeneration application, and stale-selection pruning.
 
 ## Task 1: Core Requirement Selection Logic
 
@@ -405,7 +405,7 @@ struct RequirementSelectionStoreTests {
     }
 
     @Test
-    func selectingRequirementOptionPersistsChoiceAndClearsGeneratedPathways() {
+    func selectingRequirementOptionStagesChoiceAndLeavesGeneratedPathwaysActive() {
         let store = PlanStore()
         store.catalog = requirementSelectionStoreCatalog()
         store.plan.programID = "cis-bba"
@@ -420,9 +420,10 @@ struct RequirementSelectionStoreTests {
 
         store.selectRequirementOption(key: key, courseIDs: ["CIS-484"])
 
-        #expect(store.plan.requirementSelections[key] == ["CIS-484"])
-        #expect(store.plan.pathways.isEmpty)
-        #expect(store.plan.activePathwayID == nil)
+        #expect(store.plan.requirementSelections[key] == nil)
+        #expect(store.selectedRequirementOption(for: key) == ["CIS-484"])
+        #expect(store.plan.pathways.count == 1)
+        #expect(store.plan.activePathwayID == "path-1")
     }
 
     @Test
@@ -563,13 +564,12 @@ In `Sources/JMUCoursePlanner/Stores/PlanStore.swift`, after `completedCourseIDs`
 
     func selectRequirementOption(key: String, courseIDs: [String]?) {
         if let courseIDs {
-            plan.requirementSelections[key] = courseIDs
+            pendingRequirementSelections[key] = courseIDs
+            clearedPendingRequirementSelectionKeys.remove(key)
         } else {
-            plan.requirementSelections.removeValue(forKey: key)
+            pendingRequirementSelections.removeValue(forKey: key)
+            clearedPendingRequirementSelectionKeys.insert(key)
         }
-        plan.pathways = []
-        plan.activePathwayID = nil
-        autosave()
     }
 
     func activeRequirementSelectionsByRequirementKey() -> [String: [String]] {

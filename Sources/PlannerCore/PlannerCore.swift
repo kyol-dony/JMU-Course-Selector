@@ -672,9 +672,11 @@ public struct TransferCreditMapper: Sendable {
 
 public struct ScheduleGenerator: Sendable {
     public var catalog: Catalog
+    public var strictPrereqs: Bool
 
-    public init(catalog: Catalog) {
+    public init(catalog: Catalog, strictPrereqs: Bool = false) {
         self.catalog = catalog
+        self.strictPrereqs = strictPrereqs
     }
 
     public func generatePathways(
@@ -847,6 +849,14 @@ public struct ScheduleGenerator: Sendable {
             if selected.isEmpty {
                 emptySemesterCount += 1
                 guard emptySemesterCount <= 8 else {
+                    if !strictPrereqs {
+                        if result.isEmpty {
+                            result.append(SemesterPlan(id: semester, courseIDs: remaining))
+                        } else {
+                            result[result.count - 1].courseIDs.append(contentsOf: remaining)
+                        }
+                        return result
+                    }
                     throw PlannerError.impossibleSchedule("Could not place the remaining courses while respecting prerequisites and semester availability.")
                 }
                 semester = semester.next

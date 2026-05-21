@@ -204,3 +204,51 @@ struct ScheduleGeneratorTests {
         #expect(names.contains { $0.hasPrefix("Minor (Robotics Minor)") })
     }
 }
+
+@Suite("Schedule generator best-effort prereq fallback")
+struct ScheduleGeneratorBestEffortTests {
+    @Test("best-effort places course when prerequisite is impossible")
+    func bestEffortPlacesCourseEvenWhenPrereqUnmet() throws {
+        let catalog = Self.catalogWithImpossiblePrereq()
+        let generator = ScheduleGenerator(catalog: catalog)
+
+        let pathways = try generator.generatePathways(
+            for: "cs-bs",
+            workload: .standard,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        )
+
+        let scheduled = pathways.first?.semesters.flatMap(\.courseIDs) ?? []
+        #expect(scheduled.contains("cs-240"))
+    }
+
+    @Test("strict prereq mode still throws")
+    func strictPrereqsStillThrows() {
+        let catalog = Self.catalogWithImpossiblePrereq()
+        let generator = ScheduleGenerator(catalog: catalog, strictPrereqs: true)
+
+        #expect(throws: PlannerError.self) {
+            try generator.generatePathways(
+                for: "cs-bs",
+                workload: .standard,
+                transferCredits: [],
+                starting: SemesterIdentity(year: 2026, term: .fall)
+            )
+        }
+    }
+
+    private static func catalogWithImpossiblePrereq() -> Catalog {
+        let cs240 = Course(id: "cs-240", code: "CS 240", title: "Data", credits: 3, availability: nil, prerequisites: ["cs-159"])
+        return Catalog.fixture(
+            courses: [cs240],
+            program: Program.fixture(
+                id: "cs-bs",
+                title: "Computer Science, B.S.",
+                requirements: [
+                    RequirementCategory(id: "core", name: "Core", requiredCredits: 3, courseOptions: [["cs-240"]])
+                ]
+            )
+        )
+    }
+}

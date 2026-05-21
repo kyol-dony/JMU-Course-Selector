@@ -99,24 +99,51 @@ struct CourseDetailSheet: View {
 
     @ViewBuilder
     private var prereqSection: some View {
-        if !course.prerequisites.isEmpty {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
-                SectionHeader("Prerequisites")
-                FlowLayout(spacing: 6) {
-                    ForEach(course.prerequisites, id: \.self) { id in
-                        Button {
-                            store.showCourse(id)
-                        } label: {
-                            Text(catalog.coursesByID[id]?.code ?? id)
-                                .font(DesignTokens.Typography.small)
-                                .padding(.horizontal, DesignTokens.Spacing.s)
-                                .padding(.vertical, 4)
-                                .background(Capsule().fill(DesignTokens.Colors.brandPurpleSoft))
-                                .foregroundStyle(DesignTokens.Colors.brandPurple)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+        let prerequisiteExpr = displayedPrerequisiteExpr
+        if prerequisiteExpr != .empty {
+            requirementExpressionSection(
+                title: "Prereqs",
+                expr: prerequisiteExpr,
+                showsUnknownNote: course.hasUnknownPrereqTokens
+            )
+        }
+
+        if course.corequisiteExpr != .empty {
+            requirementExpressionSection(
+                title: "Coreqs",
+                expr: course.corequisiteExpr,
+                showsUnknownNote: false
+            )
+        }
+    }
+
+    private var displayedPrerequisiteExpr: PrereqExpr {
+        if course.prerequisiteExpr != .empty {
+            return course.prerequisiteExpr
+        }
+        switch course.prerequisites.count {
+        case 0:
+            return .empty
+        case 1:
+            return .course(course.prerequisites[0])
+        default:
+            return .all(course.prerequisites.map(PrereqExpr.course))
+        }
+    }
+
+    private func requirementExpressionSection(title: String, expr: PrereqExpr, showsUnknownNote: Bool) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
+            Text(title)
+                .font(DesignTokens.Typography.small)
+                .foregroundStyle(DesignTokens.Colors.textTertiary)
+                .textCase(.uppercase)
+            Text(expr.displayString(coursesByID: catalog.coursesByID))
+                .font(DesignTokens.Typography.body)
+                .foregroundStyle(DesignTokens.Colors.textPrimary)
+            if showsUnknownNote {
+                Text("Some terms couldn't be parsed. See JMU catalog.")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textTertiary)
             }
         }
     }

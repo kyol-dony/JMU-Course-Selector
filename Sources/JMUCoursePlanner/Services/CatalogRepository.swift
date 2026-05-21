@@ -186,11 +186,14 @@ struct CatalogRepository {
         try encoder.encode(catalog).write(to: url)
     }
 
-    /// Bump this whenever cached catalog requirement shape changes. v4 handles
+    /// Bump this whenever cached catalog requirement shape changes. v6 adds
+    /// parsed prerequisite/corequisite expression fields, so older v5 caches
+    /// need a fresh HTML refresh before warnings and detail sheets can use them.
+    /// v4 handles
     /// JMU pages that label their concentration section "Required Concentration",
     /// so older v3 caches may still have CIS concentrations flattened into the
     /// parent major requirements.
-    private static let cacheSchemaVersion = 5
+    private static let cacheSchemaVersion = 6
 
     private func cachedHTMLCatalogURL() throws -> URL {
         let directory = try supportDirectory().appending(path: "Catalog", directoryHint: .isDirectory)

@@ -85,12 +85,16 @@ struct TopBar: View {
                 Text(tab.title)
                     .font(DesignTokens.Typography.label)
             }
-            .foregroundStyle(isActive ? .white : DesignTokens.Colors.textSecondary)
+            .foregroundStyle(isActive ? DesignTokens.Colors.brandGold : DesignTokens.Colors.textSecondary)
             .padding(.horizontal, DesignTokens.Spacing.m)
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isActive ? DesignTokens.Colors.brandPurple : .clear)
+                    .fill(.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(isActive ? DesignTokens.Colors.brandPurple : .clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

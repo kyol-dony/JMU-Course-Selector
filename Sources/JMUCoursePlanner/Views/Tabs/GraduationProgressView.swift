@@ -28,7 +28,13 @@ struct GraduationProgressView: View {
     }
 
     private func donut(progress: GraduationProgress) -> some View {
-        Card {
+        let creditsLeft = max(progress.overallRequiredCredits - progress.overallCompletedCredits, 0)
+        let categoriesDone = progress.categories.filter { $0.remainingCredits == 0 }.count
+        let categoriesTotal = progress.categories.count
+        let semestersLeft = computeSemestersLeft(target: progress.projectedGraduation)
+        let upcoming = nextUpcomingSemester()
+
+        return Card {
             HStack(alignment: .center, spacing: DesignTokens.Spacing.xl) {
                 ZStack {
                     Circle()
@@ -36,7 +42,7 @@ struct GraduationProgressView: View {
                     Circle()
                         .trim(from: 0, to: CGFloat(progress.overallFraction))
                         .stroke(
-                            DesignTokens.Colors.brandPurple,
+                            DesignTokens.Colors.brandGold,
                             style: StrokeStyle(lineWidth: 14, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))
@@ -65,9 +71,92 @@ struct GraduationProgressView: View {
                             .foregroundStyle(DesignTokens.Colors.textPrimary)
                     }
                 }
-                Spacer(minLength: 0)
+                .frame(minWidth: 200, alignment: .leading)
+
+                Spacer(minLength: DesignTokens.Spacing.l)
+
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.m) {
+                    Text("At a glance")
+                        .font(DesignTokens.Typography.small)
+                        .foregroundStyle(DesignTokens.Colors.textTertiary)
+                        .textCase(.uppercase)
+                    HStack(alignment: .top, spacing: DesignTokens.Spacing.l) {
+                        miniStat(value: "\(creditsLeft)", label: "credits left")
+                        miniStat(value: "\(categoriesDone)/\(categoriesTotal)", label: "categories")
+                        miniStat(
+                            value: semestersLeft.map(String.init) ?? "—",
+                            label: semestersLeft == 1 ? "semester" : "semesters"
+                        )
+                    }
+                    nextTermButton(upcoming)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private func miniStat(value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(DesignTokens.Typography.title)
+                .monospacedDigit()
+                .foregroundStyle(DesignTokens.Colors.textPrimary)
+            Text(label)
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(DesignTokens.Colors.textTertiary)
+        }
+    }
+
+    @ViewBuilder
+    private func nextTermButton(_ semester: SemesterPlan?) -> some View {
+        if let semester {
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    store.selectedTab = .schedule
+                }
+            } label: {
+                HStack(spacing: DesignTokens.Spacing.s) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Next term")
+                            .font(DesignTokens.Typography.small)
+                            .foregroundStyle(DesignTokens.Colors.brandPurple.opacity(0.75))
+                            .textCase(.uppercase)
+                        Text("\(semester.id.displayName) · \(semester.courseIDs.count) course\(semester.courseIDs.count == 1 ? "" : "s")")
+                            .font(DesignTokens.Typography.bodyEmphasized)
+                            .foregroundStyle(DesignTokens.Colors.brandPurple)
+                            .monospacedDigit()
+                    }
+                    Spacer(minLength: DesignTokens.Spacing.s)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignTokens.Colors.brandPurple)
+                }
+                .padding(.horizontal, DesignTokens.Spacing.m)
+                .padding(.vertical, DesignTokens.Spacing.s)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+                        .fill(DesignTokens.Colors.brandPurpleSoft)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func computeSemestersLeft(target: SemesterIdentity?) -> Int? {
+        guard let target else { return nil }
+        let currentYear = Calendar.current.component(.year, from: Date())
+        let monthsAway = max((target.year - currentYear) * 12, 0)
+        return max(monthsAway / 6, 1)
+    }
+
+    private func nextUpcomingSemester() -> SemesterPlan? {
+        guard let semesters = store.activePathway?.semesters else { return nil }
+        let month = Calendar.current.component(.month, from: Date())
+        let year = Calendar.current.component(.year, from: Date())
+        let currentTerm: SemesterTerm = month >= 7 ? .fall : .spring
+        let nowID = SemesterIdentity(year: year, term: currentTerm)
+        return semesters.sorted { $0.id < $1.id }.first { $0.id >= nowID }
     }
 
     private func categoryList(progress: GraduationProgress, program: Program) -> some View {

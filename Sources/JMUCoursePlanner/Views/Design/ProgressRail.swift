@@ -15,7 +15,7 @@ struct ProgressRail: View {
     }
 
     private var fillColor: Color {
-        isVerified ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.warning
+        isVerified ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.brandGold
     }
 
     var body: some View {

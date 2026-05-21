@@ -49,7 +49,7 @@ struct MyPlanView: View {
                         systemImage: program.requirementDataComplete ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"
                     )
                 }
-                Text("\(program.college) - \(program.department)")
+                Text("\(program.college) · \(program.department)")
                     .font(DesignTokens.Typography.body)
                     .foregroundStyle(DesignTokens.Colors.textSecondary)
                 if !program.requirementDataComplete {
@@ -65,7 +65,7 @@ struct MyPlanView: View {
     @ViewBuilder
     private var stats: some View {
         if let progress = store.progress {
-            HStack(spacing: DesignTokens.Spacing.l) {
+            HStack(alignment: .top, spacing: DesignTokens.Spacing.l) {
                 completionTile(progress: progress)
                 graduationTile(progress: progress)
             }
@@ -73,51 +73,75 @@ struct MyPlanView: View {
     }
 
     private func completionTile(progress: GraduationProgress) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
-            Text("Completion")
-                .font(DesignTokens.Typography.small)
-                .foregroundStyle(DesignTokens.Colors.textTertiary)
-                .textCase(.uppercase)
-            Text("\(Int(progress.overallFraction * 100))%")
-                .font(.system(size: 44, weight: .bold))
-                .monospacedDigit()
-                .foregroundStyle(DesignTokens.Colors.brandPurple)
-            ProgressRail(fraction: progress.overallFraction)
-            Text("\(progress.overallCompletedCredits) of \(progress.overallRequiredCredits) credits")
+        let pct = Int(progress.overallFraction * 100)
+        let fraction = min(max(progress.overallFraction, 0), 1)
+        let remaining = max(progress.overallRequiredCredits - progress.overallCompletedCredits, 0)
+        return Card {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Completion")
+                    .font(DesignTokens.Typography.small)
+                    .foregroundStyle(DesignTokens.Colors.textTertiary)
+                    .textCase(.uppercase)
+                    .padding(.bottom, DesignTokens.Spacing.xs)
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text("\(pct)")
+                        .font(DesignTokens.Typography.display)
+                        .monospacedDigit()
+                        .foregroundStyle(DesignTokens.Colors.brandPurple)
+                    Text("%")
+                        .font(DesignTokens.Typography.title)
+                        .foregroundStyle(DesignTokens.Colors.brandPurple.opacity(0.6))
+                }
+                .padding(.bottom, DesignTokens.Spacing.s)
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.rail, style: .continuous)
+                        .fill(DesignTokens.Colors.borderSubtle)
+                        .frame(height: 6)
+                    GeometryReader { geo in
+                        RoundedRectangle(cornerRadius: DesignTokens.Radius.rail, style: .continuous)
+                            .fill(DesignTokens.Colors.brandGold)
+                            .frame(width: max(geo.size.width * fraction, fraction > 0 ? 6 : 0), height: 6)
+                    }
+                    .frame(height: 6)
+                }
+                .frame(height: 6)
+                .padding(.bottom, DesignTokens.Spacing.s)
+                Text(
+                    remaining == 0
+                        ? "\(progress.overallCompletedCredits) of \(progress.overallRequiredCredits) credits planned"
+                        : "\(progress.overallCompletedCredits) of \(progress.overallRequiredCredits) credits planned · \(remaining) to go"
+                )
                 .font(DesignTokens.Typography.caption)
                 .foregroundStyle(DesignTokens.Colors.textSecondary)
                 .monospacedDigit()
+            }
         }
-        .padding(DesignTokens.Spacing.l)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: [DesignTokens.Colors.brandPurpleSoft, DesignTokens.Colors.surfaceElevated],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
-                .stroke(DesignTokens.Colors.borderSubtle, lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity)
     }
 
     private func graduationTile(progress: GraduationProgress) -> some View {
         Card {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text("Projected graduation")
                     .font(DesignTokens.Typography.small)
                     .foregroundStyle(DesignTokens.Colors.textTertiary)
                     .textCase(.uppercase)
-                Text(progress.projectedGraduation?.displayName ?? "-")
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundStyle(DesignTokens.Colors.textPrimary)
+                    .padding(.bottom, DesignTokens.Spacing.xs)
+                Text(progress.projectedGraduation?.displayName ?? "Not yet")
+                    .font(DesignTokens.Typography.display)
+                    .monospacedDigit()
+                    .foregroundStyle(
+                        progress.projectedGraduation == nil
+                            ? DesignTokens.Colors.textTertiary
+                            : DesignTokens.Colors.textPrimary
+                    )
+                    .padding(.bottom, DesignTokens.Spacing.s + 6 + DesignTokens.Spacing.s)
                 Text(semestersAwayText(progress: progress))
                     .font(DesignTokens.Typography.caption)
                     .foregroundStyle(DesignTokens.Colors.textSecondary)
+                    .monospacedDigit()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity)
     }
@@ -154,23 +178,17 @@ struct MyPlanView: View {
 
     @ViewBuilder
     private func requirementProgressRow(category: CategoryProgress, requirement: RequirementCategory?) -> some View {
-        // Pure read-only row that mirrors the active pathway. The student
-        // picks specific courses for multi-alternate options from the
-        // Schedule tab's placeholder chips, not from this summary.
-        Button {
-            store.scheduleCategoryFilter = category.id
-            withAnimation(.easeOut(duration: 0.15)) {
-                store.selectedTab = .schedule
+        RequirementProgressRow(
+            category: category,
+            requirement: requirement,
+            remainingCourseCodes: remainingCodes(for: requirement),
+            onTap: {
+                store.scheduleCategoryFilter = category.id
+                withAnimation(.easeOut(duration: 0.15)) {
+                    store.selectedTab = .schedule
+                }
             }
-        } label: {
-            ProgressRail(
-                category: category,
-                hasCourseOptions: !(requirement?.courseOptions.isEmpty ?? true),
-                remainingCourseCodes: remainingCodes(for: requirement)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        )
     }
 
     private func remainingCodes(for category: RequirementCategory?) -> [String] {
@@ -185,6 +203,37 @@ struct MyPlanView: View {
             Button("Regenerate pathways") { store.generateSchedules() }
                 .buttonStyle(.dtTertiary)
             Spacer()
+        }
+    }
+}
+
+private struct RequirementProgressRow: View {
+    var category: CategoryProgress
+    var requirement: RequirementCategory?
+    var remainingCourseCodes: [String]
+    var onTap: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onTap) {
+            ProgressRail(
+                category: category,
+                hasCourseOptions: !(requirement?.courseOptions.isEmpty ?? true),
+                remainingCourseCodes: remainingCourseCodes
+            )
+            .padding(.horizontal, DesignTokens.Spacing.s)
+            .padding(.vertical, DesignTokens.Spacing.xs)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+                    .fill(isHovering ? DesignTokens.Colors.brandPurpleSoft : .clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovering = hovering
+            }
         }
     }
 }

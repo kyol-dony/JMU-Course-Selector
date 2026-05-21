@@ -55,9 +55,24 @@ Rules:
 
 - Real catalog course: parse first three-digit number from `Course.code`.
 - Return `(number / 100) * 100`.
-- Placeholder course: use neutral `200`.
+- Placeholder course: derive a representative level from its selectable alternates.
 - Missing/unknown course: use neutral `200`.
 - Clamp parsed result to `100...400` so odd catalog numbers do not dominate sorting.
+
+## Placeholder And Dropdown Requirements
+
+Gen ed and elective requirements can appear in generated schedules as placeholder courses with a dropdown of valid catalog options. The scheduler should account for their likely difficulty before the student chooses a specific option.
+
+For a placeholder backed by `PlaceholderSpec.alternates`:
+
+1. Parse the level of every alternate course found in the catalog.
+2. Ignore alternates whose level cannot be parsed.
+3. Use the median alternate level as the placeholder's representative level.
+4. If no alternate levels can be parsed, use neutral `200`.
+
+Median is preferred over average because large Gen Ed option sets can include a few unusual course numbers; the placeholder should represent the typical option difficulty. Most choices in a single Gen Ed/elective dropdown should hover around the same level, so this keeps the level ramp aware without pretending it knows the student's final choice.
+
+Changing a dropdown selection in My Plan should not reshuffle the current pathway. The representative placeholder level only affects future schedule generation.
 
 ## Target Level
 
@@ -128,7 +143,7 @@ Add focused scheduler tests:
 - When 100/200/300/400-level courses are all available with no prereqs, earlier semesters contain lower-level courses first.
 - When a 300-level course is only available early and lower-level alternatives are unavailable, scheduler still places the 300-level course.
 - When a high-level course depends on a low-level prereq, the high-level course never appears before the prereq.
-- Placeholder courses use neutral level and do not crash sorting.
+- Placeholder courses use median alternate level and do not crash sorting when some alternates are missing or unparsable.
 
 ## Acceptance Criteria
 

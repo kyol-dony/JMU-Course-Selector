@@ -64,3 +64,14 @@ final class CourseModelTests: XCTestCase {
         XCTAssertFalse(decoded.hasUnknownPrereqTokens)
     }
 }
+
+final class ConflictKindTests: XCTestCase {
+    func testMissingCorequisiteCaseExists() {
+        let k = ConflictKind.missingCorequisite
+        XCTAssertEqual(k.rawValue, "missingCorequisite")
+    }
+
+    func testMissingCorequisiteDisplayName() {
+        XCTAssertEqual(ConflictKind.missingCorequisite.displayName, "Corequisite warning")
+    }
+}

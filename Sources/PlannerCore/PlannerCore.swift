@@ -865,12 +865,14 @@ public struct ScheduleGenerator: Sendable {
 
 public enum ConflictKind: String, Codable, Hashable, Sendable {
     case missingPrerequisite
+    case missingCorequisite
     case unavailableSemester
     case unknownAvailability
 
     public var displayName: String {
         switch self {
         case .missingPrerequisite: "Prerequisite warning"
+        case .missingCorequisite: "Corequisite warning"
         case .unavailableSemester: "Semester availability warning"
         case .unknownAvailability: "Availability unknown"
         }

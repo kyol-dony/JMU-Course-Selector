@@ -173,19 +173,27 @@ struct GraduationProgressView: View {
                 let requirement = requirementsByID[category.id]
                 let hasOptions = !(requirement?.courseOptions.isEmpty ?? true)
                 Card {
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.m) {
-                        HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
+                        HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
                             Text(category.name)
                                 .font(DesignTokens.Typography.bodyEmphasized)
-                            if category.verificationStatus != .verified {
+                                .foregroundStyle(DesignTokens.Colors.textPrimary)
+                            if category.remainingCredits == 0 {
+                                StatusPill(text: "Complete", tone: .success, systemImage: "checkmark.circle.fill")
+                            } else if category.verificationStatus != .verified {
                                 StatusPill(text: "Partial", tone: .warning)
                             }
-                            Spacer()
+                            Spacer(minLength: DesignTokens.Spacing.s)
+                            Text("\(category.completedCredits)/\(category.requiredCredits)")
+                                .font(DesignTokens.Typography.caption)
+                                .monospacedDigit()
+                                .foregroundStyle(DesignTokens.Colors.textTertiary)
                         }
                         ProgressRail(
                             category: category,
                             hasCourseOptions: hasOptions,
-                            remainingCourseCodes: remainingCodes(for: requirement, fallback: category)
+                            remainingCourseCodes: remainingCodes(for: requirement, fallback: category),
+                            showHeader: false
                         )
                         if let note = requirement?.note, !hasOptions {
                             Text(note)

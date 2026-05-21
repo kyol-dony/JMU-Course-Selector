@@ -8,6 +8,7 @@ struct ProgressRail: View {
     var remainingCourseCodes: [String]
     var hasCourseOptions: Bool
     var isVerified: Bool
+    var showHeader: Bool = true
 
     private var fraction: Double {
         guard requiredCredits > 0 else { return 1 }
@@ -20,7 +21,7 @@ struct ProgressRail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
-            if title != nil || requiredCredits > 0 {
+            if showHeader && (title != nil || requiredCredits > 0) {
                 HStack(alignment: .firstTextBaseline) {
                     if let title {
                         Text(title)
@@ -101,7 +102,8 @@ extension ProgressRail {
     init(
         category: CategoryProgress,
         hasCourseOptions: Bool,
-        remainingCourseCodes: [String]
+        remainingCourseCodes: [String],
+        showHeader: Bool = true
     ) {
         self.init(
             title: category.name,
@@ -109,7 +111,8 @@ extension ProgressRail {
             requiredCredits: category.requiredCredits,
             remainingCourseCodes: remainingCourseCodes,
             hasCourseOptions: hasCourseOptions,
-            isVerified: category.verificationStatus == .verified
+            isVerified: category.verificationStatus == .verified,
+            showHeader: showHeader
         )
     }
 

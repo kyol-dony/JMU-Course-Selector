@@ -119,3 +119,53 @@ final class PrereqDisplayStringTests: XCTestCase {
         XCTAssertEqual(expr.displayString(coursesByID: coursesByID), "CS 159 and (MATH 235 or instructor permission)")
     }
 }
+
+final class PrereqLexerTests: XCTestCase {
+    func testCourseReferenceToken() {
+        let tokens = PrereqLexer.tokenize("CS 159")
+        XCTAssertEqual(tokens, [.courseRef("CS 159")])
+    }
+
+    func testBooleanAndParenTokens() {
+        let tokens = PrereqLexer.tokenize("CS 159 and (MATH 235 or MATH 236)")
+        XCTAssertEqual(tokens, [
+            .courseRef("CS 159"),
+            .and,
+            .lparen,
+            .courseRef("MATH 235"),
+            .or,
+            .courseRef("MATH 236"),
+            .rparen
+        ])
+    }
+
+    func testCommaAndSemicolonTokens() {
+        let tokens = PrereqLexer.tokenize("CS 159, MATH 235; CS 240")
+        XCTAssertEqual(tokens, [
+            .courseRef("CS 159"),
+            .comma,
+            .courseRef("MATH 235"),
+            .semicolon,
+            .courseRef("CS 240")
+        ])
+    }
+
+    func testUnknownRunBetweenCourseRefs() {
+        let tokens = PrereqLexer.tokenize("CS 159 or instructor permission")
+        XCTAssertEqual(tokens, [
+            .courseRef("CS 159"),
+            .or,
+            .unknown("instructor permission")
+        ])
+    }
+
+    func testTrailingPunctuationIgnored() {
+        let tokens = PrereqLexer.tokenize("CS 159.")
+        XCTAssertEqual(tokens, [.courseRef("CS 159")])
+    }
+
+    func testEmptyInputProducesNoTokens() {
+        XCTAssertTrue(PrereqLexer.tokenize("").isEmpty)
+        XCTAssertTrue(PrereqLexer.tokenize("   ").isEmpty)
+    }
+}

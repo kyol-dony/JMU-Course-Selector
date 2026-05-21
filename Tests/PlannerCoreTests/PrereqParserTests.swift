@@ -19,3 +19,48 @@ final class PrereqExprTests: XCTestCase {
         XCTAssertEqual(decoded, .empty)
     }
 }
+
+final class CourseModelTests: XCTestCase {
+    func testCourseDefaultsToEmptyExpressions() {
+        let c = Course(
+            id: "cs-159",
+            code: "CS 159",
+            title: "Intro",
+            credits: 3,
+            availability: nil,
+            prerequisites: []
+        )
+        XCTAssertEqual(c.prerequisiteExpr, .empty)
+        XCTAssertEqual(c.corequisiteExpr, .empty)
+        XCTAssertFalse(c.hasUnknownPrereqTokens)
+    }
+
+    func testCourseExpressionsRoundTripCodable() throws {
+        var c = Course(
+            id: "cs-240",
+            code: "CS 240",
+            title: "Data",
+            credits: 3,
+            availability: nil,
+            prerequisites: ["cs-159"]
+        )
+        c.prerequisiteExpr = .course("cs-159")
+        c.corequisiteExpr = .course("math-235")
+        c.hasUnknownPrereqTokens = true
+        let data = try JSONEncoder().encode(c)
+        let decoded = try JSONDecoder().decode(Course.self, from: data)
+        XCTAssertEqual(decoded.prerequisiteExpr, .course("cs-159"))
+        XCTAssertEqual(decoded.corequisiteExpr, .course("math-235"))
+        XCTAssertTrue(decoded.hasUnknownPrereqTokens)
+    }
+
+    func testCourseDecodesOldJSONWithoutNewFields() throws {
+        let json = """
+        {"id":"cs-159","code":"CS 159","title":"Intro","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"}
+        """
+        let decoded = try JSONDecoder().decode(Course.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.prerequisiteExpr, .empty)
+        XCTAssertEqual(decoded.corequisiteExpr, .empty)
+        XCTAssertFalse(decoded.hasUnknownPrereqTokens)
+    }
+}

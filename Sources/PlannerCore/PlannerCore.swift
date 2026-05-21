@@ -84,6 +84,9 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
     public var description: String?
     public var descriptionSourceURL: URL?
     public var detailRetrievedAt: Date?
+    public var prerequisiteExpr: PrereqExpr
+    public var corequisiteExpr: PrereqExpr
+    public var hasUnknownPrereqTokens: Bool
 
     public init(
         id: String,
@@ -96,7 +99,10 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
         registrarURL: URL? = nil,
         description: String? = nil,
         descriptionSourceURL: URL? = nil,
-        detailRetrievedAt: Date? = nil
+        detailRetrievedAt: Date? = nil,
+        prerequisiteExpr: PrereqExpr = .empty,
+        corequisiteExpr: PrereqExpr = .empty,
+        hasUnknownPrereqTokens: Bool = false
     ) {
         self.id = id
         self.code = code
@@ -109,6 +115,51 @@ public struct Course: Codable, Hashable, Identifiable, Sendable {
         self.description = description
         self.descriptionSourceURL = descriptionSourceURL
         self.detailRetrievedAt = detailRetrievedAt
+        self.prerequisiteExpr = prerequisiteExpr
+        self.corequisiteExpr = corequisiteExpr
+        self.hasUnknownPrereqTokens = hasUnknownPrereqTokens
+    }
+
+    private enum CourseCodingKeys: String, CodingKey {
+        case id, code, title, credits, availability, prerequisites, verificationStatus,
+             registrarURL, description, descriptionSourceURL, detailRetrievedAt,
+             prerequisiteExpr, corequisiteExpr, hasUnknownPrereqTokens
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CourseCodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.code = try c.decode(String.self, forKey: .code)
+        self.title = try c.decode(String.self, forKey: .title)
+        self.credits = try c.decode(Int.self, forKey: .credits)
+        self.availability = try c.decodeIfPresent(Set<SemesterTerm>.self, forKey: .availability)
+        self.prerequisites = try c.decode([String].self, forKey: .prerequisites)
+        self.verificationStatus = try c.decodeIfPresent(VerificationStatus.self, forKey: .verificationStatus) ?? .verified
+        self.registrarURL = try c.decodeIfPresent(URL.self, forKey: .registrarURL)
+        self.description = try c.decodeIfPresent(String.self, forKey: .description)
+        self.descriptionSourceURL = try c.decodeIfPresent(URL.self, forKey: .descriptionSourceURL)
+        self.detailRetrievedAt = try c.decodeIfPresent(Date.self, forKey: .detailRetrievedAt)
+        self.prerequisiteExpr = try c.decodeIfPresent(PrereqExpr.self, forKey: .prerequisiteExpr) ?? .empty
+        self.corequisiteExpr = try c.decodeIfPresent(PrereqExpr.self, forKey: .corequisiteExpr) ?? .empty
+        self.hasUnknownPrereqTokens = try c.decodeIfPresent(Bool.self, forKey: .hasUnknownPrereqTokens) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CourseCodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(code, forKey: .code)
+        try c.encode(title, forKey: .title)
+        try c.encode(credits, forKey: .credits)
+        try c.encodeIfPresent(availability, forKey: .availability)
+        try c.encode(prerequisites, forKey: .prerequisites)
+        try c.encode(verificationStatus, forKey: .verificationStatus)
+        try c.encodeIfPresent(registrarURL, forKey: .registrarURL)
+        try c.encodeIfPresent(description, forKey: .description)
+        try c.encodeIfPresent(descriptionSourceURL, forKey: .descriptionSourceURL)
+        try c.encodeIfPresent(detailRetrievedAt, forKey: .detailRetrievedAt)
+        try c.encode(prerequisiteExpr, forKey: .prerequisiteExpr)
+        try c.encode(corequisiteExpr, forKey: .corequisiteExpr)
+        try c.encode(hasUnknownPrereqTokens, forKey: .hasUnknownPrereqTokens)
     }
 }
 

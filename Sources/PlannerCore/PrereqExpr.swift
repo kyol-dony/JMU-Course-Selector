@@ -42,3 +42,32 @@ public indirect enum PrereqExpr: Codable, Hashable, Sendable {
         }
     }
 }
+
+public extension PrereqExpr {
+    func displayString(coursesByID: [String: Course]) -> String {
+        switch self {
+        case .empty:
+            return ""
+        case .course(let id):
+            return coursesByID[id]?.code ?? id
+        case .unknown(let text):
+            return text
+        case .all(let children):
+            return joinChildren(children, separator: " and ", coursesByID: coursesByID)
+        case .any(let children):
+            return joinChildren(children, separator: " or ", coursesByID: coursesByID)
+        }
+    }
+
+    private func joinChildren(_ children: [PrereqExpr], separator: String, coursesByID: [String: Course]) -> String {
+        children.map { child -> String in
+            let rendered = child.displayString(coursesByID: coursesByID)
+            switch child {
+            case .all, .any:
+                return "(\(rendered))"
+            default:
+                return rendered
+            }
+        }.joined(separator: separator)
+    }
+}

@@ -75,3 +75,47 @@ final class ConflictKindTests: XCTestCase {
         XCTAssertEqual(ConflictKind.missingCorequisite.displayName, "Corequisite warning")
     }
 }
+
+final class PrereqDisplayStringTests: XCTestCase {
+    private var coursesByID: [String: Course] {
+        [
+            "cs-159": Course(id: "cs-159", code: "CS 159", title: "", credits: 3, availability: nil, prerequisites: []),
+            "cs-149": Course(id: "cs-149", code: "CS 149", title: "", credits: 3, availability: nil, prerequisites: []),
+            "math-235": Course(id: "math-235", code: "MATH 235", title: "", credits: 3, availability: nil, prerequisites: [])
+        ]
+    }
+
+    func testEmptyRendersEmpty() {
+        XCTAssertEqual(PrereqExpr.empty.displayString(coursesByID: [:]), "")
+    }
+
+    func testCourseRendersCode() {
+        XCTAssertEqual(PrereqExpr.course("cs-159").displayString(coursesByID: coursesByID), "CS 159")
+    }
+
+    func testUnresolvedCourseFallsBackToID() {
+        XCTAssertEqual(PrereqExpr.course("does-not-exist").displayString(coursesByID: coursesByID), "does-not-exist")
+    }
+
+    func testUnknownRendersRawText() {
+        XCTAssertEqual(PrereqExpr.unknown("instructor permission").displayString(coursesByID: [:]), "instructor permission")
+    }
+
+    func testAndJoins() {
+        let expr: PrereqExpr = .all([.course("cs-159"), .course("math-235")])
+        XCTAssertEqual(expr.displayString(coursesByID: coursesByID), "CS 159 and MATH 235")
+    }
+
+    func testOrJoins() {
+        let expr: PrereqExpr = .any([.course("cs-159"), .course("cs-149")])
+        XCTAssertEqual(expr.displayString(coursesByID: coursesByID), "CS 159 or CS 149")
+    }
+
+    func testNestedParens() {
+        let expr: PrereqExpr = .all([
+            .course("cs-159"),
+            .any([.course("math-235"), .unknown("instructor permission")])
+        ])
+        XCTAssertEqual(expr.displayString(coursesByID: coursesByID), "CS 159 and (MATH 235 or instructor permission)")
+    }
+}

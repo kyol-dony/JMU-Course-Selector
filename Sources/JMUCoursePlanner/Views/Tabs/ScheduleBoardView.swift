@@ -108,10 +108,8 @@ private struct SemesterColumn: View {
     var classificationSlots: [String: Int]
     var highlightedCategoryID: String?
 
-    private var coursesByID: [String: Course] { catalog.coursesByID }
-
     private var totalCredits: Int {
-        semester.courseIDs.compactMap { coursesByID[$0]?.credits }.reduce(0, +)
+        semester.courseIDs.compactMap { store.course(forID: $0)?.credits }.reduce(0, +)
     }
 
     var body: some View {
@@ -120,7 +118,10 @@ private struct SemesterColumn: View {
                 header
                 Divider().opacity(0.5)
                 ForEach(semester.courseIDs, id: \.self) { id in
-                    if let course = coursesByID[id] {
+                    if PathwayPlaceholder.isPlaceholder(id),
+                       let spec = store.activePathway?.placeholders[id] {
+                        placeholderChip(id: id, spec: spec)
+                    } else if let course = store.course(forID: id) {
                         let warnings = visibleWarnings.filter { $0.courseID == id && $0.semester == semester.id }
                         let classification = CourseClassificationPalette.classification(forCode: course.code)
                         CourseChip(
@@ -150,6 +151,45 @@ private struct SemesterColumn: View {
             store.moveCourse(id, to: semester.id)
             return true
         }
+    }
+
+    /// Dashed-outline chip rendered for unfilled multi-alternate requirement
+    /// options. Tap to pick a course from the option's alternates.
+    private func placeholderChip(id: String, spec: PlaceholderSpec) -> some View {
+        Menu {
+            ForEach(spec.alternates, id: \.self) { altID in
+                let label = catalog.coursesByID[altID].map { "\($0.code) - \($0.title)" } ?? altID
+                Button(label) { store.resolvePlaceholder(id, with: altID) }
+            }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
+                Image(systemName: "questionmark.circle")
+                    .foregroundStyle(DesignTokens.Colors.brandPurple)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Choose course")
+                        .font(DesignTokens.Typography.bodyEmphasized)
+                        .foregroundStyle(DesignTokens.Colors.brandPurple)
+                    Text(spec.categoryName)
+                        .font(DesignTokens.Typography.caption)
+                        .foregroundStyle(DesignTokens.Colors.textSecondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                Text("\(spec.credits) cr")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textTertiary)
+                    .monospacedDigit()
+            }
+            .padding(DesignTokens.Spacing.s)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    .foregroundStyle(DesignTokens.Colors.brandPurple)
+            )
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
     }
 
     private var header: some View {

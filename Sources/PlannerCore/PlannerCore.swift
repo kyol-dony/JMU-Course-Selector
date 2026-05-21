@@ -120,10 +120,6 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
     public var verificationStatus: VerificationStatus
     public var note: String?
 
-    public var selectionKey: String {
-        "\(id)::\(name)"
-    }
-
     public init(
         id: String,
         name: String,
@@ -257,19 +253,72 @@ public struct SemesterPlan: Codable, Hashable, Identifiable, Sendable {
     public var term: SemesterTerm { id.term }
 }
 
+/// A single un-filled requirement slot in a generated schedule. The user
+/// taps a placeholder course chip in the Schedule tab and picks one of the
+/// alternates; the planner then swaps the placeholder ID for the chosen
+/// course ID in the pathway.
+public struct PlaceholderSpec: Codable, Hashable, Sendable {
+    public var categoryID: String
+    public var categoryName: String
+    public var alternates: [String]
+    public var credits: Int
+
+    public init(categoryID: String, categoryName: String, alternates: [String], credits: Int) {
+        self.categoryID = categoryID
+        self.categoryName = categoryName
+        self.alternates = alternates
+        self.credits = credits
+    }
+}
+
 public struct Pathway: Codable, Hashable, Identifiable, Sendable {
     public var id: String
     public var name: String
     public var semesters: [SemesterPlan]
+    /// Map from placeholder course ID (`__pl::<categoryID>::<optionIndex>`) to
+    /// the spec the UI uses to render the picker menu. Empty for pathways
+    /// without any unfilled multi-alternate option slots.
+    public var placeholders: [String: PlaceholderSpec]
 
-    public init(id: String, name: String, semesters: [SemesterPlan]) {
+    public init(id: String, name: String, semesters: [SemesterPlan], placeholders: [String: PlaceholderSpec] = [:]) {
         self.id = id
         self.name = name
         self.semesters = semesters
+        self.placeholders = placeholders
     }
 
     public var projectedGraduation: SemesterIdentity? {
         semesters.last?.id
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, semesters, placeholders }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.semesters = try c.decode([SemesterPlan].self, forKey: .semesters)
+        self.placeholders = try c.decodeIfPresent([String: PlaceholderSpec].self, forKey: .placeholders) ?? [:]
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(semesters, forKey: .semesters)
+        try c.encode(placeholders, forKey: .placeholders)
+    }
+}
+
+public enum PathwayPlaceholder {
+    public static let prefix = "__pl::"
+
+    public static func id(categoryID: String, optionIndex: Int) -> String {
+        "\(prefix)\(categoryID)::\(optionIndex)"
+    }
+
+    public static func isPlaceholder(_ courseID: String) -> Bool {
+        courseID.hasPrefix(prefix)
     }
 }
 
@@ -575,18 +624,15 @@ public struct ScheduleGenerator: Sendable {
         workload: WorkloadPreference,
         transferCredits: [TransferCredit],
         starting start: SemesterIdentity = SemesterIdentity(year: Calendar.current.component(.year, from: Date()), term: .fall),
-        requirementSelections: [String: [String]] = [:],
         additionalPrograms: [Program] = []
     ) throws -> [Pathway] {
         let program = try programForScheduling(programID, concentrationID: concentrationID)
         let completed = Set(transferCredits.flatMap(\.courseIDs))
-        var required = requiredCourseIDs(for: program, completed: completed, requirementSelections: requirementSelections)
-        // Fold required-course defaults from each opted-in minor / second
-        // major into the same scheduling list. Dedupe so a course that's the
-        // default pick for both the major and a minor is only scheduled once.
+        var placeholders: [String: PlaceholderSpec] = [:]
+        var required = requiredCourseIDs(for: program, completed: completed, placeholders: &placeholders)
         var seen = Set(required)
         for extra in additionalPrograms {
-            for id in requiredCourseIDs(for: extra, completed: completed, requirementSelections: requirementSelections) {
+            for id in requiredCourseIDs(for: extra, completed: completed, placeholders: &placeholders) {
                 if seen.insert(id).inserted {
                     required.append(id)
                 }
@@ -602,17 +648,29 @@ public struct ScheduleGenerator: Sendable {
         let variants = [
             required,
             required.sorted { lhs, rhs in
-                (catalog.coursesByID[lhs]?.credits ?? 0, lhs) > (catalog.coursesByID[rhs]?.credits ?? 0, rhs)
+                (credits(for: lhs, placeholders: placeholders), lhs) > (credits(for: rhs, placeholders: placeholders), rhs)
             },
             required.sorted()
         ]
 
         for (index, variant) in variants.enumerated() {
-            let semesters = try buildSemesters(courseIDs: variant, completedAtStart: completed, workload: workload, starting: start)
-            pathways.append(Pathway(id: "path-\(index + 1)", name: pathwayName(index + 1), semesters: semesters))
+            let semesters = try buildSemesters(courseIDs: variant, completedAtStart: completed, workload: workload, starting: start, placeholders: placeholders)
+            pathways.append(Pathway(
+                id: "path-\(index + 1)",
+                name: pathwayName(index + 1),
+                semesters: semesters,
+                placeholders: placeholders
+            ))
         }
 
         return pathways
+    }
+
+    /// Helper used by the variant sorter so placeholder IDs surface a sensible
+    /// credit weight without polluting the catalog's coursesByID dict.
+    private func credits(for courseID: String, placeholders: [String: PlaceholderSpec]) -> Int {
+        if let spec = placeholders[courseID] { return spec.credits }
+        return catalog.coursesByID[courseID]?.credits ?? 0
     }
 
     private func programForScheduling(_ programID: String, concentrationID: String?) throws -> Program {
@@ -651,43 +709,48 @@ public struct ScheduleGenerator: Sendable {
     private func requiredCourseIDs(
         for program: Program,
         completed: Set<String>,
-        requirementSelections: [String: [String]]
+        placeholders: inout [String: PlaceholderSpec]
     ) -> [String] {
         let completedClusterTags = Set(completed.compactMap { TransferCreditMapper.genEdCreditClusterTag(for: $0) })
         var seen: Set<String> = []
         var result: [String] = []
         for category in program.requirements {
             let categorySatisfiedByCluster = completedClusterTags.contains(where: category.name.contains)
-            for option in courseOptions(for: category, requirementSelections: requirementSelections) {
+            let optionCount = max(category.courseOptions.count, 1)
+            let perOptionCredits = max(category.requiredCredits / optionCount, 1)
+            for (idx, option) in category.courseOptions.enumerated() {
                 if categorySatisfiedByCluster { continue }
                 if option.contains(where: completed.contains) { continue }
-                guard let pick = option.first else { continue }
-                if seen.insert(pick).inserted {
-                    result.append(pick)
+                if option.count > 1 {
+                    // Multi-alternate option → schedule a placeholder. UI lets
+                    // the student pick the actual course in the Schedule tab.
+                    let id = PathwayPlaceholder.id(categoryID: category.id, optionIndex: idx)
+                    if seen.insert(id).inserted {
+                        result.append(id)
+                        placeholders[id] = PlaceholderSpec(
+                            categoryID: category.id,
+                            categoryName: category.name,
+                            alternates: option,
+                            credits: perOptionCredits
+                        )
+                    }
+                } else {
+                    guard let pick = option.first else { continue }
+                    if seen.insert(pick).inserted {
+                        result.append(pick)
+                    }
                 }
             }
         }
         return result
     }
 
-    private func courseOptions(
-        for category: RequirementCategory,
-        requirementSelections: [String: [String]]
-    ) -> [[String]] {
-        guard let selected = requirementSelections[category.selectionKey],
-              !selected.isEmpty,
-              category.courseOptions.contains(where: { Set($0).isSuperset(of: selected) })
-        else {
-            return category.courseOptions
-        }
-        return [selected]
-    }
-
     private func buildSemesters(
         courseIDs: [String],
         completedAtStart: Set<String>,
         workload: WorkloadPreference,
-        starting start: SemesterIdentity
+        starting start: SemesterIdentity,
+        placeholders: [String: PlaceholderSpec] = [:]
     ) throws -> [SemesterPlan] {
         var remaining = courseIDs
         var completed = completedAtStart
@@ -701,12 +764,25 @@ public struct ScheduleGenerator: Sendable {
             let maxCredits = workload.creditRange.upperBound
 
             for courseID in remaining {
-                guard let course = catalog.coursesByID[courseID] else { continue }
-                guard course.prerequisites.allSatisfy(completed.contains) else { continue }
-                if let availability = course.availability, !availability.contains(semester.term) { continue }
-                guard credits + course.credits <= maxCredits else { continue }
+                let courseCredits: Int
+                let courseAvailability: Set<SemesterTerm>?
+                let coursePrereqs: [String]
+                if let spec = placeholders[courseID] {
+                    courseCredits = spec.credits
+                    courseAvailability = nil
+                    coursePrereqs = []
+                } else if let course = catalog.coursesByID[courseID] {
+                    courseCredits = course.credits
+                    courseAvailability = course.availability
+                    coursePrereqs = course.prerequisites
+                } else {
+                    continue
+                }
+                guard coursePrereqs.allSatisfy(completed.contains) else { continue }
+                if let availability = courseAvailability, !availability.contains(semester.term) { continue }
+                guard credits + courseCredits <= maxCredits else { continue }
                 selected.append(courseID)
-                credits += course.credits
+                credits += courseCredits
             }
 
             if selected.isEmpty {
@@ -884,7 +960,6 @@ public struct ProgressCalculator: Sendable {
         concentrationID: String? = nil,
         pathway: Pathway,
         transferCredits: [TransferCredit],
-        requirementSelections: [String: [String]] = [:],
         additionalPrograms: [Program] = []
     ) throws -> GraduationProgress {
         guard let program = catalog.programsByID[programID] else {
@@ -892,11 +967,15 @@ public struct ProgressCalculator: Sendable {
         }
         let effectiveProgram = try program.effectiveProgram(concentrationID: concentrationID)
 
-        let completedCourseIDs = Set(pathway.semesters.flatMap(\.courseIDs)).union(transferCredits.flatMap(\.courseIDs))
+        // Placeholder course IDs in the pathway represent UNFILLED options.
+        // They should not count toward completed credits. Strip them so the
+        // category stays partial until the student picks a real course.
+        let pathwayCourseIDs = pathway.semesters.flatMap(\.courseIDs).filter { !PathwayPlaceholder.isPlaceholder($0) }
+        let completedCourseIDs = Set(pathwayCourseIDs).union(transferCredits.flatMap(\.courseIDs))
         let coursesByID = catalog.coursesByID
 
         func progressRow(category: RequirementCategory, idPrefix: String = "", namePrefix: String = "") -> CategoryProgress {
-            let completedCredits = courseOptions(for: category, requirementSelections: requirementSelections).reduce(0) { total, options in
+            let completedCredits = category.courseOptions.reduce(0) { total, options in
                 guard let completed = options.first(where: completedCourseIDs.contains),
                       let course = coursesByID[completed] else {
                     return total
@@ -932,19 +1011,6 @@ public struct ProgressCalculator: Sendable {
         }
 
         return GraduationProgress(categories: categories, projectedGraduation: pathway.projectedGraduation)
-    }
-
-    private func courseOptions(
-        for category: RequirementCategory,
-        requirementSelections: [String: [String]]
-    ) -> [[String]] {
-        guard let selected = requirementSelections[category.selectionKey],
-              !selected.isEmpty,
-              category.courseOptions.contains(where: { Set($0).isSuperset(of: selected) })
-        else {
-            return category.courseOptions
-        }
-        return [selected]
     }
 }
 

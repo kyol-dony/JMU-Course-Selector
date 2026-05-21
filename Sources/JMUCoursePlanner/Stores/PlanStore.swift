@@ -17,8 +17,6 @@ final class PlanStore: ObservableObject {
     @Published var setupSheetPresented: Bool = false
     @Published var catalogSelectedProgramID: String?
     @Published var scheduleCategoryFilter: String?
-    @Published private var pendingRequirementSelections: [String: [String]] = [:]
-    @Published private var clearedPendingRequirementSelectionKeys: Set<String> = []
 
     private let catalogRepository = CatalogRepository()
     private let detailService = CourseDetailService()
@@ -88,152 +86,13 @@ final class PlanStore: ObservableObject {
         return ids
     }
 
-    func majorRequirementSelectionKey(for category: RequirementCategory) -> String? {
-        guard let programID = plan.programID else { return nil }
-        return requirementSelectionKey(
-            scope: "major",
-            programID: programID,
-            concentrationID: plan.concentrationID,
-            requirementKey: category.selectionKey
-        )
-    }
-
-    func requirementSelectionKey(
-        scope: String,
-        programID: String,
-        concentrationID: String?,
-        requirementKey: String
-    ) -> String {
-        let concentration = concentrationID ?? "no-concentration"
-        return "\(scope):\(programID):\(concentration):\(requirementKey)"
-    }
-
-    func selectedRequirementOption(for key: String, in category: RequirementCategory) -> [String]? {
-        guard let selected = effectiveRequirementSelections()[key],
-              isValidRequirementSelection(selected, in: category)
-        else {
-            return nil
-        }
-        return selected
-    }
-
-    func selectableCourseOptions(in category: RequirementCategory) -> [[String]] {
-        let options = category.courseOptions.filter { !$0.isEmpty }
-        guard options.count == 1 else { return [] }
-        return options[0].map { [$0] }
-    }
-
-    func canSelectRequirementOption(in category: RequirementCategory) -> Bool {
-        selectableCourseOptions(in: category).count > 1
-    }
-
-    func selectRequirementOption(key: String, courseIDs: [String]?) {
-        if let courseIDs {
-            pendingRequirementSelections[key] = courseIDs
-            clearedPendingRequirementSelectionKeys.remove(key)
-        } else {
-            pendingRequirementSelections.removeValue(forKey: key)
-            clearedPendingRequirementSelectionKeys.insert(key)
-        }
-    }
-
-    func activeRequirementSelectionsByRequirementKey() -> [String: [String]] {
-        guard let effectiveActiveProgram else { return [:] }
-        let selections = effectiveRequirementSelections()
-        var result: [String: [String]] = [:]
-        for category in effectiveActiveProgram.requirements {
-            guard let storageKey = majorRequirementSelectionKey(for: category),
-                  let selected = selectedRequirementOption(for: storageKey, in: category, selections: selections)
-            else {
-                continue
-            }
-            result[category.selectionKey] = selected
-        }
-        return result
-    }
-
-    private func effectiveRequirementSelections() -> [String: [String]] {
-        var selections = plan.requirementSelections
-        for key in clearedPendingRequirementSelectionKeys {
-            selections.removeValue(forKey: key)
-        }
-        for (key, value) in pendingRequirementSelections {
-            selections[key] = value
-        }
-        return selections
-    }
-
-    private func selectedRequirementOption(
-        for key: String,
-        in category: RequirementCategory,
-        selections: [String: [String]]
-    ) -> [String]? {
-        guard let selected = selections[key],
-              isValidRequirementSelection(selected, in: category)
-        else {
-            return nil
-        }
-        return selected
-    }
-
-    private func commitPendingRequirementSelections() {
-        for key in clearedPendingRequirementSelectionKeys {
-            plan.requirementSelections.removeValue(forKey: key)
-        }
-        for (key, value) in pendingRequirementSelections {
-            plan.requirementSelections[key] = value
-        }
-        pendingRequirementSelections = [:]
-        clearedPendingRequirementSelectionKeys = []
-    }
-
-    func validateRequirementSelections() {
-        guard let effectiveActiveProgram else {
-            plan.requirementSelections = [:]
-            pendingRequirementSelections = [:]
-            clearedPendingRequirementSelectionKeys = []
-            return
-        }
-        let validMajorSelections = Set(effectiveActiveProgram.requirements.compactMap { category -> String? in
-            guard let storageKey = majorRequirementSelectionKey(for: category),
-                  selectedRequirementOption(for: storageKey, in: category) != nil
-            else {
-                return nil
-            }
-            return storageKey
-        })
-        plan.requirementSelections = plan.requirementSelections.filter { key, _ in
-            validMajorSelections.contains(key)
-        }
-        pendingRequirementSelections = pendingRequirementSelections.filter { key, _ in
-            validMajorSelections.contains(key)
-        }
-        clearedPendingRequirementSelectionKeys = clearedPendingRequirementSelectionKeys.filter { key in
-            validMajorSelections.contains(key)
-        }
-    }
-
-    private func isValidRequirementSelection(_ selected: [String], in category: RequirementCategory) -> Bool {
-        guard !selected.isEmpty else { return false }
-        return category.courseOptions.contains { option in
-            Set(option).isSuperset(of: selected)
-        }
-    }
-
     /// Course codes still required for a given requirement category, derived from the catalog.
-    func remainingCourses(in category: RequirementCategory, selectionKey: String? = nil) -> [String] {
+    func remainingCourses(in category: RequirementCategory) -> [String] {
         guard let catalog else { return [] }
         let completed = completedCourseIDs
         let courses = catalog.coursesByID
-        let options: [[String]]
-        if let selectionKey,
-           let selected = selectedRequirementOption(for: selectionKey, in: category) {
-            options = [selected]
-        } else {
-            options = category.courseOptions
-        }
 
-        return options.compactMap { option in
+        return category.courseOptions.compactMap { option in
             guard !option.contains(where: completed.contains) else { return nil }
             guard let firstID = option.first, let course = courses[firstID] else { return nil }
             return course.code
@@ -244,6 +103,44 @@ final class PlanStore: ObservableObject {
         Set(category.courseOptions.flatMap { $0 })
     }
 
+    // MARK: - Placeholder courses in the active pathway
+
+    /// Synthesize a Course for a placeholder ID using its PlaceholderSpec on the
+    /// active pathway. Returns the catalog course for normal IDs. Used by views
+    /// that render course chips so they don't blow up on placeholder IDs.
+    func course(forID id: String) -> Course? {
+        if PathwayPlaceholder.isPlaceholder(id),
+           let spec = activePathway?.placeholders[id] {
+            return Course(
+                id: id,
+                code: "Choose course",
+                title: spec.categoryName,
+                credits: spec.credits,
+                availability: nil,
+                prerequisites: [],
+                verificationStatus: .partial,
+                registrarURL: nil
+            )
+        }
+        return catalog?.coursesByID[id]
+    }
+
+    /// Replace a placeholder course in the active pathway with the chosen real
+    /// course ID. Mutates the active pathway in place and drops the placeholder
+    /// from the pathway's placeholders map.
+    func resolvePlaceholder(_ placeholderID: String, with chosenCourseID: String) {
+        guard let pathwayIndex = activePathwayIndex else { return }
+        var pathway = plan.pathways[pathwayIndex]
+        for semesterIndex in pathway.semesters.indices {
+            pathway.semesters[semesterIndex].courseIDs = pathway.semesters[semesterIndex].courseIDs.map { id in
+                id == placeholderID ? chosenCourseID : id
+            }
+        }
+        pathway.placeholders.removeValue(forKey: placeholderID)
+        plan.pathways[pathwayIndex] = pathway
+        autosave()
+    }
+
     func load() async {
         do {
             catalog = try catalogRepository.loadCatalog()
@@ -251,7 +148,6 @@ final class PlanStore: ObservableObject {
             if let autosave = savedPlans.first(where: { $0.name == "Autosave" }) {
                 plan = autosave
                 validateSelectedConcentration()
-                validateRequirementSelections()
             }
             statusMessage = "Catalog loaded from the 2025-2026 JMU undergraduate catalog cache."
         } catch {
@@ -285,7 +181,6 @@ final class PlanStore: ObservableObject {
         } else {
             plan.concentrationID = nil
         }
-        validateRequirementSelections()
         plan.pathways = []
         plan.activePathwayID = nil
         // Re-route any previously-entered AP credits through the optimizer now
@@ -301,7 +196,6 @@ final class PlanStore: ObservableObject {
         } else {
             plan.concentrationID = nil
         }
-        validateRequirementSelections()
         plan.pathways = []
         plan.activePathwayID = nil
         recomputeAPCredits()
@@ -401,17 +295,14 @@ final class PlanStore: ObservableObject {
         }
 
         do {
-            let requirementSelections = activeRequirementSelectionsByRequirementKey()
             plan.pathways = try ScheduleGenerator(catalog: catalog).generatePathways(
                 for: programID,
                 concentrationID: plan.concentrationID,
                 workload: plan.workload,
                 transferCredits: plan.transferCredits,
                 starting: SemesterIdentity(year: 2026, term: .fall),
-                requirementSelections: requirementSelections,
                 additionalPrograms: selectedMinorPrograms()
             )
-            commitPendingRequirementSelections()
             plan.activePathwayID = plan.pathways.first?.id
             errorMessage = nil
             autosave()
@@ -513,7 +404,6 @@ final class PlanStore: ObservableObject {
     func resume(_ saved: SavedStudentPlan) {
         plan = saved
         validateSelectedConcentration()
-        validateRequirementSelections()
         statusMessage = "Resumed \(saved.name)."
     }
 
@@ -558,7 +448,6 @@ final class PlanStore: ObservableObject {
                 }
                 catalog = refreshed
                 validateSelectedConcentration()
-                validateRequirementSelections()
                 isRefreshingCatalog = false
                 let majors = refreshed.programs.filter { $0.kind == .major && $0.requirementDataComplete }.count
                 let minors = refreshed.programs.filter { $0.kind == .minor && $0.requirementDataComplete }.count

@@ -154,82 +154,28 @@ struct MyPlanView: View {
 
     @ViewBuilder
     private func requirementProgressRow(category: CategoryProgress, requirement: RequirementCategory?) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
-            Button {
-                store.scheduleCategoryFilter = category.id
-                withAnimation(.easeOut(duration: 0.15)) {
-                    store.selectedTab = .schedule
-                }
-            } label: {
-                ProgressRail(
-                    category: category,
-                    hasCourseOptions: !(requirement?.courseOptions.isEmpty ?? true),
-                    remainingCourseCodes: remainingCodes(for: requirement)
-                )
-                .contentShape(Rectangle())
+        // Pure read-only row that mirrors the active pathway. The student
+        // picks specific courses for multi-alternate options from the
+        // Schedule tab's placeholder chips, not from this summary.
+        Button {
+            store.scheduleCategoryFilter = category.id
+            withAnimation(.easeOut(duration: 0.15)) {
+                store.selectedTab = .schedule
             }
-            .buttonStyle(.plain)
-
-            if let requirement,
-               let key = store.majorRequirementSelectionKey(for: requirement),
-               store.canSelectRequirementOption(in: requirement) {
-                requirementChoicePicker(requirement: requirement, key: key)
-            }
+        } label: {
+            ProgressRail(
+                category: category,
+                hasCourseOptions: !(requirement?.courseOptions.isEmpty ?? true),
+                remainingCourseCodes: remainingCodes(for: requirement)
+            )
+            .contentShape(Rectangle())
         }
-    }
-
-    private func requirementChoicePicker(requirement: RequirementCategory, key: String) -> some View {
-        Picker("Choice", selection: requirementChoiceBinding(requirement: requirement, key: key)) {
-            Text("Catalog default").tag("")
-            ForEach(store.selectableCourseOptions(in: requirement), id: \.self) { option in
-                Text(optionLabel(option))
-                    .tag(optionTag(option))
-            }
-        }
-        .pickerStyle(.menu)
-        .font(DesignTokens.Typography.caption)
-        .tint(DesignTokens.Colors.brandPurple)
-        .accessibilityLabel("\(requirement.name) choice")
-    }
-
-    private func requirementChoiceBinding(requirement: RequirementCategory, key: String) -> Binding<String> {
-        Binding(
-            get: {
-                guard let selected = store.selectedRequirementOption(for: key, in: requirement) else {
-                    return ""
-                }
-                return optionTag(selected)
-            },
-            set: { tag in
-                guard !tag.isEmpty else {
-                    store.selectRequirementOption(key: key, courseIDs: nil)
-                    return
-                }
-                guard let option = store.selectableCourseOptions(in: requirement).first(where: { optionTag($0) == tag }) else {
-                    return
-                }
-                store.selectRequirementOption(key: key, courseIDs: option)
-            }
-        )
-    }
-
-    private func optionTag(_ option: [String]) -> String {
-        option.joined(separator: "|")
-    }
-
-    private func optionLabel(_ option: [String]) -> String {
-        option.map { courseID in
-            catalog.coursesByID[courseID]?.code ?? courseID
-        }
-        .joined(separator: " / ")
+        .buttonStyle(.plain)
     }
 
     private func remainingCodes(for category: RequirementCategory?) -> [String] {
         guard let category else { return [] }
-        guard let key = store.majorRequirementSelectionKey(for: category) else {
-            return store.remainingCourses(in: category)
-        }
-        return store.remainingCourses(in: category, selectionKey: key)
+        return store.remainingCourses(in: category)
     }
 
     private var footerActions: some View {

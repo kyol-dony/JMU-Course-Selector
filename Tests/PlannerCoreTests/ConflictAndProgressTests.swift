@@ -241,13 +241,12 @@ struct ConflictAndProgressTests {
         #expect(coversC3NS, "C3NS must be covered: the joint allocation must route Chemistry's BIO 140 here instead of stacking both exams on C3PP+C3L")
     }
 
-    @Test("scheduler dedupes a course that's the default pick for multiple option groups")
-    func schedulerDedupesCrossCategoryDefaults() throws {
-        // MATH 220 is the first alternate in BOTH the QR gen-ed cluster
-        // and the major's Stats requirement. Without dedupe, generatePathways
-        // would queue it twice, producing a pathway with duplicate course IDs
-        // that downstream Dictionary(uniqueKeysWithValues:) calls in
-        // GraduationProgressView crash on.
+    @Test("scheduler emits placeholder courses for multi-alternate option groups")
+    func schedulerEmitsPlaceholdersForMultiAlternateOptions() throws {
+        // Two categories with the same multi-alternate option list. The new
+        // contract: the scheduler queues ONE placeholder per option group
+        // (the student picks the actual course in the Schedule tab). The
+        // catalog's MATH 220 / ISAT 251 IDs must not appear in the pathway.
         let catalog = Catalog.fixture(
             courses: [
                 Course(id: "MATH220", code: "MATH 220", title: "Elementary Stats", credits: 3, availability: [.fall, .spring], prerequisites: []),
@@ -269,9 +268,11 @@ struct ConflictAndProgressTests {
             transferCredits: []
         )
 
-        let scheduled = pathways.first?.semesters.flatMap(\.courseIDs) ?? []
-        let mathCount = scheduled.filter { $0 == "MATH220" }.count
-        #expect(mathCount == 1, "MATH 220 must be scheduled exactly once even though it's the default for two option groups")
+        let pathway = try #require(pathways.first)
+        let scheduled = pathway.semesters.flatMap(\.courseIDs)
+        #expect(scheduled.contains { PathwayPlaceholder.isPlaceholder($0) }, "must schedule at least one placeholder course")
+        #expect(!scheduled.contains("MATH220"), "multi-alternate options stay as placeholders until the student picks")
+        #expect(pathway.placeholders.count == 2, "one placeholder per multi-alternate option group")
     }
 
     @Test("scheduler skips an option group when any alternate is already completed")

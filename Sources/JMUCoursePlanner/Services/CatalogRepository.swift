@@ -117,6 +117,13 @@ struct CatalogRepository {
         }
         try Task.checkCancellation()
 
+        // Pass 2: parse prereq/coreq text into typed expressions. Runs once
+        // the full course map is assembled so cross-program references
+        // (e.g., CS course needing MATH 235) resolve correctly.
+        var resolvedCourses = Array(coursesByID.values)
+        CatalogPrereqResolver.applyPassTwo(to: &resolvedCourses)
+        coursesByID = Dictionary(uniqueKeysWithValues: resolvedCourses.map { ($0.id, $0) })
+
         let catalogSource = CatalogSource(
             catalogYear: seed.source.catalogYear,
             issueDate: seed.source.issueDate,

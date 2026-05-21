@@ -575,11 +575,23 @@ public struct ScheduleGenerator: Sendable {
         workload: WorkloadPreference,
         transferCredits: [TransferCredit],
         starting start: SemesterIdentity = SemesterIdentity(year: Calendar.current.component(.year, from: Date()), term: .fall),
-        requirementSelections: [String: [String]] = [:]
+        requirementSelections: [String: [String]] = [:],
+        additionalPrograms: [Program] = []
     ) throws -> [Pathway] {
         let program = try programForScheduling(programID, concentrationID: concentrationID)
         let completed = Set(transferCredits.flatMap(\.courseIDs))
-        let required = requiredCourseIDs(for: program, completed: completed, requirementSelections: requirementSelections)
+        var required = requiredCourseIDs(for: program, completed: completed, requirementSelections: requirementSelections)
+        // Fold required-course defaults from each opted-in minor / second
+        // major into the same scheduling list. Dedupe so a course that's the
+        // default pick for both the major and a minor is only scheduled once.
+        var seen = Set(required)
+        for extra in additionalPrograms {
+            for id in requiredCourseIDs(for: extra, completed: completed, requirementSelections: requirementSelections) {
+                if seen.insert(id).inserted {
+                    required.append(id)
+                }
+            }
+        }
         guard !required.isEmpty else {
             return (1...3).map { index in
                 Pathway(id: "path-\(index)", name: pathwayName(index), semesters: [])
@@ -872,7 +884,8 @@ public struct ProgressCalculator: Sendable {
         concentrationID: String? = nil,
         pathway: Pathway,
         transferCredits: [TransferCredit],
-        requirementSelections: [String: [String]] = [:]
+        requirementSelections: [String: [String]] = [:],
+        additionalPrograms: [Program] = []
     ) throws -> GraduationProgress {
         guard let program = catalog.programsByID[programID] else {
             throw PlannerError.programNotFound(programID)
@@ -881,7 +894,8 @@ public struct ProgressCalculator: Sendable {
 
         let completedCourseIDs = Set(pathway.semesters.flatMap(\.courseIDs)).union(transferCredits.flatMap(\.courseIDs))
         let coursesByID = catalog.coursesByID
-        let categories = effectiveProgram.requirements.map { category in
+
+        func progressRow(category: RequirementCategory, idPrefix: String = "", namePrefix: String = "") -> CategoryProgress {
             let completedCredits = courseOptions(for: category, requirementSelections: requirementSelections).reduce(0) { total, options in
                 guard let completed = options.first(where: completedCourseIDs.contains),
                       let course = coursesByID[completed] else {
@@ -889,13 +903,32 @@ public struct ProgressCalculator: Sendable {
                 }
                 return total + course.credits
             }
+            let id = idPrefix.isEmpty ? category.id : "\(idPrefix)::\(category.id)"
+            let name = namePrefix.isEmpty ? category.name : "\(namePrefix): \(category.name)"
             return CategoryProgress(
-                id: category.id,
-                name: category.name,
+                id: id,
+                name: name,
                 completedCredits: min(completedCredits, category.requiredCredits),
                 requiredCredits: category.requiredCredits,
                 verificationStatus: category.verificationStatus
             )
+        }
+
+        var categories = effectiveProgram.requirements.map { progressRow(category: $0) }
+
+        // Add a category row per minor / second-major requirement, prefixed
+        // so the UI can show "Minor: Robotics: Required Courses" and never
+        // collides with a major-side category ID.
+        for extra in additionalPrograms {
+            let label = extra.kind == .major ? "Second Major" : "Minor"
+            let prefix = "\(label) (\(extra.title))"
+            for category in extra.requirements {
+                categories.append(progressRow(
+                    category: category,
+                    idPrefix: extra.id,
+                    namePrefix: prefix
+                ))
+            }
         }
 
         return GraduationProgress(categories: categories, projectedGraduation: pathway.projectedGraduation)

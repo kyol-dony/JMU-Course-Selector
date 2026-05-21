@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import PlannerCore
 
@@ -104,5 +105,102 @@ struct ScheduleGeneratorTests {
         #expect(scheduled.contains("PHYS240"))
         #expect(scheduled.contains("PHYS360"))
         #expect(!scheduled.contains("PHYS390"))
+    }
+
+    @Test("scheduler folds added minor's required courses into the major's pathway")
+    func schedulerSchedulesMinorRequirements() throws {
+        let major = Program.fixture(
+            id: "cis-bba",
+            title: "CIS, B.B.A.",
+            requirements: [
+                RequirementCategory(id: "core", name: "Core", requiredCredits: 3, courseOptions: [["CIS221"]])
+            ]
+        )
+        let minor = Program(
+            id: "robotics-minor",
+            title: "Robotics Minor",
+            degreeType: nil,
+            kind: .minor,
+            college: "X",
+            department: "X",
+            catalogPage: nil,
+            totalCredits: nil,
+            requirements: [
+                RequirementCategory(id: "rob-core", name: "Robotics Core", requiredCredits: 3, courseOptions: [["ROB200"]])
+            ],
+            verificationStatus: .partial,
+            requirementDataComplete: true,
+            sourceNote: "Fixture"
+        )
+        let catalog = Catalog(
+            source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
+            programs: [major, minor],
+            courses: [
+                Course(id: "CIS221", code: "CIS 221", title: "Programming", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "ROB200", code: "ROB 200", title: "Intro Robotics", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            apCreditRules: []
+        )
+
+        let pathways = try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "cis-bba",
+            workload: .standard,
+            transferCredits: [],
+            additionalPrograms: [minor]
+        )
+
+        let scheduled = pathways.first?.semesters.flatMap(\.courseIDs) ?? []
+        #expect(scheduled.contains("CIS221"))
+        #expect(scheduled.contains("ROB200"), "minor's required course must be threaded into the pathway")
+    }
+
+    @Test("progress calculator surfaces a minor's categories with a Minor: prefix")
+    func progressIncludesMinorCategories() throws {
+        let major = Program.fixture(
+            id: "cis-bba",
+            title: "CIS",
+            requirements: [
+                RequirementCategory(id: "core", name: "Core", requiredCredits: 3, courseOptions: [["CIS221"]])
+            ]
+        )
+        let minor = Program(
+            id: "robotics-minor",
+            title: "Robotics Minor",
+            degreeType: nil,
+            kind: .minor,
+            college: "X",
+            department: "X",
+            catalogPage: nil,
+            totalCredits: nil,
+            requirements: [
+                RequirementCategory(id: "rob-core", name: "Robotics Core", requiredCredits: 3, courseOptions: [["ROB200"]])
+            ],
+            verificationStatus: .partial,
+            requirementDataComplete: true,
+            sourceNote: "Fixture"
+        )
+        let catalog = Catalog(
+            source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
+            programs: [major, minor],
+            courses: [
+                Course(id: "CIS221", code: "CIS 221", title: "Programming", credits: 3, availability: nil, prerequisites: []),
+                Course(id: "ROB200", code: "ROB 200", title: "Intro Robotics", credits: 3, availability: nil, prerequisites: [])
+            ],
+            apCreditRules: []
+        )
+
+        let pathway = Pathway(id: "p1", name: "Test", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: ["CIS221", "ROB200"])
+        ])
+        let progress = try ProgressCalculator(catalog: catalog).progress(
+            programID: "cis-bba",
+            pathway: pathway,
+            transferCredits: [],
+            additionalPrograms: [minor]
+        )
+
+        let names = progress.categories.map { $0.name }
+        #expect(names.contains("Core"))
+        #expect(names.contains { $0.hasPrefix("Minor (Robotics Minor)") })
     }
 }

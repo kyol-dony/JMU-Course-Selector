@@ -66,8 +66,16 @@ final class PlanStore: ObservableObject {
             concentrationID: plan.concentrationID,
             pathway: activePathway,
             transferCredits: plan.transferCredits,
-            requirementSelections: activeRequirementSelectionsByRequirementKey()
+            requirementSelections: activeRequirementSelectionsByRequirementKey(),
+            additionalPrograms: selectedMinorPrograms()
         )
+    }
+
+    /// Effective Program for each added minor (parent program + its selected
+    /// concentration's requirements merged). Used to thread minor requirements
+    /// into schedule generation and progress tracking.
+    func selectedMinorPrograms() -> [Program] {
+        plan.minors.compactMap { effectiveMinorProgram(for: $0) }
     }
 
     /// Set of course IDs the student has completed (transfer credit + scheduled in active pathway).
@@ -360,7 +368,8 @@ final class PlanStore: ObservableObject {
                 workload: plan.workload,
                 transferCredits: plan.transferCredits,
                 starting: SemesterIdentity(year: 2026, term: .fall),
-                requirementSelections: activeRequirementSelectionsByRequirementKey()
+                requirementSelections: activeRequirementSelectionsByRequirementKey(),
+                additionalPrograms: selectedMinorPrograms()
             )
             plan.activePathwayID = plan.pathways.first?.id
             errorMessage = nil

@@ -1,314 +1,3600 @@
 {
-  "source": {
-    "catalogYear": "2025-2026",
-    "issueDate": "2025-05-01T00:00:00Z",
-    "retrievedDate": "2026-05-19T00:00:00Z",
-    "sourceURLs": [
-      "https://www.jmu.edu/catalog/pdfs/2025-2026-jmu-undergraduate-catalog.pdf",
-      "https://catalog.jmu.edu/"
+  "apCreditRules" : [
+    {
+      "awardedCourseIDs" : [
+        "FDS102"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "2-D Art and Design"
+        }
+      },
+      "sourceNote" : "OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"FDS 102\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ART292"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "2-D Art and Design"
+        }
+      },
+      "sourceNote" : "OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ART 292\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ART000"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "3-D Art and Design"
+        }
+      },
+      "sourceNote" : "OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ART 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ART292"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "3-D Art and Design"
+        }
+      },
+      "sourceNote" : "OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ART 292\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "GNED142"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "African American Studies"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"GNED 142\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ARTH206"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Art History"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"ARTH 206\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "BIO140",
+        "BIO140L",
+        "BIO150",
+        "BIO150L"
+      ],
+      "credits" : 8,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Biology"
+        }
+      },
+      "sourceNote" : "OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"BIO 140 \/BIO 140L & BIO 150 \/BIO 150L\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ISAT113",
+        "ISCI104",
+        "BIO000"
+      ],
+      "credits" : 8,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Biology"
+        }
+      },
+      "sourceNote" : "OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ISAT 113 , ISCI 104 & BIO 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "MATH235"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Calculus AB"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"MATH 235\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "MATH235"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Calculus AB Subscore"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"MATH 235\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "MATH235",
+        "MATH236"
+      ],
+      "credits" : 8,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Calculus BC"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"MATH 235 &MATH 236\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "CHEM131",
+        "CHEM132"
+      ],
+      "credits" : 6,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Chemistry"
+        }
+      },
+      "sourceNote" : "Majors track. JMU 2025-2026 AP Chart. Original cell text: \"CHEM 131 & CHEM 132\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "CHEM131",
+        "CHEM131L",
+        "CHEM132",
+        "CHEM131L",
+        "CHEM132L"
+      ],
+      "credits" : 8,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Chemistry"
+        }
+      },
+      "sourceNote" : "Non-majors track; OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"CHEM 131 & CHEM 131L and CHEM 132 & CHEM 131L -CHEM 132L\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "CHEM120",
+        "CHEM000"
+      ],
+      "credits" : 8,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Chemistry"
+        }
+      },
+      "sourceNote" : "OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"CHEM 120 & CHEM 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "CHEM120",
+        "CHEM000"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Chemistry"
+        }
+      },
+      "sourceNote" : "OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"CHEM 120 and CHEM 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ISCI101",
+        "ISCI104"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Chemistry"
+        }
+      },
+      "sourceNote" : "OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ISCI 101 and ISCI 104\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "GEOL115",
+        "ISCI104",
+        "ISAT000"
+      ],
+      "credits" : 8,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Chemistry"
+        }
+      },
+      "sourceNote" : "Non-majors track. JMU 2025-2026 AP Chart. Original cell text: \"GEOL 115 , ISCI 104 & ISAT 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ISAT112",
+        "ISAT000",
+        "ISAT112"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Chemistry"
+        }
+      },
+      "sourceNote" : "OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ISAT 112 & ISAT 000 4 However, to earn credit for ISAT 112 , students must earn a\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "CHIN231"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Chinese Language and Culture"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"CHIN 231\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "POSC240"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Comparative Government"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"POSC 240\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "CS149",
+        "CS000"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 5,
+          "name" : "Computer Science A"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"CS 149 CS 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "CS149",
+        "CS000"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Computer Science A"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"CS 149 CS 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "CS000"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Computer Science Principles"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"CS 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ART000"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Drawing"
+        }
+      },
+      "sourceNote" : "OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ART 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ART292"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Drawing"
+        }
+      },
+      "sourceNote" : "OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ART 292\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ECON201"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Economics (Micro)"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"ECON 201\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ECON200"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Economics (Macro)"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"ECON 200\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "WRTC103"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "English Language and Composition"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"WRTC 103\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "GNED123"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 5,
+          "name" : "English Literature and Composition"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"GNED 123\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ISAT112",
+        "ISAT000",
+        "ISAT112"
+      ],
+      "credits" : 8,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Environmental Science"
+        }
+      },
+      "sourceNote" : "OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ISAT 112 & ISAT 000 4 However, to earn credit for ISAT 112 , students must earn a\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "GEOL115",
+        "ISCI104",
+        "ISAT000"
+      ],
+      "credits" : 8,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Environmental Science"
+        }
+      },
+      "sourceNote" : "Non-majors track. JMU 2025-2026 AP Chart. Original cell text: \"GEOL 115 , ISCI 104 & ISAT 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ENVT101"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Environmental Science"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"ENVT 101\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "FR231"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "French Language or French Literature"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"FR 231\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "GEOG200"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Geography, Human"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"GEOG 200\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "GER231"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "German Language"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"GER 231\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "POSC225"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Government: U.S."
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"POSC 225\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "HIST000"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "History: European"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"HIST 000\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "HIST225"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "History: U.S."
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"HIST 225\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "HIST102"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "History: World"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"HIST 102\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ITAL231"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Italian Language and Culture"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"ITAL 231\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "LAT231"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Latin Vergil"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"LAT 231\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "MUS143"
+      ],
+      "credits" : 1,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 5,
+          "name" : "Music Theory – Aural Subscore"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"MUS 143\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "PHYS140",
+        "PHYS140L",
+        "PHYS150",
+        "PHYS150L"
+      ],
+      "credits" : 8,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Physics B"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"PHYS 140 , PHYS 140L and PHYS 150 , PHYS 150L\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ISCI101",
+        "ISCI104"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Physics B"
+        }
+      },
+      "sourceNote" : "OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ISCI 101 & ISCI 104\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "PHYS140",
+        "PHYS140L"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Physics B"
+        }
+      },
+      "sourceNote" : "OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"PHYS 140 & PHYS 140L\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "PHYS240",
+        "PHYS240L"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Physics C: Mechanics"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"PHYS 240 & PHYS 240L\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "PHYS140",
+        "PHYS140L"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Physics C: Mechanics"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"PHYS 140 & PHYS 140L\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "PHYS250",
+        "PHYS250L"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Physics C: Electricity and Magnetism"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"PHYS 250 & PHYS 250L\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "PHYS150",
+        "PHYS150L"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Physics C: Electricity and Magnetism"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"PHYS 150 & PHYS 150L\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ISCI101",
+        "ISCI104"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Physics 1"
+        }
+      },
+      "sourceNote" : "OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ISCI 101 & ISCI 104\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "PHYS140",
+        "PHYS140L"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Physics 1"
+        }
+      },
+      "sourceNote" : "OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"PHYS 140 & PHYS 140L\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "PHYS150",
+        "PHYS150L"
+      ],
+      "credits" : 4,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Physics 2"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"PHYS 150 & PHYS 150L\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "PSYC101"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Psychology"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"PSYC 101\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "SPAN231"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Spanish Language"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"SPAN 231\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "SPAN231"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : false,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 3,
+          "name" : "Spanish Literature"
+        }
+      },
+      "sourceNote" : "JMU 2025-2026 AP Chart. Original cell text: \"SPAN 231\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "MATH220"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Statistics"
+        }
+      },
+      "sourceNote" : "OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"MATH 220\""
+    },
+    {
+      "awardedCourseIDs" : [
+        "ISAT251"
+      ],
+      "credits" : 3,
+      "meetsGeneralEducation" : true,
+      "source" : {
+        "apExam" : {
+          "minimumScore" : 4,
+          "name" : "Statistics"
+        }
+      },
+      "sourceNote" : "OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ISAT 251\""
+    }
+  ],
+  "courses" : [
+    {
+      "availability" : null,
+      "code" : "CS 000",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS000",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Computer Science elective credit",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 149",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS149",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Introduction to Programming",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 159",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS159",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS149"
+      },
+      "prerequisites" : [
+        "CS149"
+      ],
+      "title" : "Advanced Programming",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 227",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS227",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS149"
+      },
+      "prerequisites" : [
+        "CS149"
+      ],
+      "title" : "Discrete Structures I",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "MATH 227",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "MATH227",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS149"
+      },
+      "prerequisites" : [
+        "CS149"
+      ],
+      "title" : "Discrete Structures I",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "MATH 245",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "MATH245",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Discrete Mathematics",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 240",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS240",
+      "prerequisiteExpr" : {
+        "children" : [
+          {
+            "kind" : "course",
+            "value" : "CS159"
+          },
+          {
+            "kind" : "course",
+            "value" : "CS227"
+          },
+          {
+            "kind" : "course",
+            "value" : "MATH231"
+          }
+        ],
+        "kind" : "all"
+      },
+      "prerequisites" : [
+        "CS159",
+        "CS227",
+        "MATH231"
+      ],
+      "title" : "Algorithms and Data Structures",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 261",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS261",
+      "prerequisiteExpr" : {
+        "children" : [
+          {
+            "kind" : "course",
+            "value" : "CS159"
+          },
+          {
+            "kind" : "course",
+            "value" : "CS227"
+          }
+        ],
+        "kind" : "all"
+      },
+      "prerequisites" : [
+        "CS159",
+        "CS227"
+      ],
+      "title" : "Computer Systems I",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 327",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS327",
+      "prerequisiteExpr" : {
+        "children" : [
+          {
+            "kind" : "course",
+            "value" : "CS227"
+          },
+          {
+            "kind" : "course",
+            "value" : "CS240"
+          }
+        ],
+        "kind" : "all"
+      },
+      "prerequisites" : [
+        "CS227",
+        "CS240"
+      ],
+      "title" : "Discrete Structures II",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 330",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS330",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Societal and Ethical Issues in Computing",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 332",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS332",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Technical Communication for Computer Science",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 343",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS343",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS159"
+      },
+      "prerequisites" : [
+        "CS159"
+      ],
+      "title" : "Application Development",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 345",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS345",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS159"
+      },
+      "prerequisites" : [
+        "CS159"
+      ],
+      "title" : "Software Engineering",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 361",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS361",
+      "prerequisiteExpr" : {
+        "children" : [
+          {
+            "kind" : "course",
+            "value" : "CS240"
+          },
+          {
+            "kind" : "course",
+            "value" : "CS261"
+          }
+        ],
+        "kind" : "all"
+      },
+      "prerequisites" : [
+        "CS240",
+        "CS261"
+      ],
+      "title" : "Computer Systems II",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 374",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS374",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS240"
+      },
+      "prerequisites" : [
+        "CS240"
+      ],
+      "title" : "Database Systems",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 412",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS412",
+      "prerequisiteExpr" : {
+        "children" : [
+          {
+            "kind" : "course",
+            "value" : "CS327"
+          },
+          {
+            "kind" : "course",
+            "value" : "MATH220"
+          }
+        ],
+        "kind" : "all"
+      },
+      "prerequisites" : [
+        "CS327",
+        "MATH220"
+      ],
+      "title" : "Applied Algorithms",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 430",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS430",
+      "prerequisiteExpr" : {
+        "children" : [
+          {
+            "kind" : "course",
+            "value" : "CS240"
+          },
+          {
+            "kind" : "course",
+            "value" : "CS261"
+          }
+        ],
+        "kind" : "all"
+      },
+      "prerequisites" : [
+        "CS240",
+        "CS261"
+      ],
+      "title" : "Programming Languages",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 432",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS432",
+      "prerequisiteExpr" : {
+        "children" : [
+          {
+            "kind" : "course",
+            "value" : "CS327"
+          },
+          {
+            "kind" : "course",
+            "value" : "CS361"
+          }
+        ],
+        "kind" : "all"
+      },
+      "prerequisites" : [
+        "CS327",
+        "CS361"
+      ],
+      "title" : "Compilers",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 444",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS444",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS240"
+      },
+      "prerequisites" : [
+        "CS240"
+      ],
+      "title" : "Artificial Intelligence",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 450",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS450",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS361"
+      },
+      "prerequisites" : [
+        "CS361"
+      ],
+      "title" : "Operating Systems",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 452",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS452",
+      "prerequisiteExpr" : {
+        "children" : [
+          {
+            "kind" : "course",
+            "value" : "CS327"
+          },
+          {
+            "kind" : "course",
+            "value" : "MATH220"
+          }
+        ],
+        "kind" : "all"
+      },
+      "prerequisites" : [
+        "CS327",
+        "MATH220"
+      ],
+      "title" : "Design and Analysis of Algorithms",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 455",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS455",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS361"
+      },
+      "prerequisites" : [
+        "CS361"
+      ],
+      "title" : "Advanced Computer Networking",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 456",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS456",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS261"
+      },
+      "prerequisites" : [
+        "CS261"
+      ],
+      "title" : "Computer Architecture",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "CS 470",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "CS470",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS361"
+      },
+      "prerequisites" : [
+        "CS361"
+      ],
+      "title" : "Parallel and Distributed Systems",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "MATH 220",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "MATH220",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Elementary Statistics",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "MATH 229",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "MATH229",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Introduction to Applied Statistics Using R",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "MATH 231",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "MATH231",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Calculus with Functions I",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "MATH 232",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "MATH232",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "MATH231"
+      },
+      "prerequisites" : [
+        "MATH231"
+      ],
+      "title" : "Calculus with Functions II",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "MATH 235",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 4,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "MATH235",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Calculus I",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "MATH 318",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 4,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "MATH318",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Introduction to Probability and Statistics",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 160",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT160",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS149"
+      },
+      "prerequisites" : [
+        "CS149"
+      ],
+      "title" : "Data Structures and Advanced Programming",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 201",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT201",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "CS149"
+      },
+      "prerequisites" : [
+        "CS149"
+      ],
+      "title" : "Computational Structures and Logic",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 203",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT203",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Information Security and Privacy",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 212",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT212",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT201"
+      },
+      "prerequisites" : [
+        "IT201"
+      ],
+      "title" : "Digital Electronics",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 215",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT215",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT201"
+      },
+      "prerequisites" : [
+        "IT201"
+      ],
+      "title" : "Introduction to Telecommunications and Computer Networking",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 240",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT240",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT160"
+      },
+      "prerequisites" : [
+        "IT160"
+      ],
+      "title" : "Database Administration",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 301",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT301",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT160"
+      },
+      "prerequisites" : [
+        "IT160"
+      ],
+      "title" : "Web Technologies",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 302",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT302",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Societal and Ethical Issues in Information Technology",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 311",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT311",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT215"
+      },
+      "prerequisites" : [
+        "IT215"
+      ],
+      "title" : "Operating Systems Administration",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 313",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT313",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT301"
+      },
+      "prerequisites" : [
+        "IT301"
+      ],
+      "title" : "Community Projects",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 333",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT333",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT215"
+      },
+      "prerequisites" : [
+        "IT215"
+      ],
+      "title" : "Advanced Networking for Information Technology",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 340",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT340",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT240"
+      },
+      "prerequisites" : [
+        "IT240"
+      ],
+      "title" : "Data Science and Machine Learning",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 347",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT347",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT301"
+      },
+      "prerequisites" : [
+        "IT301"
+      ],
+      "title" : "Interactive Computing Systems",
+      "verificationStatus" : "partial"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 444",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 1,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT444",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT313"
+      },
+      "prerequisites" : [
+        "IT313"
+      ],
+      "title" : "Capstone Project Design",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "IT 445",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "IT445",
+      "prerequisiteExpr" : {
+        "kind" : "course",
+        "value" : "IT444"
+      },
+      "prerequisites" : [
+        "IT444"
+      ],
+      "title" : "Capstone Project Implementation",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "WRTC 103",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "WRTC103",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Rhetorical Reading and Writing",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "ECON 200",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "ECON200",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Macroeconomics",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "ECON 201",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "ECON201",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "Microeconomics",
+      "verificationStatus" : "verified"
+    },
+    {
+      "availability" : null,
+      "code" : "PSYC 101",
+      "corequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "credits" : 3,
+      "hasUnknownPrereqTokens" : false,
+      "id" : "PSYC101",
+      "prerequisiteExpr" : {
+        "kind" : "empty"
+      },
+      "prerequisites" : [
+
+      ],
+      "title" : "General Psychology",
+      "verificationStatus" : "verified"
+    }
+  ],
+  "programs" : [
+    {
+      "catalogPage" : 107,
+      "college" : "College of Business",
+      "degreeType" : "B.B.A.",
+      "department" : "School of Accounting",
+      "id" : "accounting-bba",
+      "kind" : "major",
+      "title" : "Accounting, B.B.A."
+    },
+    {
+      "catalogPage" : 111,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.A.",
+      "department" : "School of Art, Design and Art History",
+      "id" : "art-ba",
+      "kind" : "major",
+      "title" : "Art, B.A."
+    },
+    {
+      "catalogPage" : 113,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.F.A.",
+      "department" : "School of Art, Design and Art History",
+      "id" : "art-bfa",
+      "kind" : "major",
+      "title" : "Art, B.F.A."
+    },
+    {
+      "catalogPage" : 116,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.F.A.",
+      "department" : "School of Art, Design and Art History",
+      "id" : "architectural-design-bfa",
+      "kind" : "major",
+      "title" : "Art, Architectural Design Major, B.F.A."
+    },
+    {
+      "catalogPage" : 118,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.F.A.",
+      "department" : "School of Art, Design and Art History",
+      "id" : "graphic-design-bfa",
+      "kind" : "major",
+      "title" : "Art, Graphic Design Major, B.F.A."
+    },
+    {
+      "catalogPage" : 121,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.S.",
+      "department" : "School of Art, Design and Art History",
+      "id" : "art-bs",
+      "kind" : "major",
+      "title" : "Art, B.S."
+    },
+    {
+      "catalogPage" : 123,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.S.",
+      "department" : "School of Art, Design and Art History",
+      "id" : "industrial-design-bs",
+      "kind" : "major",
+      "title" : "Art, Industrial Design Major, B.S."
+    },
+    {
+      "catalogPage" : 126,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.A.",
+      "department" : "School of Art, Design and Art History",
+      "id" : "art-history-ba",
+      "kind" : "major",
+      "title" : "Art History, B.A."
+    },
+    {
+      "catalogPage" : 135,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.A.",
+      "department" : "Department of Biology",
+      "id" : "biology-ba",
+      "kind" : "major",
+      "title" : "Biology, B.A."
+    },
+    {
+      "catalogPage" : 141,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.S.",
+      "department" : "Department of Biology",
+      "id" : "biology-bs",
+      "kind" : "major",
+      "title" : "Biology, B.S."
+    },
+    {
+      "catalogPage" : 151,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.S.",
+      "department" : "Department of Chemistry and Biochemistry",
+      "id" : "chemistry-bs",
+      "kind" : "major",
+      "title" : "Chemistry, B.S."
+    },
+    {
+      "catalogPage" : 154,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.S.",
+      "department" : "Department of Chemistry and Biochemistry",
+      "id" : "biophysical-chemistry-bs",
+      "kind" : "major",
+      "title" : "Chemistry, Biophysical Chemistry Major, B.S."
+    },
+    {
+      "catalogPage" : 159,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.A.",
+      "department" : "Department of Communication Sciences and Disorders",
+      "id" : "communication-sciences-disorders-ba",
+      "kind" : "major",
+      "title" : "Communication Sciences and Disorders, B.A."
+    },
+    {
+      "catalogPage" : 160,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.S.",
+      "department" : "Department of Communication Sciences and Disorders",
+      "id" : "communication-sciences-disorders-bs",
+      "kind" : "major",
+      "title" : "Communication Sciences and Disorders, B.S."
+    },
+    {
+      "catalogPage" : 164,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "School of Communication Studies",
+      "id" : "communication-studies-ba",
+      "kind" : "major",
+      "title" : "Communication Studies, B.A."
+    },
+    {
+      "catalogPage" : 170,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.S.",
+      "department" : "School of Communication Studies",
+      "id" : "communication-studies-bs",
+      "kind" : "major",
+      "title" : "Communication Studies, B.S."
+    },
+    {
+      "catalogPage" : 181,
+      "college" : "College of Business",
+      "degreeType" : "B.B.A.",
+      "department" : "Department of Computer Information Systems and Business Analytics",
+      "id" : "computer-information-systems-bba",
+      "kind" : "major",
+      "title" : "Computer Information Systems, B.B.A."
+    },
+    {
+      "catalogPage" : 187,
+      "college" : "College of Integrated Science and Engineering",
+      "degreeType" : "B.S.",
+      "department" : "Department of Computer Science",
+      "id" : "computer-science-bs",
+      "kind" : "major",
+      "requirementDataComplete" : true,
+      "title" : "Computer Science, B.S.",
+      "verificationStatus" : "partial"
+    },
+    {
+      "catalogPage" : 190,
+      "college" : "College of Integrated Science and Engineering",
+      "degreeType" : "B.S.",
+      "department" : "Department of Computer Science",
+      "id" : "information-technology-bs",
+      "kind" : "major",
+      "requirementDataComplete" : true,
+      "title" : "Information Technology, B.S.",
+      "verificationStatus" : "partial"
+    },
+    {
+      "catalogPage" : 194,
+      "college" : "College of Education",
+      "degreeType" : "B.S.",
+      "department" : "Department of Early, Elementary and Reading Education",
+      "id" : "elementary-education-bs",
+      "kind" : "major",
+      "title" : "Education: Elementary Education, B.S."
+    },
+    {
+      "catalogPage" : 198,
+      "college" : "College of Business",
+      "degreeType" : "B.A.",
+      "department" : "Department of Economics",
+      "id" : "economics-ba",
+      "kind" : "major",
+      "title" : "Economics, B.A."
+    },
+    {
+      "catalogPage" : 201,
+      "college" : "College of Business",
+      "degreeType" : "B.B.A.",
+      "department" : "Department of Economics",
+      "id" : "economics-bba",
+      "kind" : "major",
+      "title" : "Economics, B.B.A."
+    },
+    {
+      "catalogPage" : 204,
+      "college" : "College of Business",
+      "degreeType" : "B.S.",
+      "department" : "Department of Economics",
+      "id" : "economics-bs",
+      "kind" : "major",
+      "title" : "Economics, B.S."
+    },
+    {
+      "catalogPage" : 209,
+      "college" : "College of Education",
+      "degreeType" : "B.S.",
+      "department" : "Department of Educational Foundations and Exceptionalities",
+      "id" : "inclusive-early-childhood-education-bs",
+      "kind" : "major",
+      "title" : "Education: Inclusive Early Childhood Education, B.S."
+    },
+    {
+      "catalogPage" : 211,
+      "college" : "College of Education",
+      "degreeType" : "B.S.",
+      "department" : "Department of Educational Foundations and Exceptionalities",
+      "id" : "special-education-bs",
+      "kind" : "major",
+      "title" : "Education: Special Education, B.S."
+    },
+    {
+      "catalogPage" : 216,
+      "college" : "College of Integrated Science and Engineering",
+      "degreeType" : "B.S.",
+      "department" : "Department of Engineering",
+      "id" : "engineering-bs",
+      "kind" : "major",
+      "title" : "Engineering, B.S."
+    },
+    {
+      "catalogPage" : 221,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "Department of English",
+      "id" : "english-ba",
+      "kind" : "major",
+      "title" : "English, B.A."
+    },
+    {
+      "catalogPage" : 228,
+      "college" : "College of Business",
+      "degreeType" : "B.B.A.",
+      "department" : "Department of Finance and Business Law",
+      "id" : "finance-bba",
+      "kind" : "major",
+      "title" : "Finance, B.B.A."
+    },
+    {
+      "catalogPage" : 231,
+      "college" : "College of Business",
+      "degreeType" : "B.S.",
+      "department" : "Department of Finance and Business Law",
+      "id" : "quantitative-finance-math-double-bs",
+      "kind" : "major",
+      "title" : "Quantitative Finance\/Mathematics Double Major, B.S."
+    },
+    {
+      "catalogPage" : 233,
+      "college" : "College of Business",
+      "degreeType" : "B.S.",
+      "department" : "Department of Finance and Business Law",
+      "id" : "quantitative-finance-bs",
+      "kind" : "major",
+      "title" : "Quantitative Finance Major with a Minor in Economics and Mathematics, B.S."
+    },
+    {
+      "catalogPage" : 236,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.A.",
+      "department" : "Department of Geology and Environmental Science",
+      "id" : "earth-science-ba",
+      "kind" : "major",
+      "title" : "Geology, Earth Science Major, B.A."
+    },
+    {
+      "catalogPage" : 239,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.S.",
+      "department" : "Department of Geology and Environmental Science",
+      "id" : "geology-bs",
+      "kind" : "major",
+      "title" : "Geology, B.S."
+    },
+    {
+      "catalogPage" : 249,
+      "college" : "College of Business",
+      "degreeType" : "B.S.",
+      "department" : "Hart School of Hospitality, Sport and Recreation Management",
+      "id" : "hospitality-management-bs",
+      "kind" : "major",
+      "title" : "Hospitality Management, B.S."
+    },
+    {
+      "catalogPage" : 251,
+      "college" : "College of Business",
+      "degreeType" : "B.S.",
+      "department" : "Hart School of Hospitality, Sport and Recreation Management",
+      "id" : "sport-recreation-management-bs",
+      "kind" : "major",
+      "title" : "Sport and Recreation Management, B.S."
+    },
+    {
+      "catalogPage" : 254,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.S.",
+      "department" : "Department of Health Professions",
+      "id" : "dietetics-bs",
+      "kind" : "major",
+      "title" : "Dietetics, B.S."
+    },
+    {
+      "catalogPage" : 257,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.S.",
+      "department" : "Department of Health Professions",
+      "id" : "health-services-administration-bs",
+      "kind" : "major",
+      "title" : "Health Services Administration, B.S."
+    },
+    {
+      "catalogPage" : 260,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.S.",
+      "department" : "Department of Health Sciences",
+      "id" : "health-sciences-bs",
+      "kind" : "major",
+      "title" : "Health Sciences, B.S."
+    },
+    {
+      "catalogPage" : 266,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "Department of History",
+      "id" : "history-ba",
+      "kind" : "major",
+      "title" : "History, B.A."
+    },
+    {
+      "catalogPage" : 275,
+      "college" : "College of Integrated Science and Engineering",
+      "degreeType" : "B.A.",
+      "department" : "School of Integrated Sciences",
+      "id" : "geography-ba",
+      "kind" : "major",
+      "title" : "Geography, B.A."
+    },
+    {
+      "catalogPage" : 279,
+      "college" : "College of Integrated Science and Engineering",
+      "degreeType" : "B.S.",
+      "department" : "School of Integrated Sciences",
+      "id" : "geography-bs",
+      "kind" : "major",
+      "title" : "Geography, B.S."
+    },
+    {
+      "catalogPage" : 283,
+      "college" : "College of Integrated Science and Engineering",
+      "degreeType" : "B.S.",
+      "department" : "School of Integrated Sciences",
+      "id" : "integrated-science-technology-bs",
+      "kind" : "major",
+      "title" : "Integrated Science and Technology, B.S."
+    },
+    {
+      "catalogPage" : 287,
+      "college" : "College of Integrated Science and Engineering",
+      "degreeType" : "B.S.",
+      "department" : "School of Integrated Sciences",
+      "id" : "intelligence-analysis-bs",
+      "kind" : "major",
+      "title" : "Intelligence Analysis, B.S."
+    },
+    {
+      "catalogPage" : 292,
+      "college" : "University Studies",
+      "degreeType" : "B.A.",
+      "department" : "Department of Interdisciplinary Liberal Studies",
+      "id" : "individualized-study-general-ba",
+      "kind" : "major",
+      "title" : "Individualized Study, General Studies Major, B.A."
+    },
+    {
+      "catalogPage" : 293,
+      "college" : "University Studies",
+      "degreeType" : "B.A.",
+      "department" : "Department of Interdisciplinary Liberal Studies",
+      "id" : "individualized-study-independent-ba",
+      "kind" : "major",
+      "title" : "Individualized Study, Independent Scholars Major, B.A."
+    },
+    {
+      "catalogPage" : 294,
+      "college" : "University Studies",
+      "degreeType" : "B.S.",
+      "department" : "Department of Interdisciplinary Liberal Studies",
+      "id" : "individualized-study-general-bs",
+      "kind" : "major",
+      "title" : "Individualized Study, General Studies Major, B.S."
+    },
+    {
+      "catalogPage" : 295,
+      "college" : "University Studies",
+      "degreeType" : "B.S.",
+      "department" : "Department of Interdisciplinary Liberal Studies",
+      "id" : "individualized-study-independent-bs",
+      "kind" : "major",
+      "title" : "Individualized Study, Independent Scholars Major, B.S."
+    },
+    {
+      "catalogPage" : 297,
+      "college" : "College of Business",
+      "degreeType" : "B.B.A.",
+      "department" : "Department of International Business",
+      "id" : "international-business-bba",
+      "kind" : "major",
+      "title" : "International Business, B.B.A."
+    },
+    {
+      "catalogPage" : 300,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "Department of Justice Studies",
+      "id" : "justice-studies-ba",
+      "kind" : "major",
+      "title" : "Justice Studies, B.A."
+    },
+    {
+      "catalogPage" : 305,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.S.",
+      "department" : "Department of Justice Studies",
+      "id" : "justice-studies-bs",
+      "kind" : "major",
+      "title" : "Justice Studies, B.S."
+    },
+    {
+      "catalogPage" : 311,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.S.",
+      "department" : "Department of Kinesiology",
+      "id" : "kinesiology-bs",
+      "kind" : "major",
+      "title" : "Kinesiology, B.S."
+    },
+    {
+      "catalogPage" : 320,
+      "college" : "College of Business",
+      "degreeType" : "B.B.A.",
+      "department" : "Department of Management",
+      "id" : "business-management-bba",
+      "kind" : "major",
+      "title" : "Business Management, B.B.A."
+    },
+    {
+      "catalogPage" : 325,
+      "college" : "College of Business",
+      "degreeType" : "B.B.A.",
+      "department" : "Department of Marketing",
+      "id" : "marketing-bba",
+      "kind" : "major",
+      "title" : "Marketing, B.B.A."
+    },
+    {
+      "catalogPage" : 329,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.A.",
+      "department" : "Department of Mathematics and Statistics",
+      "id" : "mathematics-ba",
+      "kind" : "major",
+      "title" : "Mathematics, B.A."
+    },
+    {
+      "catalogPage" : 332,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.S.",
+      "department" : "Department of Mathematics and Statistics",
+      "id" : "mathematics-bs",
+      "kind" : "major",
+      "title" : "Mathematics, B.S."
+    },
+    {
+      "catalogPage" : 335,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.S.",
+      "department" : "Department of Mathematics and Statistics",
+      "id" : "statistics-bs",
+      "kind" : "major",
+      "title" : "Statistics, B.S."
+    },
+    {
+      "catalogPage" : 344,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "School of Media Arts and Design",
+      "id" : "media-arts-design-ba",
+      "kind" : "major",
+      "title" : "Media Arts and Design, B.A."
+    },
+    {
+      "catalogPage" : 349,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.S.",
+      "department" : "School of Media Arts and Design",
+      "id" : "media-arts-design-bs",
+      "kind" : "major",
+      "title" : "Media Arts and Design, B.S."
+    },
+    {
+      "catalogPage" : 356,
+      "college" : "College of Education",
+      "degreeType" : "B.S.",
+      "department" : "Department of Middle, Secondary and Mathematics Education",
+      "id" : "middle-grades-education-bs",
+      "kind" : "major",
+      "title" : "Education: Middle Grades Education, B.S."
+    },
+    {
+      "catalogPage" : 358,
+      "college" : "College of Education",
+      "degreeType" : "B.S.",
+      "department" : "Department of Middle, Secondary and Mathematics Education",
+      "id" : "secondary-education-bs",
+      "kind" : "major",
+      "title" : "Education: Secondary Education, B.S."
+    },
+    {
+      "catalogPage" : 370,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.A.",
+      "department" : "School of Music",
+      "id" : "music-ba",
+      "kind" : "major",
+      "title" : "Music, B.A."
+    },
+    {
+      "catalogPage" : 373,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.M.",
+      "department" : "School of Music",
+      "id" : "music-bm",
+      "kind" : "major",
+      "title" : "Music, B.M."
+    },
+    {
+      "catalogPage" : 388,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.S.N.",
+      "department" : "School of Nursing",
+      "id" : "nursing-bsn",
+      "kind" : "major",
+      "title" : "Nursing, B.S.N."
+    },
+    {
+      "catalogPage" : 391,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.S.N.",
+      "department" : "School of Nursing",
+      "id" : "nursing-rn-bsn",
+      "kind" : "major",
+      "title" : "Nursing, R.N. to B.S.N."
+    },
+    {
+      "catalogPage" : 395,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "Department of Philosophy and Religion",
+      "id" : "global-religions-cultures-ba",
+      "kind" : "major",
+      "title" : "Philosophy and Religion, Global Religions and Cultures Major, B.A."
+    },
+    {
+      "catalogPage" : 397,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "Department of Philosophy and Religion",
+      "id" : "philosophy-ba",
+      "kind" : "major",
+      "title" : "Philosophy and Religion, Philosophy Major, B.A."
+    },
+    {
+      "catalogPage" : 404,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.A.",
+      "department" : "Department of Physics and Astronomy",
+      "id" : "physics-ba",
+      "kind" : "major",
+      "title" : "Physics, B.A."
+    },
+    {
+      "catalogPage" : 406,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : "B.S.",
+      "department" : "Department of Physics and Astronomy",
+      "id" : "physics-bs",
+      "kind" : "major",
+      "title" : "Physics, B.S."
+    },
+    {
+      "catalogPage" : 418,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "Department of Political Science",
+      "id" : "international-affairs-ba",
+      "kind" : "major",
+      "title" : "International Affairs, B.A."
+    },
+    {
+      "catalogPage" : 427,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "Department of Political Science",
+      "id" : "political-science-ba",
+      "kind" : "major",
+      "title" : "Political Science, B.A."
+    },
+    {
+      "catalogPage" : 429,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.S.",
+      "department" : "Department of Political Science",
+      "id" : "public-administration-bs",
+      "kind" : "major",
+      "title" : "Public Administration, B.S."
+    },
+    {
+      "catalogPage" : 435,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.A.",
+      "department" : "Department of Psychology",
+      "id" : "psychology-ba",
+      "kind" : "major",
+      "title" : "Psychology, B.A."
+    },
+    {
+      "catalogPage" : 438,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.S.",
+      "department" : "Department of Psychology",
+      "id" : "psychology-bs",
+      "kind" : "major",
+      "title" : "Psychology, B.S."
+    },
+    {
+      "catalogPage" : 443,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : "B.S.W.",
+      "department" : "Department of Social Work",
+      "id" : "social-work-bsw",
+      "kind" : "major",
+      "title" : "Social Work, B.S.W."
+    },
+    {
+      "catalogPage" : 446,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "Department of Sociology and Anthropology",
+      "id" : "anthropology-ba",
+      "kind" : "major",
+      "title" : "Anthropology, B.A."
+    },
+    {
+      "catalogPage" : 449,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.S.",
+      "department" : "Department of Sociology and Anthropology",
+      "id" : "anthropology-bs",
+      "kind" : "major",
+      "title" : "Anthropology, B.S."
+    },
+    {
+      "catalogPage" : 452,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "Department of Sociology and Anthropology",
+      "id" : "sociology-ba",
+      "kind" : "major",
+      "title" : "Sociology, B.A."
+    },
+    {
+      "catalogPage" : 455,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.S.",
+      "department" : "Department of Sociology and Anthropology",
+      "id" : "sociology-bs",
+      "kind" : "major",
+      "title" : "Sociology, B.S."
+    },
+    {
+      "catalogPage" : 461,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.A.",
+      "department" : "School of Theatre and Dance",
+      "id" : "theatre-ba",
+      "kind" : "major",
+      "title" : "Theatre, B.A."
+    },
+    {
+      "catalogPage" : 464,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.A.",
+      "department" : "School of Theatre and Dance",
+      "id" : "dance-ba",
+      "kind" : "major",
+      "title" : "Theatre, Dance Major, B.A."
+    },
+    {
+      "catalogPage" : 466,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : "B.A.",
+      "department" : "School of Theatre and Dance",
+      "id" : "musical-theatre-ba",
+      "kind" : "major",
+      "title" : "Theatre, Musical Theatre Major, B.A."
+    },
+    {
+      "catalogPage" : 475,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "Department of World Languages and Cultures",
+      "id" : "modern-foreign-languages-ba",
+      "kind" : "major",
+      "title" : "Modern Foreign Languages, B.A."
+    },
+    {
+      "catalogPage" : 487,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.A.",
+      "department" : "School of Writing, Rhetoric and Technical Communication",
+      "id" : "wrtc-ba",
+      "kind" : "major",
+      "title" : "Writing, Rhetoric and Technical Communication, B.A."
+    },
+    {
+      "catalogPage" : 489,
+      "college" : "College of Arts and Letters",
+      "degreeType" : "B.S.",
+      "department" : "School of Writing, Rhetoric and Technical Communication",
+      "id" : "wrtc-bs",
+      "kind" : "major",
+      "title" : "Writing, Rhetoric and Technical Communication, B.S."
+    },
+    {
+      "catalogPage" : 493,
+      "college" : "School of Professional and Continuing Education",
+      "degreeType" : "B.A.",
+      "department" : "Adult Degree Program",
+      "id" : "adult-individualized-study-ba",
+      "kind" : "major",
+      "title" : "Individualized Study, B.A."
+    },
+    {
+      "catalogPage" : 495,
+      "college" : "School of Professional and Continuing Education",
+      "degreeType" : "B.I.S.",
+      "department" : "Adult Degree Program",
+      "id" : "adult-individualized-study-bis",
+      "kind" : "major",
+      "title" : "Individualized Study, B.I.S."
+    },
+    {
+      "catalogPage" : 504,
+      "college" : "School of Professional and Continuing Education",
+      "degreeType" : "B.S.",
+      "department" : "Adult Degree Program",
+      "id" : "adult-individualized-study-bs",
+      "kind" : "major",
+      "title" : "Individualized Study, B.S."
+    },
+    {
+      "catalogPage" : 506,
+      "college" : "Cross Disciplinary Program",
+      "degreeType" : "B.S.",
+      "department" : "Cross Disciplinary Program",
+      "id" : "biotechnology-bs",
+      "kind" : "major",
+      "title" : "Biotechnology, B.S."
+    },
+    {
+      "catalogPage" : 129,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : null,
+      "department" : "School of Art, Design and Art History",
+      "id" : "art-minor",
+      "kind" : "minor",
+      "title" : "Art Minor"
+    },
+    {
+      "catalogPage" : 130,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : null,
+      "department" : "School of Art, Design and Art History",
+      "id" : "art-history-minor",
+      "kind" : "minor",
+      "title" : "Art History Minor"
+    },
+    {
+      "catalogPage" : 131,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : null,
+      "department" : "School of Art, Design and Art History",
+      "id" : "illustration-minor",
+      "kind" : "minor",
+      "title" : "Illustration Minor"
+    },
+    {
+      "catalogPage" : 147,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Biology",
+      "id" : "biology-minor",
+      "kind" : "minor",
+      "title" : "Biology Minor"
+    },
+    {
+      "catalogPage" : 156,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Chemistry and Biochemistry",
+      "id" : "chemistry-minor",
+      "kind" : "minor",
+      "title" : "Chemistry Minor"
+    },
+    {
+      "catalogPage" : 176,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "School of Communication Studies",
+      "id" : "communication-studies-minor",
+      "kind" : "minor",
+      "title" : "Communication Studies Minor"
+    },
+    {
+      "catalogPage" : 177,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "School of Communication Studies",
+      "id" : "cultural-communication-minor",
+      "kind" : "minor",
+      "title" : "Cultural Communication Minor"
+    },
+    {
+      "catalogPage" : 178,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "School of Communication Studies",
+      "id" : "health-communication-minor",
+      "kind" : "minor",
+      "title" : "Health Communication Minor"
+    },
+    {
+      "catalogPage" : 184,
+      "college" : "College of Business",
+      "degreeType" : null,
+      "department" : "Department of Computer Information Systems and Business Analytics",
+      "id" : "business-analytics-minor",
+      "kind" : "minor",
+      "title" : "Business Analytics Minor"
+    },
+    {
+      "catalogPage" : 185,
+      "college" : "College of Business",
+      "degreeType" : null,
+      "department" : "Department of Computer Information Systems and Business Analytics",
+      "id" : "computer-information-systems-minor",
+      "kind" : "minor",
+      "title" : "Computer Information Systems Minor"
+    },
+    {
+      "catalogPage" : 192,
+      "college" : "College of Integrated Science and Engineering",
+      "degreeType" : null,
+      "department" : "Department of Computer Science",
+      "id" : "computer-science-minor",
+      "kind" : "minor",
+      "title" : "Computer Science Minor"
+    },
+    {
+      "catalogPage" : 207,
+      "college" : "College of Business",
+      "degreeType" : null,
+      "department" : "Department of Economics",
+      "id" : "economics-minor",
+      "kind" : "minor",
+      "title" : "Economics Minor"
+    },
+    {
+      "catalogPage" : 214,
+      "college" : "College of Education",
+      "degreeType" : null,
+      "department" : "Department of Educational Foundations and Exceptionalities",
+      "id" : "tesol-minor",
+      "kind" : "minor",
+      "title" : "Teaching English to Speakers of Other Languages Minor"
+    },
+    {
+      "catalogPage" : 242,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Geology and Environmental Science",
+      "id" : "climate-science-minor",
+      "kind" : "minor",
+      "title" : "Climate Science Minor"
+    },
+    {
+      "catalogPage" : 244,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Geology and Environmental Science",
+      "id" : "geology-minor",
+      "kind" : "minor",
+      "title" : "Geology Minor"
+    },
+    {
+      "catalogPage" : 245,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Geology and Environmental Science",
+      "id" : "geophysics-minor",
+      "kind" : "minor",
+      "title" : "Geophysics Minor"
+    },
+    {
+      "catalogPage" : 270,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of History",
+      "id" : "history-minor",
+      "kind" : "minor",
+      "title" : "History Minor"
+    },
+    {
+      "catalogPage" : 289,
+      "college" : "College of Integrated Science and Engineering",
+      "degreeType" : null,
+      "department" : "School of Integrated Sciences",
+      "id" : "geography-minor",
+      "kind" : "minor",
+      "title" : "Geography Minor"
+    },
+    {
+      "catalogPage" : 290,
+      "college" : "College of Integrated Science and Engineering",
+      "degreeType" : null,
+      "department" : "School of Integrated Sciences",
+      "id" : "integrated-science-technology-minor",
+      "kind" : "minor",
+      "title" : "Integrated Science and Technology Minor"
+    },
+    {
+      "catalogPage" : 316,
+      "college" : "College of Health and Behavioral Studies",
+      "degreeType" : null,
+      "department" : "Department of Kinesiology",
+      "id" : "coaching-education-minor",
+      "kind" : "minor",
+      "title" : "Coaching Education Minor"
+    },
+    {
+      "catalogPage" : 318,
+      "college" : "College of Education",
+      "degreeType" : null,
+      "department" : "Department of Learning, Technology and Leadership Education",
+      "id" : "educational-media-minor",
+      "kind" : "minor",
+      "title" : "Educational Media Minor"
+    },
+    {
+      "catalogPage" : 337,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Mathematics and Statistics",
+      "id" : "computational-analytics-minor",
+      "kind" : "minor",
+      "title" : "Computational Analytics Minor"
+    },
+    {
+      "catalogPage" : 338,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Mathematics and Statistics",
+      "id" : "data-analytics-minor",
+      "kind" : "minor",
+      "title" : "Data Analytics Minor"
+    },
+    {
+      "catalogPage" : 339,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Mathematics and Statistics",
+      "id" : "mathematics-minor",
+      "kind" : "minor",
+      "title" : "Mathematics Minor"
+    },
+    {
+      "catalogPage" : 340,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Mathematics and Statistics",
+      "id" : "mathematics-elementary-middle-grades-minor",
+      "kind" : "minor",
+      "title" : "Mathematics for Elementary and Middle Grades Teachers Minor"
+    },
+    {
+      "catalogPage" : 341,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Mathematics and Statistics",
+      "id" : "statistics-minor",
+      "kind" : "minor",
+      "title" : "Statistics Minor"
+    },
+    {
+      "catalogPage" : 360,
+      "college" : "College of Education",
+      "degreeType" : null,
+      "department" : "Department of Middle, Secondary and Mathematics Education",
+      "id" : "pre-professional-secondary-education-minor",
+      "kind" : "minor",
+      "title" : "Pre-Professional Secondary Education (SEED) Minor"
+    },
+    {
+      "catalogPage" : 365,
+      "college" : "Department of Military Science",
+      "degreeType" : null,
+      "department" : "Department of Military Science",
+      "id" : "leadership-military-affairs-minor",
+      "kind" : "minor",
+      "title" : "Leadership in Military Affairs Minor (Air Force)"
+    },
+    {
+      "catalogPage" : 366,
+      "college" : "Department of Military Science",
+      "degreeType" : null,
+      "department" : "Department of Military Science",
+      "id" : "military-leadership-minor",
+      "kind" : "minor",
+      "title" : "Military Leadership Minor (Army)"
+    },
+    {
+      "catalogPage" : 382,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : null,
+      "department" : "School of Music",
+      "id" : "general-music-minor",
+      "kind" : "minor",
+      "title" : "General Music Minor"
+    },
+    {
+      "catalogPage" : 383,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : null,
+      "department" : "School of Music",
+      "id" : "jazz-studies-minor",
+      "kind" : "minor",
+      "title" : "Jazz Studies Minor"
+    },
+    {
+      "catalogPage" : 384,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : null,
+      "department" : "School of Music",
+      "id" : "music-industry-minor",
+      "kind" : "minor",
+      "title" : "Music Industry Minor"
+    },
+    {
+      "catalogPage" : 399,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of Philosophy and Religion",
+      "id" : "christian-studies-minor",
+      "kind" : "minor",
+      "title" : "Christian Studies Minor"
+    },
+    {
+      "catalogPage" : 400,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of Philosophy and Religion",
+      "id" : "ethics-minor",
+      "kind" : "minor",
+      "title" : "Ethics Minor"
+    },
+    {
+      "catalogPage" : 401,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of Philosophy and Religion",
+      "id" : "global-religions-cultures-minor",
+      "kind" : "minor",
+      "title" : "Global Religions and Cultures Minor"
+    },
+    {
+      "catalogPage" : 402,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of Philosophy and Religion",
+      "id" : "philosophy-minor",
+      "kind" : "minor",
+      "title" : "Philosophy Minor"
+    },
+    {
+      "catalogPage" : 413,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Physics and Astronomy",
+      "id" : "astronomy-minor",
+      "kind" : "minor",
+      "title" : "Astronomy Minor"
+    },
+    {
+      "catalogPage" : 414,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Physics and Astronomy",
+      "id" : "physics-minor",
+      "kind" : "minor",
+      "title" : "Physics Minor"
+    },
+    {
+      "catalogPage" : 415,
+      "college" : "College of Science and Mathematics",
+      "degreeType" : null,
+      "department" : "Department of Physics and Astronomy",
+      "id" : "physics-minor-engineers",
+      "kind" : "minor",
+      "title" : "Physics Minor for Engineers"
+    },
+    {
+      "catalogPage" : 431,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of Political Science",
+      "id" : "political-science-minor",
+      "kind" : "minor",
+      "title" : "Political Science Minor"
+    },
+    {
+      "catalogPage" : 433,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of Political Science",
+      "id" : "public-policy-administration-minor",
+      "kind" : "minor",
+      "title" : "Public Policy and Administration Minor"
+    },
+    {
+      "catalogPage" : 458,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of Sociology and Anthropology",
+      "id" : "anthropology-minor",
+      "kind" : "minor",
+      "title" : "Anthropology Minor"
+    },
+    {
+      "catalogPage" : 459,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of Sociology and Anthropology",
+      "id" : "sociology-minor",
+      "kind" : "minor",
+      "title" : "Sociology Minor"
+    },
+    {
+      "catalogPage" : 468,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : null,
+      "department" : "School of Theatre and Dance",
+      "id" : "dance-minor",
+      "kind" : "minor",
+      "title" : "Dance Minor"
+    },
+    {
+      "catalogPage" : 469,
+      "college" : "College of Visual and Performing Arts",
+      "degreeType" : null,
+      "department" : "School of Theatre and Dance",
+      "id" : "theatre-minor",
+      "kind" : "minor",
+      "title" : "Theatre Minor"
+    },
+    {
+      "catalogPage" : 479,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of World Languages and Cultures",
+      "id" : "business-spanish-minor",
+      "kind" : "minor",
+      "title" : "Business Spanish Minor"
+    },
+    {
+      "catalogPage" : 480,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of World Languages and Cultures",
+      "id" : "medical-spanish-minor",
+      "kind" : "minor",
+      "title" : "Medical Spanish Minor"
+    },
+    {
+      "catalogPage" : 482,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of World Languages and Cultures",
+      "id" : "modern-foreign-languages-minor",
+      "kind" : "minor",
+      "title" : "Modern Foreign Languages Minor"
+    },
+    {
+      "catalogPage" : 484,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "Department of World Languages and Cultures",
+      "id" : "spanish-english-translation-minor",
+      "kind" : "minor",
+      "title" : "Spanish-English Translation and Interpretation Minor"
+    },
+    {
+      "catalogPage" : 491,
+      "college" : "College of Arts and Letters",
+      "degreeType" : null,
+      "department" : "School of Writing, Rhetoric and Technical Communication",
+      "id" : "wrtc-minor",
+      "kind" : "minor",
+      "title" : "Writing, Rhetoric and Technical Communication Minor"
+    },
+    {
+      "catalogPage" : 522,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "african-african-american-diaspora-studies-minor",
+      "kind" : "minor",
+      "title" : "African, African American and Diaspora Studies Minor"
+    },
+    {
+      "catalogPage" : 524,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "american-studies-minor",
+      "kind" : "minor",
+      "title" : "American Studies Minor"
+    },
+    {
+      "catalogPage" : 525,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "asian-studies-minor",
+      "kind" : "minor",
+      "title" : "Asian Studies Minor"
+    },
+    {
+      "catalogPage" : 526,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "biochemistry-molecular-biology-minor",
+      "kind" : "minor",
+      "title" : "Biochemistry and Molecular Biology Minor"
+    },
+    {
+      "catalogPage" : 527,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "book-arts-minor",
+      "kind" : "minor",
+      "title" : "Book Arts Minor"
+    },
+    {
+      "catalogPage" : 536,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "criminal-justice-minor",
+      "kind" : "minor",
+      "title" : "Criminal Justice Minor"
+    },
+    {
+      "catalogPage" : 537,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "digital-studies-minor",
+      "kind" : "minor",
+      "title" : "Digital Studies Minor"
+    },
+    {
+      "catalogPage" : 538,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "disability-studies-minor",
+      "kind" : "minor",
+      "title" : "Disability Studies Minor"
+    },
+    {
+      "catalogPage" : 539,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "entrepreneurship-minor",
+      "kind" : "minor",
+      "title" : "Entrepreneurship Minor"
+    },
+    {
+      "catalogPage" : 543,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "environmental-science-minor",
+      "kind" : "minor",
+      "title" : "Environmental Science Minor"
+    },
+    {
+      "catalogPage" : 547,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "family-studies-minor",
+      "kind" : "minor",
+      "title" : "Family Studies Minor"
+    },
+    {
+      "catalogPage" : 549,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "film-studies-minor",
+      "kind" : "minor",
+      "title" : "Film Studies Minor"
+    },
+    {
+      "catalogPage" : 550,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "global-supply-chain-management-minor",
+      "kind" : "minor",
+      "title" : "Global Supply Chain Management Minor"
+    },
+    {
+      "catalogPage" : 557,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "legal-studies-minor",
+      "kind" : "minor",
+      "title" : "Legal Studies Minor"
+    },
+    {
+      "catalogPage" : 558,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "linguistics-minor",
+      "kind" : "minor",
+      "title" : "Linguistics Minor"
+    },
+    {
+      "catalogPage" : 560,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "materials-science-minor",
+      "kind" : "minor",
+      "title" : "Materials Science Minor"
+    },
+    {
+      "catalogPage" : 561,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "medical-humanities-minor",
+      "kind" : "minor",
+      "title" : "Medical Humanities Minor"
+    },
+    {
+      "catalogPage" : 568,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "nonprofit-studies-minor",
+      "kind" : "minor",
+      "title" : "Nonprofit Studies Minor"
+    },
+    {
+      "catalogPage" : 572,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "robotics-minor",
+      "kind" : "minor",
+      "title" : "Robotics Minor"
+    },
+    {
+      "catalogPage" : 574,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "science-technology-society-minor",
+      "kind" : "minor",
+      "title" : "Science, Technology and Society Minor"
+    },
+    {
+      "catalogPage" : 575,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "social-justice-studies-minor",
+      "kind" : "minor",
+      "title" : "Social Justice Studies Minor"
+    },
+    {
+      "catalogPage" : 577,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "social-studies-minor",
+      "kind" : "minor",
+      "title" : "Social Studies Minor"
+    },
+    {
+      "catalogPage" : 580,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "sport-communication-minor",
+      "kind" : "minor",
+      "title" : "Sport Communication Minor"
+    },
+    {
+      "catalogPage" : 582,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "urban-regional-studies-minor",
+      "kind" : "minor",
+      "title" : "Urban and Regional Studies Minor"
+    },
+    {
+      "catalogPage" : 583,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "womens-gender-sexuality-studies-minor",
+      "kind" : "minor",
+      "title" : "Women's, Gender and Sexuality Studies Minor"
+    },
+    {
+      "catalogPage" : 585,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "world-literature-minor",
+      "kind" : "minor",
+      "title" : "World Literature Minor"
+    },
+    {
+      "catalogPage" : 587,
+      "college" : "Cross Disciplinary Minors",
+      "degreeType" : null,
+      "department" : "Cross Disciplinary Minors",
+      "id" : "youth-justice-minor",
+      "kind" : "minor",
+      "title" : "Youth Justice Minor"
+    }
+  ],
+  "requirementsByProgram" : {
+    "computer-science-bs" : [
+      {
+        "courseOptions" : [
+          [
+            "CS149"
+          ],
+          [
+            "CS159"
+          ],
+          [
+            "CS240"
+          ],
+          [
+            "CS261"
+          ],
+          [
+            "CS327"
+          ],
+          [
+            "CS345"
+          ],
+          [
+            "CS361"
+          ],
+          [
+            "CS430"
+          ]
+        ],
+        "id" : "major-core",
+        "name" : "Major Core Requirements",
+        "requiredCredits" : 24,
+        "verificationStatus" : "verified"
+      },
+      {
+        "courseOptions" : [
+          [
+            "CS343"
+          ],
+          [
+            "CS374"
+          ],
+          [
+            "CS444"
+          ]
+        ],
+        "id" : "major-electives",
+        "name" : "Major Electives",
+        "note" : "The catalog requires 9 credits of CS electives above CS 300, at least two above CS 332. Three common options are seeded so the generator can produce a concrete draft; students must verify elective choices with an advisor.",
+        "requiredCredits" : 9,
+        "verificationStatus" : "partial"
+      },
+      {
+        "courseOptions" : [
+          [
+            "CS227",
+            "MATH227",
+            "MATH245"
+          ]
+        ],
+        "id" : "discrete-math",
+        "name" : "Introductory Discrete Math",
+        "requiredCredits" : 3,
+        "verificationStatus" : "verified"
+      },
+      {
+        "courseOptions" : [
+          [
+            "MATH231",
+            "MATH235"
+          ],
+          [
+            "MATH232"
+          ]
+        ],
+        "id" : "calculus",
+        "name" : "Calculus Requirement",
+        "requiredCredits" : 6,
+        "verificationStatus" : "verified"
+      },
+      {
+        "courseOptions" : [
+          [
+            "MATH220",
+            "MATH229",
+            "MATH318"
+          ]
+        ],
+        "id" : "statistics",
+        "name" : "Statistics Requirement",
+        "requiredCredits" : 3,
+        "verificationStatus" : "verified"
+      },
+      {
+        "courseOptions" : [
+          [
+            "CS412",
+            "CS452"
+          ]
+        ],
+        "id" : "algorithm-elective",
+        "name" : "Algorithm Elective",
+        "requiredCredits" : 3,
+        "verificationStatus" : "verified"
+      },
+      {
+        "courseOptions" : [
+          [
+            "CS432",
+            "CS450",
+            "CS455",
+            "CS456",
+            "CS470"
+          ]
+        ],
+        "id" : "systems-elective",
+        "name" : "Systems Elective",
+        "requiredCredits" : 3,
+        "verificationStatus" : "verified"
+      },
+      {
+        "courseOptions" : [
+
+        ],
+        "id" : "general-education",
+        "name" : "General Education",
+        "note" : "General Education categories are listed in the catalog but are not fully expanded in this seed.",
+        "requiredCredits" : 41,
+        "verificationStatus" : "partial"
+      },
+      {
+        "courseOptions" : [
+
+        ],
+        "id" : "free-electives",
+        "name" : "Free Electives",
+        "note" : "Elective totals depend on choices that need advisor verification.",
+        "requiredCredits" : 27,
+        "verificationStatus" : "partial"
+      }
     ],
-    "retrievalNotes": [
-      "Primary catalog.jmu.edu PHP pages were not accessible in this environment; direct requests returned a protected/empty response.",
-      "The official JMU 2025-2026 Undergraduate Catalog PDF was downloaded from jmu.edu/catalog/pdfs and used as the verified source for the seed list.",
+    "information-technology-bs" : [
+      {
+        "courseOptions" : [
+          [
+            "CS149"
+          ],
+          [
+            "IT160"
+          ],
+          [
+            "IT201"
+          ],
+          [
+            "IT203"
+          ],
+          [
+            "IT212"
+          ],
+          [
+            "IT215"
+          ],
+          [
+            "IT240"
+          ],
+          [
+            "IT301"
+          ],
+          [
+            "IT302"
+          ],
+          [
+            "IT311"
+          ],
+          [
+            "IT313"
+          ],
+          [
+            "IT333"
+          ],
+          [
+            "IT340"
+          ],
+          [
+            "IT347"
+          ]
+        ],
+        "id" : "major-core",
+        "name" : "Major Core Requirements",
+        "requiredCredits" : 42,
+        "verificationStatus" : "partial"
+      },
+      {
+        "courseOptions" : [
+          [
+            "MATH231",
+            "MATH235"
+          ],
+          [
+            "MATH232"
+          ]
+        ],
+        "id" : "calculus",
+        "name" : "Calculus Requirement",
+        "requiredCredits" : 6,
+        "verificationStatus" : "verified"
+      },
+      {
+        "courseOptions" : [
+          [
+            "MATH220",
+            "MATH229",
+            "MATH318"
+          ]
+        ],
+        "id" : "statistics",
+        "name" : "Statistics Requirement",
+        "requiredCredits" : 3,
+        "verificationStatus" : "verified"
+      },
+      {
+        "courseOptions" : [
+          [
+            "IT444"
+          ],
+          [
+            "IT445"
+          ]
+        ],
+        "id" : "capstone",
+        "name" : "Capstone",
+        "requiredCredits" : 4,
+        "verificationStatus" : "verified"
+      },
+      {
+        "courseOptions" : [
+
+        ],
+        "id" : "major-electives",
+        "name" : "Major Electives",
+        "note" : "The catalog lists IT elective choices, but this seed does not schedule them by default.",
+        "requiredCredits" : 9,
+        "verificationStatus" : "partial"
+      },
+      {
+        "courseOptions" : [
+
+        ],
+        "id" : "general-education",
+        "name" : "General Education",
+        "requiredCredits" : 41,
+        "verificationStatus" : "partial"
+      },
+      {
+        "courseOptions" : [
+
+        ],
+        "id" : "free-electives",
+        "name" : "Free Electives",
+        "requiredCredits" : 11,
+        "verificationStatus" : "partial"
+      }
+    ]
+  },
+  "source" : {
+    "catalogYear" : "2025-2026",
+    "issueDate" : "2025-05-01T00:00:00Z",
+    "retrievalNotes" : [
+      "Primary catalog.jmu.edu PHP pages were not accessible in this environment; direct requests returned a protected\/empty response.",
+      "The official JMU 2025-2026 Undergraduate Catalog PDF was downloaded from jmu.edu\/catalog\/pdfs and used as the verified source for the seed list.",
       "Programs without parsed requirement rows are included as catalog shells and are flagged unverified in the app."
-    ]
-  },
-  "programs": [
-    {"id":"accounting-bba","title":"Accounting, B.B.A.","degreeType":"B.B.A.","kind":"major","college":"College of Business","department":"School of Accounting","catalogPage":107},
-    {"id":"art-ba","title":"Art, B.A.","degreeType":"B.A.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Art, Design and Art History","catalogPage":111},
-    {"id":"art-bfa","title":"Art, B.F.A.","degreeType":"B.F.A.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Art, Design and Art History","catalogPage":113},
-    {"id":"architectural-design-bfa","title":"Art, Architectural Design Major, B.F.A.","degreeType":"B.F.A.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Art, Design and Art History","catalogPage":116},
-    {"id":"graphic-design-bfa","title":"Art, Graphic Design Major, B.F.A.","degreeType":"B.F.A.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Art, Design and Art History","catalogPage":118},
-    {"id":"art-bs","title":"Art, B.S.","degreeType":"B.S.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Art, Design and Art History","catalogPage":121},
-    {"id":"industrial-design-bs","title":"Art, Industrial Design Major, B.S.","degreeType":"B.S.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Art, Design and Art History","catalogPage":123},
-    {"id":"art-history-ba","title":"Art History, B.A.","degreeType":"B.A.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Art, Design and Art History","catalogPage":126},
-    {"id":"biology-ba","title":"Biology, B.A.","degreeType":"B.A.","kind":"major","college":"College of Science and Mathematics","department":"Department of Biology","catalogPage":135},
-    {"id":"biology-bs","title":"Biology, B.S.","degreeType":"B.S.","kind":"major","college":"College of Science and Mathematics","department":"Department of Biology","catalogPage":141},
-    {"id":"chemistry-bs","title":"Chemistry, B.S.","degreeType":"B.S.","kind":"major","college":"College of Science and Mathematics","department":"Department of Chemistry and Biochemistry","catalogPage":151},
-    {"id":"biophysical-chemistry-bs","title":"Chemistry, Biophysical Chemistry Major, B.S.","degreeType":"B.S.","kind":"major","college":"College of Science and Mathematics","department":"Department of Chemistry and Biochemistry","catalogPage":154},
-    {"id":"communication-sciences-disorders-ba","title":"Communication Sciences and Disorders, B.A.","degreeType":"B.A.","kind":"major","college":"College of Health and Behavioral Studies","department":"Department of Communication Sciences and Disorders","catalogPage":159},
-    {"id":"communication-sciences-disorders-bs","title":"Communication Sciences and Disorders, B.S.","degreeType":"B.S.","kind":"major","college":"College of Health and Behavioral Studies","department":"Department of Communication Sciences and Disorders","catalogPage":160},
-    {"id":"communication-studies-ba","title":"Communication Studies, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"School of Communication Studies","catalogPage":164},
-    {"id":"communication-studies-bs","title":"Communication Studies, B.S.","degreeType":"B.S.","kind":"major","college":"College of Arts and Letters","department":"School of Communication Studies","catalogPage":170},
-    {"id":"computer-information-systems-bba","title":"Computer Information Systems, B.B.A.","degreeType":"B.B.A.","kind":"major","college":"College of Business","department":"Department of Computer Information Systems and Business Analytics","catalogPage":181},
-    {"id":"computer-science-bs","title":"Computer Science, B.S.","degreeType":"B.S.","kind":"major","college":"College of Integrated Science and Engineering","department":"Department of Computer Science","catalogPage":187,"requirementDataComplete":true,"verificationStatus":"partial"},
-    {"id":"information-technology-bs","title":"Information Technology, B.S.","degreeType":"B.S.","kind":"major","college":"College of Integrated Science and Engineering","department":"Department of Computer Science","catalogPage":190,"requirementDataComplete":true,"verificationStatus":"partial"},
-    {"id":"elementary-education-bs","title":"Education: Elementary Education, B.S.","degreeType":"B.S.","kind":"major","college":"College of Education","department":"Department of Early, Elementary and Reading Education","catalogPage":194},
-    {"id":"economics-ba","title":"Economics, B.A.","degreeType":"B.A.","kind":"major","college":"College of Business","department":"Department of Economics","catalogPage":198},
-    {"id":"economics-bba","title":"Economics, B.B.A.","degreeType":"B.B.A.","kind":"major","college":"College of Business","department":"Department of Economics","catalogPage":201},
-    {"id":"economics-bs","title":"Economics, B.S.","degreeType":"B.S.","kind":"major","college":"College of Business","department":"Department of Economics","catalogPage":204},
-    {"id":"inclusive-early-childhood-education-bs","title":"Education: Inclusive Early Childhood Education, B.S.","degreeType":"B.S.","kind":"major","college":"College of Education","department":"Department of Educational Foundations and Exceptionalities","catalogPage":209},
-    {"id":"special-education-bs","title":"Education: Special Education, B.S.","degreeType":"B.S.","kind":"major","college":"College of Education","department":"Department of Educational Foundations and Exceptionalities","catalogPage":211},
-    {"id":"engineering-bs","title":"Engineering, B.S.","degreeType":"B.S.","kind":"major","college":"College of Integrated Science and Engineering","department":"Department of Engineering","catalogPage":216},
-    {"id":"english-ba","title":"English, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"Department of English","catalogPage":221},
-    {"id":"finance-bba","title":"Finance, B.B.A.","degreeType":"B.B.A.","kind":"major","college":"College of Business","department":"Department of Finance and Business Law","catalogPage":228},
-    {"id":"quantitative-finance-math-double-bs","title":"Quantitative Finance/Mathematics Double Major, B.S.","degreeType":"B.S.","kind":"major","college":"College of Business","department":"Department of Finance and Business Law","catalogPage":231},
-    {"id":"quantitative-finance-bs","title":"Quantitative Finance Major with a Minor in Economics and Mathematics, B.S.","degreeType":"B.S.","kind":"major","college":"College of Business","department":"Department of Finance and Business Law","catalogPage":233},
-    {"id":"earth-science-ba","title":"Geology, Earth Science Major, B.A.","degreeType":"B.A.","kind":"major","college":"College of Science and Mathematics","department":"Department of Geology and Environmental Science","catalogPage":236},
-    {"id":"geology-bs","title":"Geology, B.S.","degreeType":"B.S.","kind":"major","college":"College of Science and Mathematics","department":"Department of Geology and Environmental Science","catalogPage":239},
-    {"id":"hospitality-management-bs","title":"Hospitality Management, B.S.","degreeType":"B.S.","kind":"major","college":"College of Business","department":"Hart School of Hospitality, Sport and Recreation Management","catalogPage":249},
-    {"id":"sport-recreation-management-bs","title":"Sport and Recreation Management, B.S.","degreeType":"B.S.","kind":"major","college":"College of Business","department":"Hart School of Hospitality, Sport and Recreation Management","catalogPage":251},
-    {"id":"dietetics-bs","title":"Dietetics, B.S.","degreeType":"B.S.","kind":"major","college":"College of Health and Behavioral Studies","department":"Department of Health Professions","catalogPage":254},
-    {"id":"health-services-administration-bs","title":"Health Services Administration, B.S.","degreeType":"B.S.","kind":"major","college":"College of Health and Behavioral Studies","department":"Department of Health Professions","catalogPage":257},
-    {"id":"health-sciences-bs","title":"Health Sciences, B.S.","degreeType":"B.S.","kind":"major","college":"College of Health and Behavioral Studies","department":"Department of Health Sciences","catalogPage":260},
-    {"id":"history-ba","title":"History, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"Department of History","catalogPage":266},
-    {"id":"geography-ba","title":"Geography, B.A.","degreeType":"B.A.","kind":"major","college":"College of Integrated Science and Engineering","department":"School of Integrated Sciences","catalogPage":275},
-    {"id":"geography-bs","title":"Geography, B.S.","degreeType":"B.S.","kind":"major","college":"College of Integrated Science and Engineering","department":"School of Integrated Sciences","catalogPage":279},
-    {"id":"integrated-science-technology-bs","title":"Integrated Science and Technology, B.S.","degreeType":"B.S.","kind":"major","college":"College of Integrated Science and Engineering","department":"School of Integrated Sciences","catalogPage":283},
-    {"id":"intelligence-analysis-bs","title":"Intelligence Analysis, B.S.","degreeType":"B.S.","kind":"major","college":"College of Integrated Science and Engineering","department":"School of Integrated Sciences","catalogPage":287},
-    {"id":"individualized-study-general-ba","title":"Individualized Study, General Studies Major, B.A.","degreeType":"B.A.","kind":"major","college":"University Studies","department":"Department of Interdisciplinary Liberal Studies","catalogPage":292},
-    {"id":"individualized-study-independent-ba","title":"Individualized Study, Independent Scholars Major, B.A.","degreeType":"B.A.","kind":"major","college":"University Studies","department":"Department of Interdisciplinary Liberal Studies","catalogPage":293},
-    {"id":"individualized-study-general-bs","title":"Individualized Study, General Studies Major, B.S.","degreeType":"B.S.","kind":"major","college":"University Studies","department":"Department of Interdisciplinary Liberal Studies","catalogPage":294},
-    {"id":"individualized-study-independent-bs","title":"Individualized Study, Independent Scholars Major, B.S.","degreeType":"B.S.","kind":"major","college":"University Studies","department":"Department of Interdisciplinary Liberal Studies","catalogPage":295},
-    {"id":"international-business-bba","title":"International Business, B.B.A.","degreeType":"B.B.A.","kind":"major","college":"College of Business","department":"Department of International Business","catalogPage":297},
-    {"id":"justice-studies-ba","title":"Justice Studies, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"Department of Justice Studies","catalogPage":300},
-    {"id":"justice-studies-bs","title":"Justice Studies, B.S.","degreeType":"B.S.","kind":"major","college":"College of Arts and Letters","department":"Department of Justice Studies","catalogPage":305},
-    {"id":"kinesiology-bs","title":"Kinesiology, B.S.","degreeType":"B.S.","kind":"major","college":"College of Health and Behavioral Studies","department":"Department of Kinesiology","catalogPage":311},
-    {"id":"business-management-bba","title":"Business Management, B.B.A.","degreeType":"B.B.A.","kind":"major","college":"College of Business","department":"Department of Management","catalogPage":320},
-    {"id":"marketing-bba","title":"Marketing, B.B.A.","degreeType":"B.B.A.","kind":"major","college":"College of Business","department":"Department of Marketing","catalogPage":325},
-    {"id":"mathematics-ba","title":"Mathematics, B.A.","degreeType":"B.A.","kind":"major","college":"College of Science and Mathematics","department":"Department of Mathematics and Statistics","catalogPage":329},
-    {"id":"mathematics-bs","title":"Mathematics, B.S.","degreeType":"B.S.","kind":"major","college":"College of Science and Mathematics","department":"Department of Mathematics and Statistics","catalogPage":332},
-    {"id":"statistics-bs","title":"Statistics, B.S.","degreeType":"B.S.","kind":"major","college":"College of Science and Mathematics","department":"Department of Mathematics and Statistics","catalogPage":335},
-    {"id":"media-arts-design-ba","title":"Media Arts and Design, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"School of Media Arts and Design","catalogPage":344},
-    {"id":"media-arts-design-bs","title":"Media Arts and Design, B.S.","degreeType":"B.S.","kind":"major","college":"College of Arts and Letters","department":"School of Media Arts and Design","catalogPage":349},
-    {"id":"middle-grades-education-bs","title":"Education: Middle Grades Education, B.S.","degreeType":"B.S.","kind":"major","college":"College of Education","department":"Department of Middle, Secondary and Mathematics Education","catalogPage":356},
-    {"id":"secondary-education-bs","title":"Education: Secondary Education, B.S.","degreeType":"B.S.","kind":"major","college":"College of Education","department":"Department of Middle, Secondary and Mathematics Education","catalogPage":358},
-    {"id":"music-ba","title":"Music, B.A.","degreeType":"B.A.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Music","catalogPage":370},
-    {"id":"music-bm","title":"Music, B.M.","degreeType":"B.M.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Music","catalogPage":373},
-    {"id":"nursing-bsn","title":"Nursing, B.S.N.","degreeType":"B.S.N.","kind":"major","college":"College of Health and Behavioral Studies","department":"School of Nursing","catalogPage":388},
-    {"id":"nursing-rn-bsn","title":"Nursing, R.N. to B.S.N.","degreeType":"B.S.N.","kind":"major","college":"College of Health and Behavioral Studies","department":"School of Nursing","catalogPage":391},
-    {"id":"global-religions-cultures-ba","title":"Philosophy and Religion, Global Religions and Cultures Major, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"Department of Philosophy and Religion","catalogPage":395},
-    {"id":"philosophy-ba","title":"Philosophy and Religion, Philosophy Major, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"Department of Philosophy and Religion","catalogPage":397},
-    {"id":"physics-ba","title":"Physics, B.A.","degreeType":"B.A.","kind":"major","college":"College of Science and Mathematics","department":"Department of Physics and Astronomy","catalogPage":404},
-    {"id":"physics-bs","title":"Physics, B.S.","degreeType":"B.S.","kind":"major","college":"College of Science and Mathematics","department":"Department of Physics and Astronomy","catalogPage":406},
-    {"id":"international-affairs-ba","title":"International Affairs, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"Department of Political Science","catalogPage":418},
-    {"id":"political-science-ba","title":"Political Science, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"Department of Political Science","catalogPage":427},
-    {"id":"public-administration-bs","title":"Public Administration, B.S.","degreeType":"B.S.","kind":"major","college":"College of Arts and Letters","department":"Department of Political Science","catalogPage":429},
-    {"id":"psychology-ba","title":"Psychology, B.A.","degreeType":"B.A.","kind":"major","college":"College of Health and Behavioral Studies","department":"Department of Psychology","catalogPage":435},
-    {"id":"psychology-bs","title":"Psychology, B.S.","degreeType":"B.S.","kind":"major","college":"College of Health and Behavioral Studies","department":"Department of Psychology","catalogPage":438},
-    {"id":"social-work-bsw","title":"Social Work, B.S.W.","degreeType":"B.S.W.","kind":"major","college":"College of Health and Behavioral Studies","department":"Department of Social Work","catalogPage":443},
-    {"id":"anthropology-ba","title":"Anthropology, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"Department of Sociology and Anthropology","catalogPage":446},
-    {"id":"anthropology-bs","title":"Anthropology, B.S.","degreeType":"B.S.","kind":"major","college":"College of Arts and Letters","department":"Department of Sociology and Anthropology","catalogPage":449},
-    {"id":"sociology-ba","title":"Sociology, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"Department of Sociology and Anthropology","catalogPage":452},
-    {"id":"sociology-bs","title":"Sociology, B.S.","degreeType":"B.S.","kind":"major","college":"College of Arts and Letters","department":"Department of Sociology and Anthropology","catalogPage":455},
-    {"id":"theatre-ba","title":"Theatre, B.A.","degreeType":"B.A.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Theatre and Dance","catalogPage":461},
-    {"id":"dance-ba","title":"Theatre, Dance Major, B.A.","degreeType":"B.A.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Theatre and Dance","catalogPage":464},
-    {"id":"musical-theatre-ba","title":"Theatre, Musical Theatre Major, B.A.","degreeType":"B.A.","kind":"major","college":"College of Visual and Performing Arts","department":"School of Theatre and Dance","catalogPage":466},
-    {"id":"modern-foreign-languages-ba","title":"Modern Foreign Languages, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"Department of World Languages and Cultures","catalogPage":475},
-    {"id":"wrtc-ba","title":"Writing, Rhetoric and Technical Communication, B.A.","degreeType":"B.A.","kind":"major","college":"College of Arts and Letters","department":"School of Writing, Rhetoric and Technical Communication","catalogPage":487},
-    {"id":"wrtc-bs","title":"Writing, Rhetoric and Technical Communication, B.S.","degreeType":"B.S.","kind":"major","college":"College of Arts and Letters","department":"School of Writing, Rhetoric and Technical Communication","catalogPage":489},
-    {"id":"adult-individualized-study-ba","title":"Individualized Study, B.A.","degreeType":"B.A.","kind":"major","college":"School of Professional and Continuing Education","department":"Adult Degree Program","catalogPage":493},
-    {"id":"adult-individualized-study-bis","title":"Individualized Study, B.I.S.","degreeType":"B.I.S.","kind":"major","college":"School of Professional and Continuing Education","department":"Adult Degree Program","catalogPage":495},
-    {"id":"adult-individualized-study-bs","title":"Individualized Study, B.S.","degreeType":"B.S.","kind":"major","college":"School of Professional and Continuing Education","department":"Adult Degree Program","catalogPage":504},
-    {"id":"biotechnology-bs","title":"Biotechnology, B.S.","degreeType":"B.S.","kind":"major","college":"Cross Disciplinary Program","department":"Cross Disciplinary Program","catalogPage":506},
-    {"id":"art-minor","title":"Art Minor","degreeType":null,"kind":"minor","college":"College of Visual and Performing Arts","department":"School of Art, Design and Art History","catalogPage":129},
-    {"id":"art-history-minor","title":"Art History Minor","degreeType":null,"kind":"minor","college":"College of Visual and Performing Arts","department":"School of Art, Design and Art History","catalogPage":130},
-    {"id":"illustration-minor","title":"Illustration Minor","degreeType":null,"kind":"minor","college":"College of Visual and Performing Arts","department":"School of Art, Design and Art History","catalogPage":131},
-    {"id":"biology-minor","title":"Biology Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Biology","catalogPage":147},
-    {"id":"chemistry-minor","title":"Chemistry Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Chemistry and Biochemistry","catalogPage":156},
-    {"id":"communication-studies-minor","title":"Communication Studies Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"School of Communication Studies","catalogPage":176},
-    {"id":"cultural-communication-minor","title":"Cultural Communication Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"School of Communication Studies","catalogPage":177},
-    {"id":"health-communication-minor","title":"Health Communication Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"School of Communication Studies","catalogPage":178},
-    {"id":"business-analytics-minor","title":"Business Analytics Minor","degreeType":null,"kind":"minor","college":"College of Business","department":"Department of Computer Information Systems and Business Analytics","catalogPage":184},
-    {"id":"computer-information-systems-minor","title":"Computer Information Systems Minor","degreeType":null,"kind":"minor","college":"College of Business","department":"Department of Computer Information Systems and Business Analytics","catalogPage":185},
-    {"id":"computer-science-minor","title":"Computer Science Minor","degreeType":null,"kind":"minor","college":"College of Integrated Science and Engineering","department":"Department of Computer Science","catalogPage":192},
-    {"id":"economics-minor","title":"Economics Minor","degreeType":null,"kind":"minor","college":"College of Business","department":"Department of Economics","catalogPage":207},
-    {"id":"tesol-minor","title":"Teaching English to Speakers of Other Languages Minor","degreeType":null,"kind":"minor","college":"College of Education","department":"Department of Educational Foundations and Exceptionalities","catalogPage":214},
-    {"id":"climate-science-minor","title":"Climate Science Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Geology and Environmental Science","catalogPage":242},
-    {"id":"geology-minor","title":"Geology Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Geology and Environmental Science","catalogPage":244},
-    {"id":"geophysics-minor","title":"Geophysics Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Geology and Environmental Science","catalogPage":245},
-    {"id":"history-minor","title":"History Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of History","catalogPage":270},
-    {"id":"geography-minor","title":"Geography Minor","degreeType":null,"kind":"minor","college":"College of Integrated Science and Engineering","department":"School of Integrated Sciences","catalogPage":289},
-    {"id":"integrated-science-technology-minor","title":"Integrated Science and Technology Minor","degreeType":null,"kind":"minor","college":"College of Integrated Science and Engineering","department":"School of Integrated Sciences","catalogPage":290},
-    {"id":"coaching-education-minor","title":"Coaching Education Minor","degreeType":null,"kind":"minor","college":"College of Health and Behavioral Studies","department":"Department of Kinesiology","catalogPage":316},
-    {"id":"educational-media-minor","title":"Educational Media Minor","degreeType":null,"kind":"minor","college":"College of Education","department":"Department of Learning, Technology and Leadership Education","catalogPage":318},
-    {"id":"computational-analytics-minor","title":"Computational Analytics Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Mathematics and Statistics","catalogPage":337},
-    {"id":"data-analytics-minor","title":"Data Analytics Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Mathematics and Statistics","catalogPage":338},
-    {"id":"mathematics-minor","title":"Mathematics Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Mathematics and Statistics","catalogPage":339},
-    {"id":"mathematics-elementary-middle-grades-minor","title":"Mathematics for Elementary and Middle Grades Teachers Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Mathematics and Statistics","catalogPage":340},
-    {"id":"statistics-minor","title":"Statistics Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Mathematics and Statistics","catalogPage":341},
-    {"id":"pre-professional-secondary-education-minor","title":"Pre-Professional Secondary Education (SEED) Minor","degreeType":null,"kind":"minor","college":"College of Education","department":"Department of Middle, Secondary and Mathematics Education","catalogPage":360},
-    {"id":"leadership-military-affairs-minor","title":"Leadership in Military Affairs Minor (Air Force)","degreeType":null,"kind":"minor","college":"Department of Military Science","department":"Department of Military Science","catalogPage":365},
-    {"id":"military-leadership-minor","title":"Military Leadership Minor (Army)","degreeType":null,"kind":"minor","college":"Department of Military Science","department":"Department of Military Science","catalogPage":366},
-    {"id":"general-music-minor","title":"General Music Minor","degreeType":null,"kind":"minor","college":"College of Visual and Performing Arts","department":"School of Music","catalogPage":382},
-    {"id":"jazz-studies-minor","title":"Jazz Studies Minor","degreeType":null,"kind":"minor","college":"College of Visual and Performing Arts","department":"School of Music","catalogPage":383},
-    {"id":"music-industry-minor","title":"Music Industry Minor","degreeType":null,"kind":"minor","college":"College of Visual and Performing Arts","department":"School of Music","catalogPage":384},
-    {"id":"christian-studies-minor","title":"Christian Studies Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of Philosophy and Religion","catalogPage":399},
-    {"id":"ethics-minor","title":"Ethics Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of Philosophy and Religion","catalogPage":400},
-    {"id":"global-religions-cultures-minor","title":"Global Religions and Cultures Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of Philosophy and Religion","catalogPage":401},
-    {"id":"philosophy-minor","title":"Philosophy Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of Philosophy and Religion","catalogPage":402},
-    {"id":"astronomy-minor","title":"Astronomy Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Physics and Astronomy","catalogPage":413},
-    {"id":"physics-minor","title":"Physics Minor","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Physics and Astronomy","catalogPage":414},
-    {"id":"physics-minor-engineers","title":"Physics Minor for Engineers","degreeType":null,"kind":"minor","college":"College of Science and Mathematics","department":"Department of Physics and Astronomy","catalogPage":415},
-    {"id":"political-science-minor","title":"Political Science Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of Political Science","catalogPage":431},
-    {"id":"public-policy-administration-minor","title":"Public Policy and Administration Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of Political Science","catalogPage":433},
-    {"id":"anthropology-minor","title":"Anthropology Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of Sociology and Anthropology","catalogPage":458},
-    {"id":"sociology-minor","title":"Sociology Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of Sociology and Anthropology","catalogPage":459},
-    {"id":"dance-minor","title":"Dance Minor","degreeType":null,"kind":"minor","college":"College of Visual and Performing Arts","department":"School of Theatre and Dance","catalogPage":468},
-    {"id":"theatre-minor","title":"Theatre Minor","degreeType":null,"kind":"minor","college":"College of Visual and Performing Arts","department":"School of Theatre and Dance","catalogPage":469},
-    {"id":"business-spanish-minor","title":"Business Spanish Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of World Languages and Cultures","catalogPage":479},
-    {"id":"medical-spanish-minor","title":"Medical Spanish Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of World Languages and Cultures","catalogPage":480},
-    {"id":"modern-foreign-languages-minor","title":"Modern Foreign Languages Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of World Languages and Cultures","catalogPage":482},
-    {"id":"spanish-english-translation-minor","title":"Spanish-English Translation and Interpretation Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"Department of World Languages and Cultures","catalogPage":484},
-    {"id":"wrtc-minor","title":"Writing, Rhetoric and Technical Communication Minor","degreeType":null,"kind":"minor","college":"College of Arts and Letters","department":"School of Writing, Rhetoric and Technical Communication","catalogPage":491},
-    {"id":"african-african-american-diaspora-studies-minor","title":"African, African American and Diaspora Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":522},
-    {"id":"american-studies-minor","title":"American Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":524},
-    {"id":"asian-studies-minor","title":"Asian Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":525},
-    {"id":"biochemistry-molecular-biology-minor","title":"Biochemistry and Molecular Biology Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":526},
-    {"id":"book-arts-minor","title":"Book Arts Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":527},
-    {"id":"criminal-justice-minor","title":"Criminal Justice Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":536},
-    {"id":"digital-studies-minor","title":"Digital Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":537},
-    {"id":"disability-studies-minor","title":"Disability Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":538},
-    {"id":"entrepreneurship-minor","title":"Entrepreneurship Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":539},
-    {"id":"environmental-science-minor","title":"Environmental Science Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":543},
-    {"id":"family-studies-minor","title":"Family Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":547},
-    {"id":"film-studies-minor","title":"Film Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":549},
-    {"id":"global-supply-chain-management-minor","title":"Global Supply Chain Management Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":550},
-    {"id":"legal-studies-minor","title":"Legal Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":557},
-    {"id":"linguistics-minor","title":"Linguistics Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":558},
-    {"id":"materials-science-minor","title":"Materials Science Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":560},
-    {"id":"medical-humanities-minor","title":"Medical Humanities Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":561},
-    {"id":"nonprofit-studies-minor","title":"Nonprofit Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":568},
-    {"id":"robotics-minor","title":"Robotics Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":572},
-    {"id":"science-technology-society-minor","title":"Science, Technology and Society Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":574},
-    {"id":"social-justice-studies-minor","title":"Social Justice Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":575},
-    {"id":"social-studies-minor","title":"Social Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":577},
-    {"id":"sport-communication-minor","title":"Sport Communication Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":580},
-    {"id":"urban-regional-studies-minor","title":"Urban and Regional Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":582},
-    {"id":"womens-gender-sexuality-studies-minor","title":"Women's, Gender and Sexuality Studies Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":583},
-    {"id":"world-literature-minor","title":"World Literature Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":585},
-    {"id":"youth-justice-minor","title":"Youth Justice Minor","degreeType":null,"kind":"minor","college":"Cross Disciplinary Minors","department":"Cross Disciplinary Minors","catalogPage":587}
-  ],
-  "courses": [
-    {"id":"CS000","code":"CS 000","title":"Computer Science elective credit","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"partial"},
-    {"id":"CS149","code":"CS 149","title":"Introduction to Programming","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"CS159","code":"CS 159","title":"Advanced Programming","credits":3,"availability":null,"prerequisites":["CS149"],"verificationStatus":"verified"},
-    {"id":"CS227","code":"CS 227","title":"Discrete Structures I","credits":3,"availability":null,"prerequisites":["CS149"],"verificationStatus":"verified"},
-    {"id":"MATH227","code":"MATH 227","title":"Discrete Structures I","credits":3,"availability":null,"prerequisites":["CS149"],"verificationStatus":"verified"},
-    {"id":"MATH245","code":"MATH 245","title":"Discrete Mathematics","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"CS240","code":"CS 240","title":"Algorithms and Data Structures","credits":3,"availability":null,"prerequisites":["CS159","CS227","MATH231"],"verificationStatus":"verified"},
-    {"id":"CS261","code":"CS 261","title":"Computer Systems I","credits":3,"availability":null,"prerequisites":["CS159","CS227"],"verificationStatus":"verified"},
-    {"id":"CS327","code":"CS 327","title":"Discrete Structures II","credits":3,"availability":null,"prerequisites":["CS227","CS240"],"verificationStatus":"verified"},
-    {"id":"CS330","code":"CS 330","title":"Societal and Ethical Issues in Computing","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"CS332","code":"CS 332","title":"Technical Communication for Computer Science","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"CS343","code":"CS 343","title":"Application Development","credits":3,"availability":null,"prerequisites":["CS159"],"verificationStatus":"verified"},
-    {"id":"CS345","code":"CS 345","title":"Software Engineering","credits":3,"availability":null,"prerequisites":["CS159"],"verificationStatus":"verified"},
-    {"id":"CS361","code":"CS 361","title":"Computer Systems II","credits":3,"availability":null,"prerequisites":["CS240","CS261"],"verificationStatus":"verified"},
-    {"id":"CS374","code":"CS 374","title":"Database Systems","credits":3,"availability":null,"prerequisites":["CS240"],"verificationStatus":"verified"},
-    {"id":"CS412","code":"CS 412","title":"Applied Algorithms","credits":3,"availability":null,"prerequisites":["CS327","MATH220"],"verificationStatus":"verified"},
-    {"id":"CS430","code":"CS 430","title":"Programming Languages","credits":3,"availability":null,"prerequisites":["CS240","CS261"],"verificationStatus":"verified"},
-    {"id":"CS432","code":"CS 432","title":"Compilers","credits":3,"availability":null,"prerequisites":["CS327","CS361"],"verificationStatus":"verified"},
-    {"id":"CS444","code":"CS 444","title":"Artificial Intelligence","credits":3,"availability":null,"prerequisites":["CS240"],"verificationStatus":"verified"},
-    {"id":"CS450","code":"CS 450","title":"Operating Systems","credits":3,"availability":null,"prerequisites":["CS361"],"verificationStatus":"partial"},
-    {"id":"CS452","code":"CS 452","title":"Design and Analysis of Algorithms","credits":3,"availability":null,"prerequisites":["CS327","MATH220"],"verificationStatus":"partial"},
-    {"id":"CS455","code":"CS 455","title":"Advanced Computer Networking","credits":3,"availability":null,"prerequisites":["CS361"],"verificationStatus":"partial"},
-    {"id":"CS456","code":"CS 456","title":"Computer Architecture","credits":3,"availability":null,"prerequisites":["CS261"],"verificationStatus":"partial"},
-    {"id":"CS470","code":"CS 470","title":"Parallel and Distributed Systems","credits":3,"availability":null,"prerequisites":["CS361"],"verificationStatus":"partial"},
-    {"id":"MATH220","code":"MATH 220","title":"Elementary Statistics","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"MATH229","code":"MATH 229","title":"Introduction to Applied Statistics Using R","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"MATH231","code":"MATH 231","title":"Calculus with Functions I","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"MATH232","code":"MATH 232","title":"Calculus with Functions II","credits":3,"availability":null,"prerequisites":["MATH231"],"verificationStatus":"verified"},
-    {"id":"MATH235","code":"MATH 235","title":"Calculus I","credits":4,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"MATH318","code":"MATH 318","title":"Introduction to Probability and Statistics","credits":4,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"IT160","code":"IT 160","title":"Data Structures and Advanced Programming","credits":3,"availability":null,"prerequisites":["CS149"],"verificationStatus":"verified"},
-    {"id":"IT201","code":"IT 201","title":"Computational Structures and Logic","credits":3,"availability":null,"prerequisites":["CS149"],"verificationStatus":"verified"},
-    {"id":"IT203","code":"IT 203","title":"Information Security and Privacy","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"IT212","code":"IT 212","title":"Digital Electronics","credits":3,"availability":null,"prerequisites":["IT201"],"verificationStatus":"partial"},
-    {"id":"IT215","code":"IT 215","title":"Introduction to Telecommunications and Computer Networking","credits":3,"availability":null,"prerequisites":["IT201"],"verificationStatus":"partial"},
-    {"id":"IT240","code":"IT 240","title":"Database Administration","credits":3,"availability":null,"prerequisites":["IT160"],"verificationStatus":"partial"},
-    {"id":"IT301","code":"IT 301","title":"Web Technologies","credits":3,"availability":null,"prerequisites":["IT160"],"verificationStatus":"partial"},
-    {"id":"IT302","code":"IT 302","title":"Societal and Ethical Issues in Information Technology","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"IT311","code":"IT 311","title":"Operating Systems Administration","credits":3,"availability":null,"prerequisites":["IT215"],"verificationStatus":"partial"},
-    {"id":"IT313","code":"IT 313","title":"Community Projects","credits":3,"availability":null,"prerequisites":["IT301"],"verificationStatus":"partial"},
-    {"id":"IT333","code":"IT 333","title":"Advanced Networking for Information Technology","credits":3,"availability":null,"prerequisites":["IT215"],"verificationStatus":"partial"},
-    {"id":"IT340","code":"IT 340","title":"Data Science and Machine Learning","credits":3,"availability":null,"prerequisites":["IT240"],"verificationStatus":"partial"},
-    {"id":"IT347","code":"IT 347","title":"Interactive Computing Systems","credits":3,"availability":null,"prerequisites":["IT301"],"verificationStatus":"partial"},
-    {"id":"IT444","code":"IT 444","title":"Capstone Project Design","credits":1,"availability":null,"prerequisites":["IT313"],"verificationStatus":"verified"},
-    {"id":"IT445","code":"IT 445","title":"Capstone Project Implementation","credits":3,"availability":null,"prerequisites":["IT444"],"verificationStatus":"verified"},
-    {"id":"WRTC103","code":"WRTC 103","title":"Rhetorical Reading and Writing","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"ECON200","code":"ECON 200","title":"Macroeconomics","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"ECON201","code":"ECON 201","title":"Microeconomics","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"},
-    {"id":"PSYC101","code":"PSYC 101","title":"General Psychology","credits":3,"availability":null,"prerequisites":[],"verificationStatus":"verified"}
-  ],
-  "requirementsByProgram": {
-    "computer-science-bs": [
-      {"id":"major-core","name":"Major Core Requirements","requiredCredits":24,"courseOptions":[["CS149"],["CS159"],["CS240"],["CS261"],["CS327"],["CS345"],["CS361"],["CS430"]],"verificationStatus":"verified"},
-      {"id":"major-electives","name":"Major Electives","requiredCredits":9,"courseOptions":[["CS343"],["CS374"],["CS444"]],"verificationStatus":"partial","note":"The catalog requires 9 credits of CS electives above CS 300, at least two above CS 332. Three common options are seeded so the generator can produce a concrete draft; students must verify elective choices with an advisor."},
-      {"id":"discrete-math","name":"Introductory Discrete Math","requiredCredits":3,"courseOptions":[["CS227","MATH227","MATH245"]],"verificationStatus":"verified"},
-      {"id":"calculus","name":"Calculus Requirement","requiredCredits":6,"courseOptions":[["MATH231","MATH235"],["MATH232"]],"verificationStatus":"verified"},
-      {"id":"statistics","name":"Statistics Requirement","requiredCredits":3,"courseOptions":[["MATH220","MATH229","MATH318"]],"verificationStatus":"verified"},
-      {"id":"algorithm-elective","name":"Algorithm Elective","requiredCredits":3,"courseOptions":[["CS412","CS452"]],"verificationStatus":"verified"},
-      {"id":"systems-elective","name":"Systems Elective","requiredCredits":3,"courseOptions":[["CS432","CS450","CS455","CS456","CS470"]],"verificationStatus":"verified"},
-      {"id":"general-education","name":"General Education","requiredCredits":41,"courseOptions":[],"verificationStatus":"partial","note":"General Education categories are listed in the catalog but are not fully expanded in this seed."},
-      {"id":"free-electives","name":"Free Electives","requiredCredits":27,"courseOptions":[],"verificationStatus":"partial","note":"Elective totals depend on choices that need advisor verification."}
     ],
-    "information-technology-bs": [
-      {"id":"major-core","name":"Major Core Requirements","requiredCredits":42,"courseOptions":[["CS149"],["IT160"],["IT201"],["IT203"],["IT212"],["IT215"],["IT240"],["IT301"],["IT302"],["IT311"],["IT313"],["IT333"],["IT340"],["IT347"]],"verificationStatus":"partial"},
-      {"id":"calculus","name":"Calculus Requirement","requiredCredits":6,"courseOptions":[["MATH231","MATH235"],["MATH232"]],"verificationStatus":"verified"},
-      {"id":"statistics","name":"Statistics Requirement","requiredCredits":3,"courseOptions":[["MATH220","MATH229","MATH318"]],"verificationStatus":"verified"},
-      {"id":"capstone","name":"Capstone","requiredCredits":4,"courseOptions":[["IT444"],["IT445"]],"verificationStatus":"verified"},
-      {"id":"major-electives","name":"Major Electives","requiredCredits":9,"courseOptions":[],"verificationStatus":"partial","note":"The catalog lists IT elective choices, but this seed does not schedule them by default."},
-      {"id":"general-education","name":"General Education","requiredCredits":41,"courseOptions":[],"verificationStatus":"partial"},
-      {"id":"free-electives","name":"Free Electives","requiredCredits":11,"courseOptions":[],"verificationStatus":"partial"}
+    "retrievedDate" : "2026-05-19T00:00:00Z",
+    "sourceURLs" : [
+      "https:\/\/www.jmu.edu\/catalog\/pdfs\/2025-2026-jmu-undergraduate-catalog.pdf",
+      "https:\/\/catalog.jmu.edu\/"
     ]
-  },
-  "apCreditRules": [
-    {"source":{"apExam":{"name":"2-D Art and Design","minimumScore":4}},"awardedCourseIDs":["FDS102"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"FDS 102\""},
-    {"source":{"apExam":{"name":"2-D Art and Design","minimumScore":4}},"awardedCourseIDs":["ART292"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ART 292\""},
-    {"source":{"apExam":{"name":"3-D Art and Design","minimumScore":4}},"awardedCourseIDs":["ART000"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ART 000\""},
-    {"source":{"apExam":{"name":"3-D Art and Design","minimumScore":4}},"awardedCourseIDs":["ART292"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ART 292\""},
-    {"source":{"apExam":{"name":"African American Studies","minimumScore":4}},"awardedCourseIDs":["GNED142"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"GNED 142\""},
-    {"source":{"apExam":{"name":"Art History","minimumScore":4}},"awardedCourseIDs":["ARTH206"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"ARTH 206\""},
-    {"source":{"apExam":{"name":"Biology","minimumScore":4}},"awardedCourseIDs":["BIO140", "BIO140L", "BIO150", "BIO150L"],"credits":8,"meetsGeneralEducation":true,"sourceNote":"OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"BIO 140 /BIO 140L & BIO 150 /BIO 150L\""},
-    {"source":{"apExam":{"name":"Biology","minimumScore":4}},"awardedCourseIDs":["ISAT113", "ISCI104", "BIO000"],"credits":8,"meetsGeneralEducation":true,"sourceNote":"OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ISAT 113 , ISCI 104 & BIO 000\""},
-    {"source":{"apExam":{"name":"Calculus AB","minimumScore":4}},"awardedCourseIDs":["MATH235"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"MATH 235\""},
-    {"source":{"apExam":{"name":"Calculus AB Subscore","minimumScore":4}},"awardedCourseIDs":["MATH235"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"MATH 235\""},
-    {"source":{"apExam":{"name":"Calculus BC","minimumScore":4}},"awardedCourseIDs":["MATH235", "MATH236"],"credits":8,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"MATH 235 &MATH 236\""},
-    {"source":{"apExam":{"name":"Chemistry","minimumScore":4}},"awardedCourseIDs":["CHEM131", "CHEM132"],"credits":6,"meetsGeneralEducation":true,"sourceNote":"Majors track. JMU 2025-2026 AP Chart. Original cell text: \"CHEM 131 & CHEM 132\""},
-    {"source":{"apExam":{"name":"Chemistry","minimumScore":4}},"awardedCourseIDs":["CHEM131", "CHEM131L", "CHEM132", "CHEM131L", "CHEM132L"],"credits":8,"meetsGeneralEducation":true,"sourceNote":"Non-majors track; OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"CHEM 131 & CHEM 131L and CHEM 132 & CHEM 131L -CHEM 132L\""},
-    {"source":{"apExam":{"name":"Chemistry","minimumScore":4}},"awardedCourseIDs":["CHEM120", "CHEM000"],"credits":8,"meetsGeneralEducation":true,"sourceNote":"OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"CHEM 120 & CHEM 000\""},
-    {"source":{"apExam":{"name":"Chemistry","minimumScore":3}},"awardedCourseIDs":["CHEM120", "CHEM000"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"CHEM 120 and CHEM 000\""},
-    {"source":{"apExam":{"name":"Chemistry","minimumScore":3}},"awardedCourseIDs":["ISCI101", "ISCI104"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ISCI 101 and ISCI 104\""},
-    {"source":{"apExam":{"name":"Chemistry","minimumScore":4}},"awardedCourseIDs":["GEOL115", "ISCI104", "ISAT000"],"credits":8,"meetsGeneralEducation":true,"sourceNote":"Non-majors track. JMU 2025-2026 AP Chart. Original cell text: \"GEOL 115 , ISCI 104 & ISAT 000\""},
-    {"source":{"apExam":{"name":"Chemistry","minimumScore":4}},"awardedCourseIDs":["ISAT112", "ISAT000", "ISAT112"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ISAT 112 & ISAT 000 4 However, to earn credit for ISAT 112 , students must earn a\""},
-    {"source":{"apExam":{"name":"Chinese Language and Culture","minimumScore":3}},"awardedCourseIDs":["CHIN231"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"CHIN 231\""},
-    {"source":{"apExam":{"name":"Comparative Government","minimumScore":4}},"awardedCourseIDs":["POSC240"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"POSC 240\""},
-    {"source":{"apExam":{"name":"Computer Science A","minimumScore":5}},"awardedCourseIDs":["CS149", "CS000"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"CS 149 CS 000\""},
-    {"source":{"apExam":{"name":"Computer Science A","minimumScore":3}},"awardedCourseIDs":["CS149", "CS000"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"CS 149 CS 000\""},
-    {"source":{"apExam":{"name":"Computer Science Principles","minimumScore":3}},"awardedCourseIDs":["CS000"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"CS 000\""},
-    {"source":{"apExam":{"name":"Drawing","minimumScore":4}},"awardedCourseIDs":["ART000"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ART 000\""},
-    {"source":{"apExam":{"name":"Drawing","minimumScore":4}},"awardedCourseIDs":["ART292"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ART 292\""},
-    {"source":{"apExam":{"name":"Economics (Micro)","minimumScore":4}},"awardedCourseIDs":["ECON201"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"ECON 201\""},
-    {"source":{"apExam":{"name":"Economics (Macro)","minimumScore":4}},"awardedCourseIDs":["ECON200"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"ECON 200\""},
-    {"source":{"apExam":{"name":"English Language and Composition","minimumScore":4}},"awardedCourseIDs":["WRTC103"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"WRTC 103\""},
-    {"source":{"apExam":{"name":"English Literature and Composition","minimumScore":5}},"awardedCourseIDs":["GNED123"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"GNED 123\""},
-    {"source":{"apExam":{"name":"Environmental Science","minimumScore":4}},"awardedCourseIDs":["ISAT112", "ISAT000", "ISAT112"],"credits":8,"meetsGeneralEducation":true,"sourceNote":"OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ISAT 112 & ISAT 000 4 However, to earn credit for ISAT 112 , students must earn a\""},
-    {"source":{"apExam":{"name":"Environmental Science","minimumScore":4}},"awardedCourseIDs":["GEOL115", "ISCI104", "ISAT000"],"credits":8,"meetsGeneralEducation":true,"sourceNote":"Non-majors track. JMU 2025-2026 AP Chart. Original cell text: \"GEOL 115 , ISCI 104 & ISAT 000\""},
-    {"source":{"apExam":{"name":"Environmental Science","minimumScore":3}},"awardedCourseIDs":["ENVT101"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"ENVT 101\""},
-    {"source":{"apExam":{"name":"French Language or French Literature","minimumScore":3}},"awardedCourseIDs":["FR231"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"FR 231\""},
-    {"source":{"apExam":{"name":"Geography, Human","minimumScore":3}},"awardedCourseIDs":["GEOG200"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"GEOG 200\""},
-    {"source":{"apExam":{"name":"German Language","minimumScore":3}},"awardedCourseIDs":["GER231"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"GER 231\""},
-    {"source":{"apExam":{"name":"Government: U.S.","minimumScore":4}},"awardedCourseIDs":["POSC225"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"POSC 225\""},
-    {"source":{"apExam":{"name":"History: European","minimumScore":3}},"awardedCourseIDs":["HIST000"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"HIST 000\""},
-    {"source":{"apExam":{"name":"History: U.S.","minimumScore":4}},"awardedCourseIDs":["HIST225"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"HIST 225\""},
-    {"source":{"apExam":{"name":"History: World","minimumScore":4}},"awardedCourseIDs":["HIST102"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"HIST 102\""},
-    {"source":{"apExam":{"name":"Italian Language and Culture","minimumScore":3}},"awardedCourseIDs":["ITAL231"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"ITAL 231\""},
-    {"source":{"apExam":{"name":"Latin Vergil","minimumScore":3}},"awardedCourseIDs":["LAT231"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"LAT 231\""},
-    {"source":{"apExam":{"name":"Music Theory \u2013 Aural Subscore","minimumScore":5}},"awardedCourseIDs":["MUS143"],"credits":1,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"MUS 143\""},
-    {"source":{"apExam":{"name":"Physics B","minimumScore":4}},"awardedCourseIDs":["PHYS140", "PHYS140L", "PHYS150", "PHYS150L"],"credits":8,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"PHYS 140 , PHYS 140L and PHYS 150 , PHYS 150L\""},
-    {"source":{"apExam":{"name":"Physics B","minimumScore":3}},"awardedCourseIDs":["ISCI101", "ISCI104"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ISCI 101 & ISCI 104\""},
-    {"source":{"apExam":{"name":"Physics B","minimumScore":3}},"awardedCourseIDs":["PHYS140", "PHYS140L"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"PHYS 140 & PHYS 140L\""},
-    {"source":{"apExam":{"name":"Physics C: Mechanics","minimumScore":4}},"awardedCourseIDs":["PHYS240", "PHYS240L"],"credits":4,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"PHYS 240 & PHYS 240L\""},
-    {"source":{"apExam":{"name":"Physics C: Mechanics","minimumScore":3}},"awardedCourseIDs":["PHYS140", "PHYS140L"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"PHYS 140 & PHYS 140L\""},
-    {"source":{"apExam":{"name":"Physics C: Electricity and Magnetism","minimumScore":4}},"awardedCourseIDs":["PHYS250", "PHYS250L"],"credits":4,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"PHYS 250 & PHYS 250L\""},
-    {"source":{"apExam":{"name":"Physics C: Electricity and Magnetism","minimumScore":3}},"awardedCourseIDs":["PHYS150", "PHYS150L"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"PHYS 150 & PHYS 150L\""},
-    {"source":{"apExam":{"name":"Physics 1","minimumScore":3}},"awardedCourseIDs":["ISCI101", "ISCI104"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"ISCI 101 & ISCI 104\""},
-    {"source":{"apExam":{"name":"Physics 1","minimumScore":3}},"awardedCourseIDs":["PHYS140", "PHYS140L"],"credits":4,"meetsGeneralEducation":true,"sourceNote":"OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"PHYS 140 & PHYS 140L\""},
-    {"source":{"apExam":{"name":"Physics 2","minimumScore":3}},"awardedCourseIDs":["PHYS150", "PHYS150L"],"credits":4,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"PHYS 150 & PHYS 150L\""},
-    {"source":{"apExam":{"name":"Psychology","minimumScore":4}},"awardedCourseIDs":["PSYC101"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"PSYC 101\""},
-    {"source":{"apExam":{"name":"Spanish Language","minimumScore":3}},"awardedCourseIDs":["SPAN231"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"SPAN 231\""},
-    {"source":{"apExam":{"name":"Spanish Literature","minimumScore":3}},"awardedCourseIDs":["SPAN231"],"credits":3,"meetsGeneralEducation":false,"sourceNote":"JMU 2025-2026 AP Chart. Original cell text: \"SPAN 231\""},
-    {"source":{"apExam":{"name":"Statistics","minimumScore":4}},"awardedCourseIDs":["MATH220"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"OR alternative #1. JMU 2025-2026 AP Chart. Original cell text: \"MATH 220\""},
-    {"source":{"apExam":{"name":"Statistics","minimumScore":4}},"awardedCourseIDs":["ISAT251"],"credits":3,"meetsGeneralEducation":true,"sourceNote":"OR alternative #2. JMU 2025-2026 AP Chart. Original cell text: \"ISAT 251\""}
-  ]
+  }
 }

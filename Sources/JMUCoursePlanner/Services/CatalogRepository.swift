@@ -506,6 +506,10 @@ private struct SeedCourse: Decodable {
     var availability: Set<SemesterTerm>?
     var prerequisites: [String]
     var verificationStatus: VerificationStatus?
+    var prerequisiteExpr: PrereqExpr?
+    var corequisiteExpr: PrereqExpr?
+    var hasUnknownPrereqTokens: Bool?
+    var rawPrerequisiteText: String?
 
     var course: Course {
         Course(
@@ -516,7 +520,11 @@ private struct SeedCourse: Decodable {
             availability: availability,
             prerequisites: prerequisites,
             verificationStatus: verificationStatus ?? .unverified,
-            registrarURL: nil
+            registrarURL: nil,
+            prerequisiteExpr: prerequisiteExpr ?? .empty,
+            corequisiteExpr: corequisiteExpr ?? .empty,
+            hasUnknownPrereqTokens: hasUnknownPrereqTokens ?? false,
+            rawPrerequisiteText: rawPrerequisiteText
         )
     }
 }

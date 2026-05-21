@@ -261,12 +261,42 @@ public struct Catalog: Codable, Sendable {
     public var programs: [Program]
     public var courses: [Course]
     public var apCreditRules: [TransferCreditRule]
+    public var prereqRuleOverlay: PrereqRuleOverlay
 
-    public init(source: CatalogSource, programs: [Program], courses: [Course], apCreditRules: [TransferCreditRule]) {
+    public init(
+        source: CatalogSource,
+        programs: [Program],
+        courses: [Course],
+        apCreditRules: [TransferCreditRule],
+        prereqRuleOverlay: PrereqRuleOverlay = .empty
+    ) {
         self.source = source
         self.programs = programs
         self.courses = courses
         self.apCreditRules = apCreditRules
+        self.prereqRuleOverlay = prereqRuleOverlay
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source, programs, courses, apCreditRules, prereqRuleOverlay
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.source = try c.decode(CatalogSource.self, forKey: .source)
+        self.programs = try c.decode([Program].self, forKey: .programs)
+        self.courses = try c.decode([Course].self, forKey: .courses)
+        self.apCreditRules = try c.decode([TransferCreditRule].self, forKey: .apCreditRules)
+        self.prereqRuleOverlay = try c.decodeIfPresent(PrereqRuleOverlay.self, forKey: .prereqRuleOverlay) ?? .empty
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(source, forKey: .source)
+        try c.encode(programs, forKey: .programs)
+        try c.encode(courses, forKey: .courses)
+        try c.encode(apCreditRules, forKey: .apCreditRules)
+        try c.encode(prereqRuleOverlay, forKey: .prereqRuleOverlay)
     }
 
     public var coursesByID: [String: Course] {
@@ -1259,7 +1289,12 @@ public struct ProgressCalculator: Sendable {
 }
 
 public extension Catalog {
-    static func fixture(courses: [Course], program: Program, apRules: [TransferCreditRule] = []) -> Catalog {
+    static func fixture(
+        courses: [Course],
+        program: Program,
+        apRules: [TransferCreditRule] = [],
+        prereqRuleOverlay: PrereqRuleOverlay = .empty
+    ) -> Catalog {
         Catalog(
             source: CatalogSource(
                 catalogYear: "Fixture",
@@ -1270,7 +1305,8 @@ public extension Catalog {
             ),
             programs: [program],
             courses: courses,
-            apCreditRules: apRules
+            apCreditRules: apRules,
+            prereqRuleOverlay: prereqRuleOverlay
         )
     }
 }

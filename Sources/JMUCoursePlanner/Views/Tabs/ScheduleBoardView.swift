@@ -208,25 +208,36 @@ private struct SemesterColumn: View {
     }
 
     private func warningStrip(_ warning: ConflictWarning) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 10))
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: iconName(for: warning.kind))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(warning.isOverridden ? DesignTokens.Colors.textTertiary : DesignTokens.Colors.warning)
             Text(warning.message)
-                .font(DesignTokens.Typography.small)
-                .lineLimit(2)
+                .font(DesignTokens.Typography.caption)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(warning.isOverridden ? DesignTokens.Colors.textTertiary : DesignTokens.Colors.warning)
             Spacer(minLength: 0)
             if !warning.isOverridden {
                 Button("Keep") { store.override(warning) }
                     .buttonStyle(.dtTertiary)
             }
         }
-        .foregroundStyle(warning.isOverridden ? DesignTokens.Colors.textTertiary : DesignTokens.Colors.warning)
         .padding(.horizontal, DesignTokens.Spacing.s)
         .padding(.vertical, 4)
         .background(
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(warning.isOverridden ? DesignTokens.Colors.surface : DesignTokens.Colors.warning.opacity(0.12))
         )
+    }
+
+    private func iconName(for kind: ConflictKind) -> String {
+        switch kind {
+        case .missingCorequisite:
+            return "arrow.left.arrow.right.circle.fill"
+        case .missingPrerequisite, .unavailableSemester, .unknownAvailability:
+            return "exclamationmark.triangle.fill"
+        }
     }
 
     private var addCourseMenu: some View {

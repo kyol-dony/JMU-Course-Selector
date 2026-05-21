@@ -151,22 +151,23 @@ final class PlanStore: ObservableObject {
         newCourseIDs: [String]?
     ) {
         let defaultCourseIDs = selectableCourseOptions(in: category).first ?? Array(category.courseOptions.first?.prefix(1) ?? [])
-        let oldCourseIDs = previousCourseIDs ?? defaultCourseIDs
         let replacementCourseIDs = newCourseIDs ?? defaultCourseIDs
-        let oldSet = Set(oldCourseIDs)
+        let peerGroup = peerCourseIDs(for: category, previousCourseIDs: previousCourseIDs, newCourseIDs: newCourseIDs, defaultCourseIDs: defaultCourseIDs)
+        let oldSet = Set(previousCourseIDs ?? defaultCourseIDs)
+        let searchSet = peerGroup.subtracting(replacementCourseIDs)
         let replacementSet = Set(replacementCourseIDs)
-        guard !oldSet.isEmpty, !replacementCourseIDs.isEmpty else { return }
-        guard oldCourseIDs != replacementCourseIDs else { return }
+        guard !searchSet.isEmpty, !replacementCourseIDs.isEmpty else { return }
+        guard oldSet != replacementSet else { return }
 
         for pathwayIndex in updatedPlan.pathways.indices {
-            guard let insertionPoint = firstScheduledCourse(in: updatedPlan.pathways[pathwayIndex], matching: oldSet) else {
+            guard let insertionPoint = firstScheduledCourse(in: updatedPlan.pathways[pathwayIndex], matching: searchSet) else {
                 continue
             }
 
             var pathway = updatedPlan.pathways[pathwayIndex]
             for semesterIndex in pathway.semesters.indices {
                 pathway.semesters[semesterIndex].courseIDs.removeAll { courseID in
-                    oldSet.contains(courseID) || replacementSet.contains(courseID)
+                    searchSet.contains(courseID) || replacementSet.contains(courseID)
                 }
             }
 
@@ -174,6 +175,19 @@ final class PlanStore: ObservableObject {
             pathway.semesters[insertionPoint.semesterIndex].courseIDs.insert(contentsOf: replacementCourseIDs, at: insertionIndex)
             updatedPlan.pathways[pathwayIndex] = pathway
         }
+    }
+
+    private func peerCourseIDs(
+        for category: RequirementCategory,
+        previousCourseIDs: [String]?,
+        newCourseIDs: [String]?,
+        defaultCourseIDs: [String]
+    ) -> Set<String> {
+        let anchors = Set((newCourseIDs ?? []) + (previousCourseIDs ?? []) + defaultCourseIDs)
+        guard let option = category.courseOptions.first(where: { !Set($0).intersection(anchors).isEmpty }) else {
+            return anchors
+        }
+        return Set(option)
     }
 
     func activeRequirementSelectionsByRequirementKey() -> [String: [String]] {
@@ -212,37 +226,6 @@ final class PlanStore: ObservableObject {
         guard !selected.isEmpty else { return false }
         return category.courseOptions.contains { option in
             Set(option).isSuperset(of: selected)
-        }
-    }
-
-    private func swapRequirementChoiceInExistingPathways(
-        category: RequirementCategory,
-        previousCourseIDs: [String]?,
-        newCourseIDs: [String]?
-    ) {
-        let defaultCourseIDs = selectableCourseOptions(in: category).first ?? Array(category.courseOptions.first?.prefix(1) ?? [])
-        let oldCourseIDs = previousCourseIDs ?? defaultCourseIDs
-        let replacementCourseIDs = newCourseIDs ?? defaultCourseIDs
-        let oldSet = Set(oldCourseIDs)
-        let replacementSet = Set(replacementCourseIDs)
-        guard !oldSet.isEmpty, !replacementCourseIDs.isEmpty else { return }
-        guard oldCourseIDs != replacementCourseIDs else { return }
-
-        for pathwayIndex in plan.pathways.indices {
-            guard let insertionPoint = firstScheduledCourse(in: plan.pathways[pathwayIndex], matching: oldSet) else {
-                continue
-            }
-
-            var pathway = plan.pathways[pathwayIndex]
-            for semesterIndex in pathway.semesters.indices {
-                pathway.semesters[semesterIndex].courseIDs.removeAll { courseID in
-                    oldSet.contains(courseID) || replacementSet.contains(courseID)
-                }
-            }
-
-            let insertionIndex = min(insertionPoint.courseIndex, pathway.semesters[insertionPoint.semesterIndex].courseIDs.count)
-            pathway.semesters[insertionPoint.semesterIndex].courseIDs.insert(contentsOf: replacementCourseIDs, at: insertionIndex)
-            plan.pathways[pathwayIndex] = pathway
         }
     }
 

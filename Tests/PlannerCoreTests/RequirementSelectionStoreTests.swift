@@ -118,6 +118,28 @@ struct RequirementSelectionStoreTests {
     }
 
     @Test
+    func selectingGenEdOptionSwapsAnyScheduledPeerInSameOptionGroup() {
+        let store = PlanStore()
+        store.catalog = genEdRequirementSelectionStoreCatalog()
+        store.plan.programID = "gened-fixture"
+        store.plan.pathways = [
+            Pathway(id: "path-1", name: "Path", semesters: [
+                SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: ["BIO-140"])
+            ])
+        ]
+        store.plan.activePathwayID = "path-1"
+        let requirement = store.effectiveActiveProgram!.requirements[0]
+        let key = store.majorRequirementSelectionKey(for: requirement)!
+
+        store.selectRequirementOption(key: key, courseIDs: ["CHEM-131"], in: requirement)
+
+        #expect(store.plan.pathways.count == 1)
+        #expect(store.plan.activePathwayID == "path-1")
+        #expect(store.plan.pathways[0].semesters[0].courseIDs == ["CHEM-131"])
+        #expect(store.progress != nil)
+    }
+
+    @Test
     func normalizedSelectionsUseRequirementSelectionKeyOnlyForCurrentProgram() {
         let store = PlanStore()
         store.catalog = requirementSelectionStoreCatalog()
@@ -161,5 +183,21 @@ private func requirementSelectionStoreCatalog() -> Catalog {
         courseOptions: [["CIS-464", "CIS-484"]]
     )
     let program = Program.fixture(id: "cis-bba", title: "Computer Information Systems", requirements: [requirement])
+    return Catalog.fixture(courses: courses, program: program)
+}
+
+private func genEdRequirementSelectionStoreCatalog() -> Catalog {
+    let courses = [
+        Course(id: "ANTH-196", code: "ANTH 196", title: "Biological Anthropology", credits: 3, availability: nil, prerequisites: []),
+        Course(id: "BIO-140", code: "BIO 140", title: "Foundations of Biology", credits: 3, availability: nil, prerequisites: []),
+        Course(id: "CHEM-131", code: "CHEM 131", title: "General Chemistry I", credits: 3, availability: nil, prerequisites: [])
+    ]
+    let requirement = RequirementCategory(
+        id: "gen-ed-c3ns",
+        name: "General Education - Natural Systems [C3NS]",
+        requiredCredits: 3,
+        courseOptions: [["ANTH-196", "BIO-140", "CHEM-131"]]
+    )
+    let program = Program.fixture(id: "gened-fixture", title: "Gen Ed Fixture", requirements: [requirement])
     return Catalog.fixture(courses: courses, program: program)
 }

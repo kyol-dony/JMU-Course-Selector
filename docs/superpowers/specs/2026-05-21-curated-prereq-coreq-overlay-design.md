@@ -15,6 +15,7 @@ The app still needs prereq/coreq-aware scheduling. The source of truth should be
 - Add a separate curated prereq/coreq overlay file, `Data/prereq_coreq_overrides.json`.
 - Scope curation to schedulable courses: courses that appear in parsed major, concentration, minor, or gen-ed requirement options and therefore can appear in generated pathways.
 - Let agents write curated rules directly after reading catalog pages and applying discretionary reasoning.
+- Let agents manually enter prereq/coreq rules when official/source-backed information strongly implies a course requirement, even if the catalog prose is not written as a clean prerequisite sentence.
 - Preserve source evidence for every curated rule with `sourceURL`, `sourceText`, and optional `notes`.
 - Use curated rules first during schedule generation and conflict detection.
 - Fall back to parser output when no curated rule exists, marking that rule `parsed`/low-confidence in warnings and course details.
@@ -46,6 +47,7 @@ Create `Data/prereq_coreq_overrides.json` as a compact JSON document:
         "kind": "empty"
       },
       "confidence": "curated",
+      "basis": "explicit",
       "sourceURL": "https://catalog.jmu.edu/preview_course.php?...",
       "sourceText": "Prerequisite: CS 159.",
       "notes": "Catalog prose normalized to course-only prerequisite."
@@ -69,6 +71,13 @@ Rules use the existing `PrereqExpr` representation:
 - `.any([PrereqExpr])`
 
 Course IDs in overlay must match catalog course IDs exactly.
+
+Curated rules also include `basis`:
+
+- `explicit`: source text directly states the course is a prereq/coreq.
+- `inferred`: source text, program sequencing, or official catalog context strongly supports treating the course as a prereq/coreq even though it is not expressed in standard prereq/coreq prose.
+
+`basis: "inferred"` requires `notes` explaining the reasoning. Inferred rules must still cite source-backed evidence with `sourceURL` and `sourceText`; agents should not infer requirements from convenience, common student behavior, or unsupported curriculum opinion.
 
 ## Runtime Priority
 
@@ -99,12 +108,14 @@ Agents should curate only schedulable courses. A course is schedulable if it app
 For each course, agent reads the JMU catalog course page and writes a normalized rule:
 
 - Convert explicit course prereqs/coreqs into `PrereqExpr`.
+- Manually enter inferred prereqs/coreqs when official source evidence is strong enough to justify the rule.
 - Preserve `and` as `.all`.
 - Preserve `or`, `one of the following`, and equivalent choice phrasing as `.any`.
 - Ignore grade threshold language for scheduling, but note it in `notes`.
 - Ignore class standing, permission, placement score, GPA, or admission gates as hard scheduling blockers unless they also name required courses.
 - For major-specific branches, include only the branch matching the active major when a curated rule is scoped later. For the first overlay version, prefer non-major/default branches unless a course is only used by that named major.
 - Put non-course requirements that may matter into `notes`, not into blocking expressions, unless they cannot be separated from course requirements.
+- If evidence is weak, conflicting, or based only on typical ordering, do not create a blocking inferred rule. Keep it as a note or leave parser fallback in place.
 
 Every curated entry must include:
 
@@ -112,10 +123,11 @@ Every curated entry must include:
 - `prerequisiteExpr`
 - `corequisiteExpr`
 - `confidence: "curated"`
+- `basis`
 - `sourceURL`
 - `sourceText`
 
-`notes` is optional but expected when agent drops grade, standing, placement, permission, or major-specific prose.
+`notes` is optional for explicit rules, but required when `basis` is `inferred` or when agent drops grade, standing, placement, permission, or major-specific prose.
 
 ## App Components
 
@@ -188,6 +200,8 @@ Add tests that verify:
 - Every overlay `courseID` exists in catalog.
 - Every `.course(id)` leaf in overlay exists in catalog.
 - Every curated rule has `sourceURL` and `sourceText`.
+- Every curated rule has `basis`.
+- Every inferred rule has non-empty `notes`.
 - No duplicate rules for the same `courseID`.
 - Every schedulable course has either a curated rule or parser fallback coverage.
 - Overlay wins over parser when both exist.
@@ -225,4 +239,4 @@ Existing generated schedules remain valid as saved plans. Warnings may change af
 
 ## Open Risk
 
-Agent-authored rules can still be wrong. Mitigation is source-backed entries, validation tests, and focused coverage on schedulable courses rather than all catalog courses.
+Agent-authored rules can still be wrong, especially inferred rules. Mitigation is source-backed entries, required notes for inferred rules, validation tests, and focused coverage on schedulable courses rather than all catalog courses.

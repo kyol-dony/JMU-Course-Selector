@@ -126,14 +126,18 @@ final class PlanStore: ObservableObject {
         selectableCourseOptions(in: category).count > 1
     }
 
-    func selectRequirementOption(key: String, courseIDs: [String]?) {
+    func selectRequirementOption(key: String, courseIDs: [String]?, in category: RequirementCategory) {
+        let previousSelection = selectedRequirementOption(for: key, in: category)
         if let courseIDs {
             plan.requirementSelections[key] = courseIDs
         } else {
             plan.requirementSelections.removeValue(forKey: key)
         }
-        plan.pathways = []
-        plan.activePathwayID = nil
+        swapRequirementChoiceInExistingPathways(
+            category: category,
+            previousCourseIDs: previousSelection,
+            newCourseIDs: courseIDs
+        )
         autosave()
     }
 
@@ -174,6 +178,51 @@ final class PlanStore: ObservableObject {
         return category.courseOptions.contains { option in
             Set(option).isSuperset(of: selected)
         }
+    }
+
+    private func swapRequirementChoiceInExistingPathways(
+        category: RequirementCategory,
+        previousCourseIDs: [String]?,
+        newCourseIDs: [String]?
+    ) {
+        let defaultCourseIDs = selectableCourseOptions(in: category).first ?? Array(category.courseOptions.first?.prefix(1) ?? [])
+        let oldCourseIDs = previousCourseIDs ?? defaultCourseIDs
+        let replacementCourseIDs = newCourseIDs ?? defaultCourseIDs
+        let oldSet = Set(oldCourseIDs)
+        let replacementSet = Set(replacementCourseIDs)
+        guard !oldSet.isEmpty, !replacementCourseIDs.isEmpty else { return }
+        guard oldCourseIDs != replacementCourseIDs else { return }
+
+        for pathwayIndex in plan.pathways.indices {
+            guard let insertionPoint = firstScheduledCourse(in: plan.pathways[pathwayIndex], matching: oldSet) else {
+                continue
+            }
+
+            var pathway = plan.pathways[pathwayIndex]
+            for semesterIndex in pathway.semesters.indices {
+                pathway.semesters[semesterIndex].courseIDs.removeAll { courseID in
+                    oldSet.contains(courseID) || replacementSet.contains(courseID)
+                }
+            }
+
+            let insertionIndex = min(insertionPoint.courseIndex, pathway.semesters[insertionPoint.semesterIndex].courseIDs.count)
+            pathway.semesters[insertionPoint.semesterIndex].courseIDs.insert(contentsOf: replacementCourseIDs, at: insertionIndex)
+            plan.pathways[pathwayIndex] = pathway
+        }
+    }
+
+    private func firstScheduledCourse(
+        in pathway: Pathway,
+        matching courseIDs: Set<String>
+    ) -> (semesterIndex: Int, courseIndex: Int)? {
+        for semesterIndex in pathway.semesters.indices {
+            for courseIndex in pathway.semesters[semesterIndex].courseIDs.indices {
+                if courseIDs.contains(pathway.semesters[semesterIndex].courseIDs[courseIndex]) {
+                    return (semesterIndex, courseIndex)
+                }
+            }
+        }
+        return nil
     }
 
     /// Course codes still required for a given requirement category, derived from the catalog.

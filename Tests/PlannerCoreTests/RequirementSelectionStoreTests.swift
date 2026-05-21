@@ -30,7 +30,7 @@ struct RequirementSelectionStoreTests {
     }
 
     @Test
-    func selectingRequirementOptionPersistsChoiceAndClearsGeneratedPathways() {
+    func selectingRequirementOptionPersistsChoiceAndSwapsGeneratedPathways() {
         let store = PlanStore()
         store.catalog = requirementSelectionStoreCatalog()
         store.plan.programID = "cis-bba"
@@ -43,11 +43,57 @@ struct RequirementSelectionStoreTests {
         let requirement = store.effectiveActiveProgram!.requirements[0]
         let key = store.majorRequirementSelectionKey(for: requirement)!
 
-        store.selectRequirementOption(key: key, courseIDs: ["CIS-484"])
+        store.selectRequirementOption(key: key, courseIDs: ["CIS-484"], in: requirement)
 
         #expect(store.plan.requirementSelections[key] == ["CIS-484"])
-        #expect(store.plan.pathways.isEmpty)
-        #expect(store.plan.activePathwayID == nil)
+        #expect(store.plan.pathways.count == 1)
+        #expect(store.plan.activePathwayID == "path-1")
+        #expect(store.plan.pathways[0].semesters[0].courseIDs == ["CIS-484"])
+    }
+
+    @Test
+    func clearingRequirementOptionRestoresCatalogDefaultWithoutClosingSchedule() {
+        let store = PlanStore()
+        store.catalog = requirementSelectionStoreCatalog()
+        store.plan.programID = "cis-bba"
+        store.plan.pathways = [
+            Pathway(id: "path-1", name: "Old", semesters: [
+                SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: ["CIS-484"])
+            ])
+        ]
+        store.plan.activePathwayID = "path-1"
+        let requirement = store.effectiveActiveProgram!.requirements[0]
+        let key = store.majorRequirementSelectionKey(for: requirement)!
+        store.plan.requirementSelections[key] = ["CIS-484"]
+
+        store.selectRequirementOption(key: key, courseIDs: nil, in: requirement)
+
+        #expect(store.plan.requirementSelections[key] == nil)
+        #expect(store.plan.pathways.count == 1)
+        #expect(store.plan.activePathwayID == "path-1")
+        #expect(store.plan.pathways[0].semesters[0].courseIDs == ["CIS-464"])
+    }
+
+    @Test
+    func selectingRequirementOptionDoesNotInventPlacementWhenDefaultMissing() {
+        let store = PlanStore()
+        store.catalog = requirementSelectionStoreCatalog()
+        store.plan.programID = "cis-bba"
+        store.plan.pathways = [
+            Pathway(id: "path-1", name: "Old", semesters: [
+                SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: [])
+            ])
+        ]
+        store.plan.activePathwayID = "path-1"
+        let requirement = store.effectiveActiveProgram!.requirements[0]
+        let key = store.majorRequirementSelectionKey(for: requirement)!
+
+        store.selectRequirementOption(key: key, courseIDs: ["CIS-484"], in: requirement)
+
+        #expect(store.plan.requirementSelections[key] == ["CIS-484"])
+        #expect(store.plan.pathways.count == 1)
+        #expect(store.plan.activePathwayID == "path-1")
+        #expect(store.plan.pathways[0].semesters[0].courseIDs.isEmpty)
     }
 
     @Test

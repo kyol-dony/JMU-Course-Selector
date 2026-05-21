@@ -202,13 +202,13 @@ struct MyPlanView: View {
             },
             set: { tag in
                 guard !tag.isEmpty else {
-                    store.selectRequirementOption(key: key, courseIDs: nil)
+                    store.selectRequirementOption(key: key, courseIDs: nil, in: requirement)
                     return
                 }
                 guard let option = store.selectableCourseOptions(in: requirement).first(where: { optionTag($0) == tag }) else {
                     return
                 }
-                store.selectRequirementOption(key: key, courseIDs: option)
+                store.selectRequirementOption(key: key, courseIDs: option, in: requirement)
             }
         )
     }

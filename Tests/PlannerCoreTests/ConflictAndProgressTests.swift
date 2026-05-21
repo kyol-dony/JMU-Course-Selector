@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import PlannerCore
 
@@ -497,6 +498,96 @@ struct ConflictDetectorPrereqWiringTests {
             program: Program.fixture(id: "cs-bs", title: "Computer Science, B.S.", requirements: [])
         )
     }()
+
+    @Test("curated overlay wins over raw parser in conflict detector")
+    func curatedOverlayWinsInConflictDetector() throws {
+        var cs240 = Course(id: "cs-240", code: "CS 240", title: "Data", credits: 3, availability: nil, prerequisites: [])
+        cs240.rawPrerequisiteText = "Prerequisite: CS 159."
+        let overlay = PrereqRuleOverlay(schemaVersion: 1, rules: [
+            PrereqRule(
+                courseID: "cs-240",
+                prerequisiteExpr: .course("cs-149"),
+                corequisiteExpr: .empty,
+                confidence: .curated,
+                basis: .explicit,
+                sourceURL: URL(string: "https://catalog.jmu.edu/preview_course.php?catoid=62&coid=123&print")!,
+                sourceText: "Prerequisite: CS 149.",
+                notes: nil
+            )
+        ])
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "cs-149", code: "CS 149", title: "Intro", credits: 3, availability: nil, prerequisites: []),
+                Course(id: "cs-159", code: "CS 159", title: "Advanced", credits: 3, availability: nil, prerequisites: []),
+                cs240
+            ],
+            program: Program.fixture(id: "cs-bs", title: "Computer Science, B.S.", requirements: []),
+            prereqRuleOverlay: overlay
+        )
+        let pathway = Pathway(id: "p", name: "P", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: ["cs-149"]),
+            SemesterPlan(id: SemesterIdentity(year: 2027, term: .spring), courseIDs: ["cs-240"])
+        ])
+
+        let warnings = ConflictDetector(catalog: catalog).warnings(for: pathway, overrides: [])
+
+        #expect(!warnings.contains { $0.kind == .missingPrerequisite && $0.courseID == "cs-240" })
+    }
+
+    @Test("parsed prereq warning identifies low-confidence parser source")
+    func parsedPrereqWarningIdentifiesParserSource() throws {
+        var cs240 = Course(id: "cs-240", code: "CS 240", title: "Data", credits: 3, availability: nil, prerequisites: [])
+        cs240.rawPrerequisiteText = "Prerequisite: CS 159."
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "cs-159", code: "CS 159", title: "Advanced", credits: 3, availability: nil, prerequisites: []),
+                cs240
+            ],
+            program: Program.fixture(id: "cs-bs", title: "Computer Science, B.S.", requirements: [])
+        )
+        let pathway = Pathway(id: "p", name: "P", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: ["cs-240"])
+        ])
+
+        let warning = try #require(ConflictDetector(catalog: catalog).warnings(for: pathway, overrides: []).first {
+            $0.kind == .missingPrerequisite && $0.courseID == "cs-240"
+        })
+
+        #expect(warning.message.contains("Parsed from catalog text; verify before registering."))
+    }
+
+    @Test("curated warning appends source-backed note")
+    func curatedWarningAppendsSourceBackedNote() throws {
+        let overlay = PrereqRuleOverlay(schemaVersion: 1, rules: [
+            PrereqRule(
+                courseID: "cs-345",
+                prerequisiteExpr: .course("cs-240"),
+                corequisiteExpr: .empty,
+                confidence: .curated,
+                basis: .inferred,
+                sourceURL: URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=999&print")!,
+                sourceText: "The recommended sequence lists CS 240 before CS 345.",
+                notes: "Official sequence supports treating CS 240 as required preparation."
+            )
+        ])
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "cs-240", code: "CS 240", title: "Data", credits: 3, availability: nil, prerequisites: []),
+                Course(id: "cs-345", code: "CS 345", title: "Software Engineering", credits: 3, availability: nil, prerequisites: [])
+            ],
+            program: Program.fixture(id: "cs-bs", title: "Computer Science, B.S.", requirements: []),
+            prereqRuleOverlay: overlay
+        )
+        let pathway = Pathway(id: "p", name: "P", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: ["cs-345"])
+        ])
+
+        let warning = try #require(ConflictDetector(catalog: catalog).warnings(for: pathway, overrides: []).first {
+            $0.kind == .missingPrerequisite && $0.courseID == "cs-345"
+        })
+
+        #expect(warning.message.contains("Catalog note: Official sequence supports treating CS 240 as required preparation."))
+    }
 }
 
 @Suite("Conflict detector conditional prereq clauses")

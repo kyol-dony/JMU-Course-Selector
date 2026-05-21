@@ -1042,7 +1042,7 @@ public struct ConflictDetector: Sendable {
         let coursesByID = catalog.coursesByID
         var completedBefore = Set<String>()
         var warnings: [ConflictWarning] = []
-        let parser = PrereqParser(coursesByID: coursesByID, activeProgramTitle: activeProgramTitle)
+        let resolver = PrereqRuleResolver(catalog: catalog)
 
         for semester in pathway.semesters.sorted(by: { $0.id < $1.id }) {
             let realInThisTerm = Set(semester.courseIDs.filter { !PathwayPlaceholder.isPlaceholder($0) })
@@ -1069,8 +1069,8 @@ public struct ConflictDetector: Sendable {
                     ))
                 }
 
-                let prereqExpr = Self.effectivePrerequisiteExpr(for: course, parser: parser)
-                if case .unmet(let missing, let original) = evaluator.evaluate(prereqExpr, mode: .prereq) {
+                let resolvedRule = resolver.rule(for: course, activeProgramTitle: activeProgramTitle)
+                if case .unmet(let missing, let original) = evaluator.evaluate(resolvedRule.prerequisiteExpr, mode: .prereq) {
                     warnings.append(warning(
                         courseID: courseID,
                         semester: semester.id,
@@ -1078,7 +1078,9 @@ public struct ConflictDetector: Sendable {
                         message: Self.prereqMessage(
                             original: original,
                             missing: missing,
-                            hasUnknown: course.hasUnknownPrereqTokens,
+                            hasUnknown: resolvedRule.hasUnknownTokens,
+                            confidence: resolvedRule.confidence,
+                            notes: resolvedRule.notes,
                             coursesByID: coursesByID,
                             satisfied: completedBefore
                         ),
@@ -1086,14 +1088,13 @@ public struct ConflictDetector: Sendable {
                     ))
                 }
 
-                let coreqExpr = Self.effectiveCorequisiteExpr(for: course, parser: parser)
-                if case .unmet(let missing, _) = evaluator.evaluate(coreqExpr, mode: .coreq) {
+                if case .unmet(let missing, _) = evaluator.evaluate(resolvedRule.corequisiteExpr, mode: .coreq) {
                     let rendered = missing.displayString(coursesByID: coursesByID)
                     warnings.append(warning(
                         courseID: courseID,
                         semester: semester.id,
                         kind: .missingCorequisite,
-                        message: "Take alongside this course: \(rendered).",
+                        message: "Take alongside or before this course: \(rendered).",
                         overrides: overrides
                     ))
                 }
@@ -1104,36 +1105,12 @@ public struct ConflictDetector: Sendable {
         return warnings
     }
 
-    private static func effectivePrerequisiteExpr(for course: Course, parser: PrereqParser) -> PrereqExpr {
-        if let raw = course.rawPrerequisiteText,
-           !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return parser.parse(raw).prerequisiteExpr
-        }
-        if course.prerequisiteExpr != .empty {
-            return course.prerequisiteExpr
-        }
-        switch course.prerequisites.count {
-        case 0:
-            return .empty
-        case 1:
-            return .course(course.prerequisites[0])
-        default:
-            return .all(course.prerequisites.map(PrereqExpr.course))
-        }
-    }
-
-    private static func effectiveCorequisiteExpr(for course: Course, parser: PrereqParser) -> PrereqExpr {
-        if let raw = course.rawPrerequisiteText,
-           !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return parser.parse(raw).corequisiteExpr
-        }
-        return course.corequisiteExpr
-    }
-
     private static func prereqMessage(
         original: PrereqExpr,
         missing: PrereqExpr,
         hasUnknown: Bool,
+        confidence: PrereqRuleConfidence,
+        notes: String?,
         coursesByID: [String: Course],
         satisfied: Set<String>
     ) -> String {
@@ -1148,6 +1125,12 @@ public struct ConflictDetector: Sendable {
         message += " still missing \(missingText)."
         if hasUnknown {
             message += " Some prereqs couldn't be parsed; verify with the catalog."
+        }
+        if confidence == .parsed {
+            message += " Parsed from catalog text; verify before registering."
+        }
+        if let notes = notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+            message += " Catalog note: \(notes)"
         }
         return message
     }

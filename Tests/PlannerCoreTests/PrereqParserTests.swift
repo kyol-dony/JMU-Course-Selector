@@ -233,3 +233,27 @@ final class PrereqGrammarTests: XCTestCase {
                        .all([.course("cs-159"), .course("math-235"), .course("math-236")]))
     }
 }
+
+final class PrereqCoreqTests: XCTestCase {
+    private static let stubCatalog: [String: Course] = [
+        "cs-159": Course(id: "cs-159", code: "CS 159", title: "", credits: 3, availability: nil, prerequisites: []),
+        "math-235": Course(id: "math-235", code: "MATH 235", title: "", credits: 3, availability: nil, prerequisites: []),
+        "math-236": Course(id: "math-236", code: "MATH 236", title: "", credits: 3, availability: nil, prerequisites: [])
+    ]
+
+    func testCoreqSegmentSplits() {
+        let r = PrereqParser(coursesByID: Self.stubCatalog).parse("Prerequisite: CS 159. Corequisite: MATH 235.")
+        XCTAssertEqual(r.prerequisiteExpr, .course("cs-159"))
+        XCTAssertEqual(r.corequisiteExpr, .course("math-235"))
+    }
+
+    func testCoreqWithBooleanGroup() {
+        let r = PrereqParser(coursesByID: Self.stubCatalog).parse("Prerequisite: CS 159. Corequisite(s): MATH 235 or MATH 236.")
+        XCTAssertEqual(r.corequisiteExpr, .any([.course("math-235"), .course("math-236")]))
+    }
+
+    func testNoCoreqLeavesEmpty() {
+        let r = PrereqParser(coursesByID: Self.stubCatalog).parse("Prerequisite: CS 159.")
+        XCTAssertEqual(r.corequisiteExpr, .empty)
+    }
+}

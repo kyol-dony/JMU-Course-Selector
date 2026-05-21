@@ -97,51 +97,57 @@ struct CourseDetailSheet: View {
         }
     }
 
+    private var resolvedPrereqRule: ResolvedPrereqRule {
+        PrereqRuleResolver(catalog: catalog).rule(for: course, activeProgramTitle: store.effectiveActiveProgram?.title)
+    }
+
     @ViewBuilder
     private var prereqSection: some View {
-        let prerequisiteExpr = displayedPrerequisiteExpr
-        if prerequisiteExpr != .empty {
+        let rule = resolvedPrereqRule
+        if rule.prerequisiteExpr != .empty {
             requirementExpressionSection(
                 title: "Prereqs",
-                expr: prerequisiteExpr,
-                showsUnknownNote: course.hasUnknownPrereqTokens
+                expr: rule.prerequisiteExpr,
+                rule: rule
             )
         }
 
-        if course.corequisiteExpr != .empty {
+        if rule.corequisiteExpr != .empty {
             requirementExpressionSection(
                 title: "Coreqs",
-                expr: course.corequisiteExpr,
-                showsUnknownNote: false
+                expr: rule.corequisiteExpr,
+                rule: rule
             )
         }
     }
 
-    private var displayedPrerequisiteExpr: PrereqExpr {
-        if course.prerequisiteExpr != .empty {
-            return course.prerequisiteExpr
-        }
-        switch course.prerequisites.count {
-        case 0:
-            return .empty
-        case 1:
-            return .course(course.prerequisites[0])
-        default:
-            return .all(course.prerequisites.map(PrereqExpr.course))
-        }
-    }
-
-    private func requirementExpressionSection(title: String, expr: PrereqExpr, showsUnknownNote: Bool) -> some View {
+    private func requirementExpressionSection(title: String, expr: PrereqExpr, rule: ResolvedPrereqRule) -> some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
-            Text(title)
-                .font(DesignTokens.Typography.small)
-                .foregroundStyle(DesignTokens.Colors.textTertiary)
-                .textCase(.uppercase)
+            HStack(spacing: DesignTokens.Spacing.s) {
+                Text(title)
+                    .font(DesignTokens.Typography.small)
+                    .foregroundStyle(DesignTokens.Colors.textTertiary)
+                    .textCase(.uppercase)
+                StatusPill(
+                    text: rule.confidence == .curated ? "Curated" : "Parsed from catalog",
+                    tone: rule.confidence == .curated ? .success : .warning
+                )
+            }
             Text(expr.displayString(coursesByID: catalog.coursesByID))
                 .font(DesignTokens.Typography.body)
                 .foregroundStyle(DesignTokens.Colors.textPrimary)
-            if showsUnknownNote {
-                Text("Some terms couldn't be parsed. See JMU catalog.")
+            if rule.hasUnknownTokens {
+                Text("Some terms could not be parsed. See JMU catalog.")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textTertiary)
+            }
+            if let sourceText = rule.sourceText, !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(sourceText)
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textSecondary)
+            }
+            if let notes = rule.notes, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(notes)
                     .font(DesignTokens.Typography.caption)
                     .foregroundStyle(DesignTokens.Colors.textTertiary)
             }

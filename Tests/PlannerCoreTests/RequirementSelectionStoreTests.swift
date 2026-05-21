@@ -30,7 +30,7 @@ struct RequirementSelectionStoreTests {
     }
 
     @Test
-    func selectingRequirementOptionPersistsChoiceAndSwapsGeneratedPathways() {
+    func selectingRequirementOptionPersistsChoiceAndLeavesPathwaysUnchanged() {
         let store = PlanStore()
         store.catalog = requirementSelectionStoreCatalog()
         store.plan.programID = "cis-bba"
@@ -43,16 +43,16 @@ struct RequirementSelectionStoreTests {
         let requirement = store.effectiveActiveProgram!.requirements[0]
         let key = store.majorRequirementSelectionKey(for: requirement)!
 
-        store.selectRequirementOption(key: key, courseIDs: ["CIS-484"], in: requirement)
+        store.selectRequirementOption(key: key, courseIDs: ["CIS-484"])
 
         #expect(store.plan.requirementSelections[key] == ["CIS-484"])
         #expect(store.plan.pathways.count == 1)
         #expect(store.plan.activePathwayID == "path-1")
-        #expect(store.plan.pathways[0].semesters[0].courseIDs == ["CIS-484"])
+        #expect(store.plan.pathways[0].semesters[0].courseIDs == ["CIS-464"])
     }
 
     @Test
-    func clearingRequirementOptionRestoresCatalogDefaultWithoutClosingSchedule() {
+    func clearingRequirementOptionRemovesChoiceAndLeavesPathwaysUnchanged() {
         let store = PlanStore()
         store.catalog = requirementSelectionStoreCatalog()
         store.plan.programID = "cis-bba"
@@ -66,16 +66,16 @@ struct RequirementSelectionStoreTests {
         let key = store.majorRequirementSelectionKey(for: requirement)!
         store.plan.requirementSelections[key] = ["CIS-484"]
 
-        store.selectRequirementOption(key: key, courseIDs: nil, in: requirement)
+        store.selectRequirementOption(key: key, courseIDs: nil)
 
         #expect(store.plan.requirementSelections[key] == nil)
         #expect(store.plan.pathways.count == 1)
         #expect(store.plan.activePathwayID == "path-1")
-        #expect(store.plan.pathways[0].semesters[0].courseIDs == ["CIS-464"])
+        #expect(store.plan.pathways[0].semesters[0].courseIDs == ["CIS-484"])
     }
 
     @Test
-    func selectingRequirementOptionDoesNotInventPlacementWhenDefaultMissing() {
+    func selectingRequirementOptionDoesNotInventPlacementBeforeRegeneration() {
         let store = PlanStore()
         store.catalog = requirementSelectionStoreCatalog()
         store.plan.programID = "cis-bba"
@@ -88,7 +88,7 @@ struct RequirementSelectionStoreTests {
         let requirement = store.effectiveActiveProgram!.requirements[0]
         let key = store.majorRequirementSelectionKey(for: requirement)!
 
-        store.selectRequirementOption(key: key, courseIDs: ["CIS-484"], in: requirement)
+        store.selectRequirementOption(key: key, courseIDs: ["CIS-484"])
 
         #expect(store.plan.requirementSelections[key] == ["CIS-484"])
         #expect(store.plan.pathways.count == 1)
@@ -108,17 +108,17 @@ struct RequirementSelectionStoreTests {
         let originalPathwayIDs = store.plan.pathways.map(\.id)
         let originalActivePathwayID = store.plan.activePathwayID
 
-        store.selectRequirementOption(key: key, courseIDs: ["CIS-484"], in: requirement)
+        store.selectRequirementOption(key: key, courseIDs: ["CIS-484"])
 
         #expect(store.plan.pathways.map(\.id) == originalPathwayIDs)
         #expect(store.plan.activePathwayID == originalActivePathwayID)
-        #expect(store.activePathway?.semesters.flatMap(\.courseIDs).contains("CIS-484") == true)
-        #expect(store.activePathway?.semesters.flatMap(\.courseIDs).contains("CIS-464") == false)
+        #expect(store.activePathway?.semesters.flatMap(\.courseIDs).contains("CIS-464") == true)
+        #expect(store.activePathway?.semesters.flatMap(\.courseIDs).contains("CIS-484") == false)
         #expect(store.progress != nil)
     }
 
     @Test
-    func selectingGenEdOptionSwapsAnyScheduledPeerInSameOptionGroup() {
+    func selectingGenEdOptionLeavesScheduleAndProgressUnchangedBeforeRegeneration() {
         let store = PlanStore()
         store.catalog = genEdRequirementSelectionStoreCatalog()
         store.plan.programID = "gened-fixture"
@@ -130,13 +130,30 @@ struct RequirementSelectionStoreTests {
         store.plan.activePathwayID = "path-1"
         let requirement = store.effectiveActiveProgram!.requirements[0]
         let key = store.majorRequirementSelectionKey(for: requirement)!
+        let progressBefore = store.progress
 
-        store.selectRequirementOption(key: key, courseIDs: ["CHEM-131"], in: requirement)
+        store.selectRequirementOption(key: key, courseIDs: ["CHEM-131"])
 
         #expect(store.plan.pathways.count == 1)
         #expect(store.plan.activePathwayID == "path-1")
-        #expect(store.plan.pathways[0].semesters[0].courseIDs == ["CHEM-131"])
-        #expect(store.progress != nil)
+        #expect(store.plan.pathways[0].semesters[0].courseIDs == ["BIO-140"])
+        #expect(store.progress?.overallCompletedCredits == progressBefore?.overallCompletedCredits)
+    }
+
+    @Test
+    func regeneratingAppliesPendingGenEdOptionSelections() {
+        let store = PlanStore()
+        store.catalog = genEdRequirementSelectionStoreCatalog()
+        store.plan.programID = "gened-fixture"
+        let requirement = store.effectiveActiveProgram!.requirements[0]
+        let key = store.majorRequirementSelectionKey(for: requirement)!
+        store.selectRequirementOption(key: key, courseIDs: ["CHEM-131"])
+
+        store.generateSchedules()
+
+        #expect(store.activePathway?.semesters.flatMap(\.courseIDs).contains("CHEM-131") == true)
+        #expect(store.activePathway?.semesters.flatMap(\.courseIDs).contains("ANTH-196") == false)
+        #expect(store.progress?.overallCompletedCredits == 3)
     }
 
     @Test

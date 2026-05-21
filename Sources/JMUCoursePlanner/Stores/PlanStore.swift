@@ -66,7 +66,6 @@ final class PlanStore: ObservableObject {
             concentrationID: plan.concentrationID,
             pathway: activePathway,
             transferCredits: plan.transferCredits,
-            requirementSelections: activeRequirementSelectionsByRequirementKey(),
             additionalPrograms: selectedMinorPrograms()
         )
     }
@@ -126,68 +125,13 @@ final class PlanStore: ObservableObject {
         selectableCourseOptions(in: category).count > 1
     }
 
-    func selectRequirementOption(key: String, courseIDs: [String]?, in category: RequirementCategory) {
-        let previousSelection = selectedRequirementOption(for: key, in: category)
-        var updatedPlan = plan
+    func selectRequirementOption(key: String, courseIDs: [String]?) {
         if let courseIDs {
-            updatedPlan.requirementSelections[key] = courseIDs
+            plan.requirementSelections[key] = courseIDs
         } else {
-            updatedPlan.requirementSelections.removeValue(forKey: key)
+            plan.requirementSelections.removeValue(forKey: key)
         }
-        swapRequirementChoiceInExistingPathways(
-            plan: &updatedPlan,
-            category: category,
-            previousCourseIDs: previousSelection,
-            newCourseIDs: courseIDs
-        )
-        plan = updatedPlan
         autosave()
-    }
-
-    private func swapRequirementChoiceInExistingPathways(
-        plan updatedPlan: inout SavedStudentPlan,
-        category: RequirementCategory,
-        previousCourseIDs: [String]?,
-        newCourseIDs: [String]?
-    ) {
-        let defaultCourseIDs = selectableCourseOptions(in: category).first ?? Array(category.courseOptions.first?.prefix(1) ?? [])
-        let replacementCourseIDs = newCourseIDs ?? defaultCourseIDs
-        let peerGroup = peerCourseIDs(for: category, previousCourseIDs: previousCourseIDs, newCourseIDs: newCourseIDs, defaultCourseIDs: defaultCourseIDs)
-        let oldSet = Set(previousCourseIDs ?? defaultCourseIDs)
-        let searchSet = peerGroup.subtracting(replacementCourseIDs)
-        let replacementSet = Set(replacementCourseIDs)
-        guard !searchSet.isEmpty, !replacementCourseIDs.isEmpty else { return }
-        guard oldSet != replacementSet else { return }
-
-        for pathwayIndex in updatedPlan.pathways.indices {
-            guard let insertionPoint = firstScheduledCourse(in: updatedPlan.pathways[pathwayIndex], matching: searchSet) else {
-                continue
-            }
-
-            var pathway = updatedPlan.pathways[pathwayIndex]
-            for semesterIndex in pathway.semesters.indices {
-                pathway.semesters[semesterIndex].courseIDs.removeAll { courseID in
-                    searchSet.contains(courseID) || replacementSet.contains(courseID)
-                }
-            }
-
-            let insertionIndex = min(insertionPoint.courseIndex, pathway.semesters[insertionPoint.semesterIndex].courseIDs.count)
-            pathway.semesters[insertionPoint.semesterIndex].courseIDs.insert(contentsOf: replacementCourseIDs, at: insertionIndex)
-            updatedPlan.pathways[pathwayIndex] = pathway
-        }
-    }
-
-    private func peerCourseIDs(
-        for category: RequirementCategory,
-        previousCourseIDs: [String]?,
-        newCourseIDs: [String]?,
-        defaultCourseIDs: [String]
-    ) -> Set<String> {
-        let anchors = Set((newCourseIDs ?? []) + (previousCourseIDs ?? []) + defaultCourseIDs)
-        guard let option = category.courseOptions.first(where: { !Set($0).intersection(anchors).isEmpty }) else {
-            return anchors
-        }
-        return Set(option)
     }
 
     func activeRequirementSelectionsByRequirementKey() -> [String: [String]] {
@@ -229,20 +173,6 @@ final class PlanStore: ObservableObject {
         }
     }
 
-    private func firstScheduledCourse(
-        in pathway: Pathway,
-        matching courseIDs: Set<String>
-    ) -> (semesterIndex: Int, courseIndex: Int)? {
-        for semesterIndex in pathway.semesters.indices {
-            for courseIndex in pathway.semesters[semesterIndex].courseIDs.indices {
-                if courseIDs.contains(pathway.semesters[semesterIndex].courseIDs[courseIndex]) {
-                    return (semesterIndex, courseIndex)
-                }
-            }
-        }
-        return nil
-    }
-
     /// Course codes still required for a given requirement category, derived from the catalog.
     func remainingCourses(in category: RequirementCategory, selectionKey: String? = nil) -> [String] {
         guard let catalog else { return [] }
@@ -264,12 +194,7 @@ final class PlanStore: ObservableObject {
     }
 
     func courseIDsForRequirementHighlight(in category: RequirementCategory) -> Set<String> {
-        guard let key = majorRequirementSelectionKey(for: category),
-              let selected = selectedRequirementOption(for: key, in: category)
-        else {
-            return Set(category.courseOptions.flatMap { $0 })
-        }
-        return Set(selected)
+        Set(category.courseOptions.flatMap { $0 })
     }
 
     func load() async {

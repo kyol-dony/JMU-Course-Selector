@@ -180,3 +180,59 @@ struct CourseDetailCacheTests {
         #expect(detail.prerequisiteText?.contains("Prerequisite(s)") == true)
     }
 }
+
+@Suite("Prereq overlay repository loading")
+struct PrereqOverlayRepositoryTests {
+    @MainActor
+    @Test("repository decodes prereq overlay JSON")
+    func repositoryDecodesPrereqOverlayJSON() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let overlayURL = directory.appending(path: "prereq_coreq_overrides.json")
+        try """
+        {
+          "schemaVersion": 1,
+          "rules": [
+            {
+              "courseID": "CS240",
+              "prerequisiteExpr": { "kind": "course", "value": "CS159" },
+              "corequisiteExpr": { "kind": "empty" },
+              "confidence": "curated",
+              "basis": "explicit",
+              "sourceURL": "https://catalog.jmu.edu/preview_course.php?catoid=62&coid=123&print",
+              "sourceText": "Prerequisite: CS 159.",
+              "notes": "Direct catalog rule."
+            }
+          ]
+        }
+        """.write(to: overlayURL, atomically: true, encoding: .utf8)
+
+        let overlay = try CatalogRepository().loadPrereqRuleOverlay(from: overlayURL)
+
+        #expect(overlay.schemaVersion == 1)
+        #expect(overlay.rule(for: "CS240")?.prerequisiteExpr == .course("CS159"))
+    }
+
+    @MainActor
+    @Test("repository treats invalid prereq overlay as non-fatal parser fallback")
+    func repositoryTreatsInvalidPrereqOverlayAsNonFatalFallback() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let overlayURL = directory.appending(path: "prereq_coreq_overrides.json")
+        try "{ invalid json".write(to: overlayURL, atomically: true, encoding: .utf8)
+
+        let status = CatalogRepository().optionalPrereqRuleOverlay(from: overlayURL)
+
+        #expect(status.overlay == .empty)
+        #expect(status.note.contains("parser fallback"))
+    }
+
+    @MainActor
+    @Test("repository attaches current overlay to bundled catalog")
+    func repositoryAttachesCurrentOverlayToBundledCatalog() throws {
+        let catalog = try CatalogRepository().loadBundledCatalog()
+
+        #expect(catalog.prereqRuleOverlay.schemaVersion == 1)
+        #expect(catalog.source.retrievalNotes.contains { $0.contains("prereq/coreq overlay") })
+    }
+}

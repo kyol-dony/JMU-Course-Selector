@@ -29,6 +29,7 @@ mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 cp "$ROOT_DIR/Data/catalog_seed.json" "$APP_RESOURCES/catalog_seed.json"
+cp "$ROOT_DIR/Data/prereq_coreq_overrides.json" "$APP_RESOURCES/prereq_coreq_overrides.json"
 if [ -f "$ROOT_DIR/Data/Sources/2025-2026-jmu-undergraduate-catalog.pdf" ]; then
   cp "$ROOT_DIR/Data/Sources/2025-2026-jmu-undergraduate-catalog.pdf" "$APP_RESOURCES/2025-2026-jmu-undergraduate-catalog.pdf"
 fi

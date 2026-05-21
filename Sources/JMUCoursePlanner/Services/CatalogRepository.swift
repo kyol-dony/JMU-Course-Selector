@@ -21,7 +21,7 @@ struct CatalogRepository {
                     apCreditRules: bundled.apCreditRules
                 )
             }
-            return cached
+            return attachCurrentPrereqOverlay(to: cached)
         }
         return try loadBundledCatalog()
     }
@@ -30,7 +30,25 @@ struct CatalogRepository {
         let url = try bundledCatalogURL()
         let data = try Data(contentsOf: url)
         let seed = try SeedCatalog.decode(from: data)
-        return seed.catalog()
+        return attachCurrentPrereqOverlay(to: seed.catalog())
+    }
+
+    func loadPrereqRuleOverlay(from url: URL) throws -> PrereqRuleOverlay {
+        let data = try Data(contentsOf: url)
+        let decoder = JSONDecoder()
+        return try decoder.decode(PrereqRuleOverlay.self, from: data)
+    }
+
+    func optionalPrereqRuleOverlay(from url: URL?) -> (overlay: PrereqRuleOverlay, note: String) {
+        guard let url else {
+            return (.empty, "Curated prereq/coreq overlay unavailable; parser fallback active.")
+        }
+        do {
+            let overlay = try loadPrereqRuleOverlay(from: url)
+            return (overlay, "Curated prereq/coreq overlay loaded with \(overlay.rules.count) rule(s).")
+        } catch {
+            return (.empty, "Curated prereq/coreq overlay could not be loaded; parser fallback active.")
+        }
     }
 
     func refreshCatalogFromHTML(progress: ((CatalogRefreshProgress) -> Void)? = nil) async throws -> Catalog {
@@ -136,7 +154,7 @@ struct CatalogRepository {
             ] + (failedPrograms.isEmpty ? [] : ["Failed to parse \(failedPrograms.count) program pages during the latest refresh."])
         )
 
-        let catalog = Catalog(
+        let catalog = attachCurrentPrereqOverlay(to: Catalog(
             source: catalogSource,
             programs: refreshedPrograms.sorted { lhs, rhs in
                 if lhs.kind != rhs.kind { return lhs.kind.rawValue < rhs.kind.rawValue }
@@ -144,7 +162,7 @@ struct CatalogRepository {
             },
             courses: coursesByID.values.sorted { $0.code < $1.code },
             apCreditRules: seed.apCreditRules
-        )
+        ))
 
         try saveHTMLCatalog(catalog)
         return catalog
@@ -186,14 +204,41 @@ struct CatalogRepository {
         try encoder.encode(catalog).write(to: url)
     }
 
-    /// Bump this whenever cached catalog requirement shape changes. v6 adds
-    /// parsed prerequisite/corequisite expression fields, so older v5 caches
-    /// need a fresh HTML refresh before warnings and detail sheets can use them.
-    /// v4 handles
-    /// JMU pages that label their concentration section "Required Concentration",
-    /// so older v3 caches may still have CIS concentrations flattened into the
-    /// parent major requirements.
-    private static let cacheSchemaVersion = 6
+    /// Bump this whenever cached catalog requirement shape changes. v7 adds
+    /// the curated prereq/coreq overlay to `Catalog`, so cached catalogs need
+    /// the latest separate overlay attached on load.
+    /// v6 added parsed prerequisite/corequisite expression fields, so older v5
+    /// caches needed a fresh HTML refresh before warnings and detail sheets
+    /// could use them. v4 handled JMU pages that label their concentration
+    /// section "Required Concentration", so older v3 caches may still have
+    /// CIS concentrations flattened into the parent major requirements.
+    private static let cacheSchemaVersion = 7
+
+    private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
+        let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())
+        var source = catalog.source
+        source.retrievalNotes.removeAll { $0.contains("prereq/coreq overlay") }
+        source.retrievalNotes.append(status.note)
+        return Catalog(
+            source: source,
+            programs: catalog.programs,
+            courses: catalog.courses,
+            apCreditRules: catalog.apCreditRules,
+            prereqRuleOverlay: status.overlay
+        )
+    }
+
+    private func bundledPrereqOverlayURL() throws -> URL {
+        let candidates = [
+            Bundle.main.url(forResource: "prereq_coreq_overrides", withExtension: "json"),
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appending(path: "Data/prereq_coreq_overrides.json")
+        ].compactMap { $0 }
+
+        guard let url = candidates.first(where: { fileManager.fileExists(atPath: $0.path) }) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        return url
+    }
 
     private func cachedHTMLCatalogURL() throws -> URL {
         let directory = try supportDirectory().appending(path: "Catalog", directoryHint: .isDirectory)

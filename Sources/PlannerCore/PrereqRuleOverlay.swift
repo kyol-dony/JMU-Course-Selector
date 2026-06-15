@@ -123,8 +123,8 @@ public struct PrereqRuleResolver: Sendable {
         if let curated = overlay.rule(for: course.id) {
             return ResolvedPrereqRule(
                 courseID: course.id,
-                prerequisiteExpr: curated.prerequisiteExpr,
-                corequisiteExpr: curated.corequisiteExpr,
+                prerequisiteExpr: curated.prerequisiteExpr.enforcedCourseOnly,
+                corequisiteExpr: curated.corequisiteExpr.enforcedCourseOnly,
                 confidence: .curated,
                 basis: curated.basis,
                 sourceText: curated.sourceText,
@@ -140,8 +140,8 @@ public struct PrereqRuleResolver: Sendable {
             let parsed = parser.parse(trimmedRaw)
             return ResolvedPrereqRule(
                 courseID: course.id,
-                prerequisiteExpr: parsed.prerequisiteExpr,
-                corequisiteExpr: parsed.corequisiteExpr,
+                prerequisiteExpr: parsed.prerequisiteExpr.enforcedCourseOnly,
+                corequisiteExpr: parsed.corequisiteExpr.enforcedCourseOnly,
                 confidence: .parsed,
                 sourceText: trimmedRaw,
                 sourceURL: course.descriptionSourceURL ?? course.registrarURL,
@@ -153,8 +153,8 @@ public struct PrereqRuleResolver: Sendable {
         if course.prerequisiteExpr != .empty || course.corequisiteExpr != .empty {
             return ResolvedPrereqRule(
                 courseID: course.id,
-                prerequisiteExpr: course.prerequisiteExpr,
-                corequisiteExpr: course.corequisiteExpr,
+                prerequisiteExpr: course.prerequisiteExpr.enforcedCourseOnly,
+                corequisiteExpr: course.corequisiteExpr.enforcedCourseOnly,
                 confidence: .parsed,
                 sourceText: nil,
                 sourceURL: course.descriptionSourceURL ?? course.registrarURL,

@@ -107,6 +107,67 @@ struct ScheduleGeneratorTests {
         #expect(!scheduled.contains("PHYS390"))
     }
 
+    @Test("concentration electives schedule only required credits")
+    func concentrationElectivesScheduleOnlyRequiredCredits() throws {
+        let program = Program(
+            id: "cis-bba",
+            title: "Computer Information Systems, B.B.A.",
+            degreeType: "B.B.A.",
+            kind: .major,
+            college: "College of Business",
+            department: "Computer Information Systems",
+            catalogPage: nil,
+            totalCredits: 9,
+            requirements: [
+                RequirementCategory(id: "core", name: "CIS Core", requiredCredits: 3, courseOptions: [["CIS221"]])
+            ],
+            concentrations: [
+                Concentration(id: "information-systems", name: "Information Systems", requirements: [
+                    RequirementCategory(
+                        id: "is-electives",
+                        name: "Information Systems Concentration Electives: 6 Credit Hours",
+                        requiredCredits: 6,
+                        courseOptions: [["CIS330"], ["CIS454"], ["CIS464"], ["CIS484"]]
+                    )
+                ])
+            ],
+            verificationStatus: .partial,
+            requirementDataComplete: true,
+            sourceNote: "Fixture"
+        )
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "CIS221", code: "CIS 221", title: "Programming", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "CIS330", code: "CIS 330", title: "Database", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "CIS454", code: "CIS 454", title: "Project Management", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "CIS464", code: "CIS 464", title: "Networks", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "CIS484", code: "CIS 484", title: "Development", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: program
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "cis-bba",
+            concentrationID: "information-systems",
+            workload: .standard,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        ).first)
+
+        let scheduledIDs = pathway.semesters.flatMap(\.courseIDs)
+        let scheduled = Set(scheduledIDs)
+        let electiveIDs: Set<String> = ["CIS330", "CIS454", "CIS464", "CIS484"]
+        let placeholderIDs = scheduledIDs.filter(PathwayPlaceholder.isPlaceholder)
+        #expect(scheduled.contains("CIS221"))
+        #expect(scheduled.intersection(electiveIDs).isEmpty)
+        #expect(placeholderIDs.count == 2)
+        for placeholderID in placeholderIDs {
+            let spec = try #require(pathway.placeholders[placeholderID])
+            #expect(Set(spec.alternates) == electiveIDs)
+            #expect(spec.credits == 3)
+        }
+    }
+
     @Test("scheduler folds added minor's required courses into the major's pathway")
     func schedulerSchedulesMinorRequirements() throws {
         let major = Program.fixture(
@@ -223,6 +284,39 @@ struct ScheduleGeneratorBestEffortTests {
         #expect(scheduled.contains("cs-240"))
     }
 
+    @Test("best-effort fallback still respects workload credit cap")
+    func bestEffortFallbackStillRespectsWorkloadCreditCap() throws {
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "CS340", code: "CS 340", title: "Databases", credits: 7, availability: nil, prerequisites: ["MISSING"]),
+                Course(id: "CS240", code: "CS 240", title: "Data Structures", credits: 7, availability: nil, prerequisites: ["MISSING"]),
+                Course(id: "CS140", code: "CS 140", title: "Intro", credits: 7, availability: nil, prerequisites: ["MISSING"])
+            ],
+            program: Program.fixture(
+                id: "cs-bs",
+                title: "Computer Science, B.S.",
+                requirements: [
+                    RequirementCategory(id: "core", name: "Core", requiredCredits: 21, courseOptions: [["CS340"], ["CS240"], ["CS140"]])
+                ]
+            )
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "cs-bs",
+            workload: .light,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        ).first)
+
+        #expect(pathway.semesters.map(\.courseIDs) == [["CS140"], ["CS240"], ["CS340"]])
+        for semester in pathway.semesters {
+            let credits = semester.courseIDs.reduce(0) { total, courseID in
+                total + (catalog.coursesByID[courseID]?.credits ?? 0)
+            }
+            #expect(credits <= WorkloadPreference.light.creditRange.upperBound)
+        }
+    }
+
     @Test("strict prereq mode still throws")
     func strictPrereqsStillThrows() {
         let catalog = Self.catalogWithImpossiblePrereq()
@@ -255,6 +349,33 @@ struct ScheduleGeneratorBestEffortTests {
 
 @Suite("Schedule generator parsed prereq expressions")
 struct ScheduleGeneratorParsedPrereqTests {
+    @Test("unknown-only catalog prose does not force best-effort dump")
+    func unknownOnlyCatalogProseDoesNotForceBestEffortDump() throws {
+        var cob202 = Course(id: "COB202", code: "COB 202", title: "Interpersonal Skills", credits: 7, availability: [.fall, .spring], prerequisites: [])
+        cob202.rawPrerequisiteText = "Prerequisite: Open only to sophomore business majors."
+        var cob241 = Course(id: "COB241", code: "COB 241", title: "Financial Accounting", credits: 7, availability: [.fall, .spring], prerequisites: [])
+        cob241.rawPrerequisiteText = "Prerequisite: COB 202."
+        let catalog = Catalog.fixture(
+            courses: [cob241, cob202],
+            program: Program.fixture(
+                id: "cis-bba",
+                title: "Computer Information Systems, B.B.A.",
+                requirements: [
+                    RequirementCategory(id: "core", name: "Core", requiredCredits: 14, courseOptions: [["COB241"], ["COB202"]])
+                ]
+            )
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "cis-bba",
+            workload: .light,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        ).first)
+
+        #expect(pathway.semesters.map(\.courseIDs) == [["COB202"], ["COB241"]])
+    }
+
     @Test("one-of-following prereq only needs one completed option")
     func oneOfFollowingPrereqOnlyNeedsOneCompletedOption() throws {
         let catalog = Self.catalogWithOneOfFollowingPrereq()
@@ -452,5 +573,48 @@ struct ScheduleGeneratorLevelRampTests {
         let firstPlaceholderID = try #require(pathway.semesters.first?.courseIDs.first)
         let firstSpec = try #require(pathway.placeholders[firstPlaceholderID])
         #expect(firstSpec.categoryName == "Lower Gen Ed")
+    }
+
+    @Test("gen ed placeholders follow JMU recommended timing when otherwise equal")
+    func genEdPlaceholdersFollowRecommendedTiming() throws {
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "CIS101", code: "CIS 101", title: "Business Technology", credits: 7, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "HIST101", code: "HIST 101", title: "American Experience", credits: 7, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "HIST102", code: "HIST 102", title: "American Experience II", credits: 7, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "WRTC103", code: "WRTC 103", title: "Critical Reading and Writing", credits: 7, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "WRTC104", code: "WRTC 104", title: "Writing Workshop", credits: 7, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "KIN100", code: "KIN 100", title: "Lifetime Fitness", credits: 7, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "HTH100", code: "HTH 100", title: "Personal Wellness", credits: 7, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "cis-bba",
+                title: "Computer Information Systems, B.B.A.",
+                requirements: [
+                    RequirementCategory(id: "major", name: "Major Core", requiredCredits: 7, courseOptions: [["CIS101"]]),
+                    RequirementCategory(id: "c4ae", name: "The American Experience [C4AE]", requiredCredits: 7, courseOptions: [["HIST101", "HIST102"]]),
+                    RequirementCategory(id: "c1w", name: "Writing [C1W]", requiredCredits: 7, courseOptions: [["WRTC103", "WRTC104"]]),
+                    RequirementCategory(id: "c5w", name: "Wellness Domain [C5W]", requiredCredits: 7, courseOptions: [["KIN100", "HTH100"]])
+                ]
+            )
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "cis-bba",
+            workload: .light,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall)
+        ).first)
+
+        let scheduledCategories = pathway.semesters.compactMap { semester -> String? in
+            guard let courseID = semester.courseIDs.first else { return nil }
+            return pathway.placeholders[courseID]?.categoryName ?? courseID
+        }
+        let wellnessIndex = try #require(scheduledCategories.firstIndex(of: "Wellness Domain [C5W]"))
+        let americanExperienceIndex = try #require(scheduledCategories.firstIndex(of: "The American Experience [C4AE]"))
+
+        #expect(scheduledCategories.first == "Writing [C1W]")
+        #expect(wellnessIndex < americanExperienceIndex)
+        #expect(ConflictDetector(catalog: catalog).warnings(for: pathway, overrides: []).isEmpty)
     }
 }

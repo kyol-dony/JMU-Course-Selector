@@ -18,6 +18,20 @@ final class PrereqExprTests: XCTestCase {
         let decoded = try JSONDecoder().decode(PrereqExpr.self, from: data)
         XCTAssertEqual(decoded, .empty)
     }
+
+    func testUnknownOnlyExpressionIsNotEnforced() {
+        XCTAssertEqual(PrereqExpr.unknown("Sophomore standing").enforcedCourseOnly, .empty)
+    }
+
+    func testUnknownInAndExpressionIsDroppedForEnforcement() {
+        let expr: PrereqExpr = .all([.course("cob-241"), .unknown("declared business major")])
+        XCTAssertEqual(expr.enforcedCourseOnly, .course("cob-241"))
+    }
+
+    func testUnknownInAnyExpressionIsDroppedForEnforcement() {
+        let expr: PrereqExpr = .any([.course("cis-221"), .unknown("permission of instructor")])
+        XCTAssertEqual(expr.enforcedCourseOnly, .course("cis-221"))
+    }
 }
 
 final class CourseModelTests: XCTestCase {

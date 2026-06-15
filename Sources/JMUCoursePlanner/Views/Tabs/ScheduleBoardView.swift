@@ -48,6 +48,8 @@ struct ScheduleBoardView: View {
 
             Button("Regenerate") { store.generateSchedules() }
                 .buttonStyle(.dtSecondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, DesignTokens.Spacing.xl)
         .padding(.vertical, DesignTokens.Spacing.m)
@@ -121,6 +123,7 @@ private struct SemesterColumn: View {
                     if PathwayPlaceholder.isPlaceholder(id),
                        let spec = store.activePathway?.placeholders[id] {
                         placeholderChip(id: id, spec: spec)
+                            .draggable(id)
                     } else if let course = store.course(forID: id) {
                         let warnings = visibleWarnings.filter { $0.courseID == id && $0.semester == semester.id }
                         let classification = CourseClassificationPalette.classification(forCode: course.code)
@@ -154,10 +157,18 @@ private struct SemesterColumn: View {
     }
 
     /// Dashed-outline chip rendered for unfilled multi-alternate requirement
-    /// options. Tap to pick a course from the option's alternates.
+    /// options. Tap to pick a course from the option's alternates. Open
+    /// electives use an empty `alternates` list as a sentinel — the menu
+    /// then offers the full catalog so the student can pick any course.
     private func placeholderChip(id: String, spec: PlaceholderSpec) -> some View {
-        Menu {
-            ForEach(spec.alternates, id: \.self) { altID in
+        let alternateIDs: [String]
+        if spec.categoryID == ScheduleGenerator.openElectiveCategoryID, spec.alternates.isEmpty {
+            alternateIDs = catalog.courses.sorted { $0.code < $1.code }.map(\.id)
+        } else {
+            alternateIDs = spec.alternates
+        }
+        return Menu {
+            ForEach(alternateIDs, id: \.self) { altID in
                 let label = catalog.coursesByID[altID].map { "\($0.code) - \($0.title)" } ?? altID
                 Button(label) { store.resolvePlaceholder(id, with: altID) }
             }
@@ -190,6 +201,12 @@ private struct SemesterColumn: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        // Press-and-hold to drag the placeholder into another semester;
+        // a quick tap still opens the course picker menu. Same gesture
+        // grammar as `CourseChip.draggable(id)` above, so the existing
+        // semester-card `.dropDestination(for: String.self)` handler
+        // routes the drop through `store.moveCourse`.
+        .draggable(id)
     }
 
     private var header: some View {
@@ -253,7 +270,7 @@ private struct SemesterColumn: View {
                 Text("Add course")
                     .font(DesignTokens.Typography.label)
             }
-            .foregroundStyle(DesignTokens.Colors.brandPurple)
+            .foregroundStyle(DesignTokens.Colors.brandGold)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
             .background(
@@ -266,8 +283,18 @@ private struct SemesterColumn: View {
 
     private func isHighlighted(courseID: String) -> Bool {
         guard let categoryID = highlightedCategoryID else { return false }
-        guard let program = store.effectiveActiveProgram else { return false }
-        guard let category = program.requirements.first(where: { $0.id == categoryID }) else { return false }
-        return store.courseIDsForRequirementHighlight(in: category).contains(courseID)
+        // Filter id is either the primary major's raw category id or the
+        // ProgressCalculator-prefixed "{programID}::{categoryID}" form used for
+        // second-major / minor categories. Search both spaces.
+        if let program = store.effectiveActiveProgram,
+           let category = program.requirements.first(where: { $0.id == categoryID }) {
+            return store.courseIDsForRequirementHighlight(in: category).contains(courseID)
+        }
+        for extra in store.selectedMinorPrograms() {
+            for category in extra.requirements where "\(extra.id)::\(category.id)" == categoryID {
+                return store.courseIDsForRequirementHighlight(in: category).contains(courseID)
+            }
+        }
+        return false
     }
 }

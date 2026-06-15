@@ -44,6 +44,35 @@ public indirect enum PrereqExpr: Codable, Hashable, Sendable {
 }
 
 public extension PrereqExpr {
+    var enforcedCourseOnly: PrereqExpr {
+        switch self {
+        case .empty:
+            return .empty
+        case .course:
+            return self
+        case .unknown:
+            return .empty
+        case .all(let children):
+            let enforced = children
+                .map(\.enforcedCourseOnly)
+                .filter { $0 != .empty }
+            switch enforced.count {
+            case 0: return .empty
+            case 1: return enforced[0]
+            default: return .all(enforced)
+            }
+        case .any(let children):
+            let enforced = children
+                .map(\.enforcedCourseOnly)
+                .filter { $0 != .empty }
+            switch enforced.count {
+            case 0: return .empty
+            case 1: return enforced[0]
+            default: return .any(enforced)
+            }
+        }
+    }
+
     func displayString(coursesByID: [String: Course]) -> String {
         switch self {
         case .empty:

@@ -34,12 +34,12 @@ final class PlanStore: ObservableObject {
 
     var requiresConcentrationSelection: Bool {
         guard let activeProgram else { return false }
-        return !activeProgram.concentrations.isEmpty
+        return activeProgram.concentrationSelectionRequired && !activeProgram.concentrations.isEmpty
     }
 
     var majorSelectionComplete: Bool {
         guard let activeProgram else { return false }
-        guard !activeProgram.concentrations.isEmpty else { return true }
+        guard requiresConcentrationSelection else { return true }
         guard let concentrationID = plan.concentrationID else { return false }
         return activeProgram.concentrations.contains { $0.id == concentrationID }
     }
@@ -96,6 +96,9 @@ final class PlanStore: ObservableObject {
         let completed = completedCourseIDs
         let courses = catalog.coursesByID
 
+        if TransferCreditMapper.genEdCreditSatisfies(category: category, completedCourseIDs: completed) {
+            return []
+        }
         return category.courseOptions.compactMap { option in
             guard !option.contains(where: completed.contains) else { return nil }
             guard let firstID = option.first, let course = courses[firstID] else { return nil }
@@ -130,8 +133,10 @@ final class PlanStore: ObservableObject {
     }
 
     /// Replace a placeholder course in the active pathway with the chosen real
-    /// course ID. Mutates the active pathway in place and drops the placeholder
-    /// from the pathway's placeholders map.
+    /// course ID. The PlaceholderSpec stays in the pathway's `placeholders`
+    /// map (so it can be restored if the user removes the chosen course)
+    /// while `resolvedPlaceholders` tracks the mapping for synthetic
+    /// progress rows and reversal.
     func resolvePlaceholder(_ placeholderID: String, with chosenCourseID: String) {
         guard let pathwayIndex = activePathwayIndex else { return }
         var pathway = plan.pathways[pathwayIndex]
@@ -140,7 +145,7 @@ final class PlanStore: ObservableObject {
                 id == placeholderID ? chosenCourseID : id
             }
         }
-        pathway.placeholders.removeValue(forKey: placeholderID)
+        pathway.resolvedPlaceholders[placeholderID] = chosenCourseID
         plan.pathways[pathwayIndex] = pathway
         autosave()
     }
@@ -247,7 +252,16 @@ final class PlanStore: ObservableObject {
     /// tracking.
     func effectiveMinorProgram(for selection: MinorSelection) -> Program? {
         guard let catalog, let program = catalog.programsByID[selection.programID] else { return nil }
-        return try? program.effectiveProgram(concentrationID: selection.concentrationID)
+        guard var effective = try? program.effectiveProgram(concentrationID: selection.concentrationID) else { return nil }
+        // Strip Gen Ed categories from second-major / minor effective programs.
+        // The primary major already contributes Gen Ed; counting it again would
+        // double the credit footprint and force the scheduler to slot duplicates.
+        effective.requirements = effective.requirements.filter { !Self.isGenEdRequirement($0) }
+        return effective
+    }
+
+    private static func isGenEdRequirement(_ category: RequirementCategory) -> Bool {
+        category.id.contains("gened") || category.name.lowercased().contains("general education")
     }
 
     func addAPScore(examName: String, score: Int) {
@@ -333,9 +347,23 @@ final class PlanStore: ObservableObject {
 
     func removeCourse(_ courseID: String) {
         guard let pathwayIndex = activePathwayIndex else { return }
-        for index in plan.pathways[pathwayIndex].semesters.indices {
-            plan.pathways[pathwayIndex].semesters[index].courseIDs.removeAll { $0 == courseID }
+        var pathway = plan.pathways[pathwayIndex]
+        // If this course was previously resolved from a placeholder, swap
+        // the placeholder slot back into the same semester instead of
+        // leaving an empty hole.
+        if let placeholderID = pathway.resolvedPlaceholders.first(where: { $0.value == courseID })?.key {
+            for index in pathway.semesters.indices {
+                pathway.semesters[index].courseIDs = pathway.semesters[index].courseIDs.map { id in
+                    id == courseID ? placeholderID : id
+                }
+            }
+            pathway.resolvedPlaceholders.removeValue(forKey: placeholderID)
+        } else {
+            for index in pathway.semesters.indices {
+                pathway.semesters[index].courseIDs.removeAll { $0 == courseID }
+            }
         }
+        plan.pathways[pathwayIndex] = pathway
         autosave()
     }
 
@@ -472,6 +500,9 @@ final class PlanStore: ObservableObject {
         guard let activeProgram else { return }
         if activeProgram.concentrations.isEmpty {
             plan.concentrationID = nil
+            return
+        }
+        if !activeProgram.concentrationSelectionRequired, plan.concentrationID == nil {
             return
         }
         guard let concentrationID = plan.concentrationID,

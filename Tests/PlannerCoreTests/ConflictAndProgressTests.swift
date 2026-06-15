@@ -81,7 +81,7 @@ struct ConflictAndProgressTests {
             college: "College of Science and Mathematics",
             department: "Physics and Astronomy",
             catalogPage: nil,
-            totalCredits: 120,
+            totalCredits: 7,
             requirements: [
                 RequirementCategory(id: "core", name: "Physics Core", requiredCredits: 4, courseOptions: [["PHYS240"]])
             ],
@@ -168,6 +168,39 @@ struct ConflictAndProgressTests {
         )
         let scheduledCourses = scheduled.first?.semesters.flatMap(\.courseIDs) ?? []
         #expect(!scheduledCourses.contains("ENG221"), "ENG 221 must NOT be scheduled because GNED 123 already covers the Literature cluster via alias")
+    }
+
+    @Test("GNED alias AP credit satisfies matching Gen Ed progress category")
+    func gnedAliasSatisfiesProgressCategory() throws {
+        let transfer = TransferCredit(sourceDescription: "AP English Literature and Composition score 5", courseIDs: ["GNED123"], credits: 3)
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "ENG221", code: "ENG 221", title: "Literature Survey", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "any-bs",
+                title: "Some Major",
+                requirements: [
+                    RequirementCategory(
+                        id: "gened-c2l",
+                        name: "General Education — Literature [C2L]",
+                        requiredCredits: 3,
+                        courseOptions: [["ENG221"]]
+                    )
+                ]
+            )
+        )
+        let pathway = Pathway(id: "path-1", name: "Path 1", semesters: [])
+
+        let progress = try ProgressCalculator(catalog: catalog).progress(
+            programID: "any-bs",
+            pathway: pathway,
+            transferCredits: [transfer]
+        )
+
+        let literature = try #require(progress.categories.first { $0.id == "gened-c2l" })
+        #expect(literature.completedCredits == 3)
+        #expect(literature.fraction == 1)
     }
 
     @Test("global AP allocation spreads two complementary exams across distinct option groups instead of stacking both on the same one")
@@ -485,6 +518,23 @@ struct ConflictDetectorPrereqWiringTests {
         let warnings = ConflictDetector(catalog: Self.catalog).warnings(for: pathway, overrides: [])
 
         #expect(!warnings.contains { $0.kind == .missingPrerequisite && $0.courseID == "cs-240" })
+    }
+
+    @Test("unknown-only catalog prose does not emit missing prereq warning")
+    func unknownOnlyCatalogProseDoesNotEmitMissingPrereqWarning() throws {
+        var cis498 = Course(id: "cis-498", code: "CIS 498", title: "Special Topics", credits: 3, availability: nil, prerequisites: [])
+        cis498.rawPrerequisiteText = "Prerequisite: Permission of the instructor."
+        let catalog = Catalog.fixture(
+            courses: [cis498],
+            program: Program.fixture(id: "cis-bba", title: "Computer Information Systems, B.B.A.", requirements: [])
+        )
+        let pathway = Pathway(id: "p", name: "P", semesters: [
+            SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: ["cis-498"])
+        ])
+
+        let warnings = ConflictDetector(catalog: catalog).warnings(for: pathway, overrides: [])
+
+        #expect(!warnings.contains { $0.kind == .missingPrerequisite && $0.courseID == "cis-498" })
     }
 
     private static let catalog: Catalog = {

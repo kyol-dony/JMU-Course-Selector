@@ -34,6 +34,94 @@ struct PlanStoreConcentrationTests {
         #expect(store.majorSelectionComplete)
     }
 
+    @Test("selecting a major with optional concentrations allows base major")
+    func optionalConcentrationsAllowBaseMajorSelection() throws {
+        let statistics = Program(
+            id: "statistics-bs",
+            title: "Statistics, B.S.",
+            degreeType: "B.S.",
+            kind: .major,
+            college: "College of Science and Mathematics",
+            department: "Mathematics and Statistics",
+            catalogPage: nil,
+            totalCredits: 120,
+            requirements: [
+                RequirementCategory(id: "core", name: "Core", requiredCredits: 3, courseOptions: [["MATH329"]])
+            ],
+            concentrations: [
+                Concentration(id: "data-science", name: "Data Science", requirements: [
+                    RequirementCategory(id: "data", name: "Data Science", requiredCredits: 3, courseOptions: [["DATA200"]])
+                ])
+            ],
+            concentrationSelectionRequired: false,
+            verificationStatus: .partial,
+            requirementDataComplete: true,
+            sourceNote: "Fixture"
+        )
+        let store = PlanStore()
+        store.catalog = Catalog.fixture(courses: [], program: statistics)
+
+        store.selectProgram(statistics)
+
+        #expect(!store.requiresConcentrationSelection)
+        #expect(store.majorSelectionComplete)
+        #expect(store.plan.concentrationID == nil)
+        let effective = try #require(store.effectiveActiveProgram)
+        #expect(effective.requirements.map(\.id) == ["core"])
+    }
+
+    @Test("remaining courses treat GNED AP aliases as completed Gen Ed categories")
+    func remainingCoursesTreatGNEDAliasesAsCompleted() {
+        let literature = RequirementCategory(
+            id: "gened-c2l",
+            name: "General Education — Literature [C2L]",
+            requiredCredits: 3,
+            courseOptions: [["ENG221"]]
+        )
+        let program = Program.fixture(
+            id: "any-bs",
+            title: "Some Major",
+            requirements: [literature]
+        )
+        let store = PlanStore()
+        store.catalog = Catalog.fixture(
+            courses: [
+                Course(id: "ENG221", code: "ENG 221", title: "Literature Survey", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: program
+        )
+        store.selectProgram(program)
+        store.plan.transferCredits = [
+            TransferCredit(sourceDescription: "AP English Literature and Composition score 5", courseIDs: ["GNED123"], credits: 3)
+        ]
+
+        #expect(store.remainingCourses(in: literature).isEmpty)
+    }
+
+    @Test("progress contributions show AP Lit GNED credit as transfer row")
+    func progressContributionsShowAPLitGNEDCreditAsTransferRow() {
+        let literature = RequirementCategory(
+            id: "gened-c2l",
+            name: "General Education — Literature [C2L]",
+            requiredCredits: 3,
+            courseOptions: [["ENG221"]]
+        )
+        let rows = ProgressContributionBuilder.contributions(
+            for: literature,
+            transferCredits: [
+                TransferCredit(sourceDescription: "AP English Literature and Composition score 5", courseIDs: ["GNED123"], credits: 3)
+            ],
+            scheduled: [:],
+            coursesByID: [
+                "ENG221": Course(id: "ENG221", code: "ENG 221", title: "Literature Survey", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ]
+        )
+
+        #expect(rows == [
+            CourseContribution(code: "AP English Literature & Composition", source: "Transfer", isTransfer: true)
+        ])
+    }
+
     @Test("changing major clears invalid concentration")
     func changingMajorClearsInvalidConcentration() {
         let physics = Program.fixture(

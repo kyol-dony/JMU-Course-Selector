@@ -35,6 +35,7 @@ public struct HTMLProgramRequirements: Sendable {
     public var title: String?
     public var requirements: [RequirementCategory]
     public var concentrations: [Concentration]
+    public var concentrationSelectionRequired: Bool
     public var courses: [Course]
     public var totalCredits: Int?
 
@@ -42,12 +43,14 @@ public struct HTMLProgramRequirements: Sendable {
         title: String?,
         requirements: [RequirementCategory],
         concentrations: [Concentration] = [],
+        concentrationSelectionRequired: Bool = false,
         courses: [Course],
         totalCredits: Int?
     ) {
         self.title = title
         self.requirements = requirements
         self.concentrations = concentrations
+        self.concentrationSelectionRequired = concentrationSelectionRequired
         self.courses = courses
         self.totalCredits = totalCredits
     }
@@ -125,12 +128,16 @@ public struct JMUHTMLCatalogParser: Sendable {
         var usedConcentrationIDs: Set<String> = []
         let concentrations = split.concentrationRuns.compactMap { run -> Concentration? in
             var usedRequirementIDs: Set<String> = []
-            var requirements: [RequirementCategory] = []
+            var parsedRequirements: [(block: RequirementBlock, category: RequirementCategory)] = []
             for block in run.blocks {
                 if let parsed = category(from: block, catoid: catoid, usedCategoryIDs: &usedRequirementIDs, coursesByID: &coursesByID) {
-                    requirements.append(parsed)
+                    parsedRequirements.append((block, parsed))
                 }
             }
+            let requirements = adjustedConcentrationRequirements(
+                from: parsedRequirements,
+                totalCredits: concentrationTotalCredits(in: run.blocks)
+            )
             guard !requirements.isEmpty else { return nil }
             let cleanName = JMUHTMLCatalogParser.cleanConcentrationName(run.name)
             let displayName = cleanName.isEmpty ? run.name : cleanName
@@ -146,9 +153,50 @@ public struct JMUHTMLCatalogParser: Sendable {
             title: title,
             requirements: categories,
             concentrations: concentrations,
+            concentrationSelectionRequired: split.concentrationSelectionRequired,
             courses: coursesByID.values.sorted { $0.code < $1.code },
             totalCredits: parseProgramTotal(from: html)
         )
+    }
+
+    private func adjustedConcentrationRequirements(
+        from parsed: [(block: RequirementBlock, category: RequirementCategory)],
+        totalCredits: Int?
+    ) -> [RequirementCategory] {
+        var requirements = parsed.map(\.category)
+        guard let totalCredits, totalCredits > 0 else { return requirements }
+        guard requirements.reduce(0, { $0 + $1.requiredCredits }) > totalCredits else { return requirements }
+
+        let adjustable = parsed.indices.filter { index in
+            let lowerName = parsed[index].category.name.lowercased()
+            return lowerName.contains("elective") && parseCredits(from: parsed[index].block.heading) == nil
+        }
+        guard !adjustable.isEmpty else { return requirements }
+
+        let fixedCredits = parsed.indices.reduce(0) { total, index in
+            adjustable.contains(index) ? total : total + requirements[index].requiredCredits
+        }
+        let remainingCredits = totalCredits - fixedCredits
+        guard remainingCredits > 0 else { return requirements }
+
+        if adjustable.count == 1, let index = adjustable.first {
+            requirements[index].requiredCredits = min(requirements[index].requiredCredits, remainingCredits)
+            return requirements
+        }
+
+        let perAdjustable = max(remainingCredits / adjustable.count, 1)
+        for index in adjustable {
+            requirements[index].requiredCredits = min(requirements[index].requiredCredits, perAdjustable)
+        }
+        return requirements
+    }
+
+    private func concentrationTotalCredits(in blocks: [RequirementBlock]) -> Int? {
+        blocks.compactMap { block -> Int? in
+            let lower = block.heading.lowercased()
+            guard lower.contains("concentration"), lower.contains("total") else { return nil }
+            return parseCredits(from: block.heading)
+        }.last
     }
 
     public func parseCourseDetail(_ html: String) -> HTMLCourseDetail {
@@ -399,7 +447,7 @@ public struct JMUHTMLCatalogParser: Sendable {
         }
     }
 
-    private func splitConcentrationBlocks(_ blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])]) {
+    private func splitConcentrationBlocks(_ blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])], concentrationSelectionRequired: Bool) {
         // Two layouts in the catalog:
         //
         // 1. Explicit umbrella section ("Concentrations" / "Required Concentration")
@@ -411,12 +459,19 @@ public struct JMUHTMLCatalogParser: Sendable {
         // sibling concrete-concentration headings and treating the first such
         // heading as the partition point.
         if let umbrellaIndex = blocks.firstIndex(where: isConcentrationSectionHeading) {
-            return partitionAfter(umbrellaIndex: umbrellaIndex, blocks: blocks)
+            let partition = partitionAfter(umbrellaIndex: umbrellaIndex, blocks: blocks)
+            return (
+                shared: partition.shared,
+                concentrationRuns: partition.concentrationRuns,
+                concentrationSelectionRequired: isRequiredConcentrationSectionHeading(blocks[umbrellaIndex])
+                    || !allowsBaseMajorWithoutConcentration(in: partition.shared)
+            )
         }
         guard let firstConcentration = blocks.firstIndex(where: { isConcreteConcentrationHeading($0.heading) }) else {
-            return (blocks, [])
+            return (blocks, [], false)
         }
-        return partitionInline(firstConcentration: firstConcentration, blocks: blocks)
+        let partition = partitionInline(firstConcentration: firstConcentration, blocks: blocks)
+        return (partition.shared, partition.concentrationRuns, !allowsBaseMajorWithoutConcentration(in: partition.shared))
     }
 
     private func partitionAfter(umbrellaIndex: Int, blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])]) {
@@ -502,6 +557,22 @@ public struct JMUHTMLCatalogParser: Sendable {
             || lower == "areas of emphasis"
             || lower == "required concentration"
             || lower == "required concentrations"
+    }
+
+    private func isRequiredConcentrationSectionHeading(_ block: RequirementBlock) -> Bool {
+        let lower = block.heading.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return lower == "required concentration" || lower == "required concentrations"
+    }
+
+    private func allowsBaseMajorWithoutConcentration(in blocks: [RequirementBlock]) -> Bool {
+        let text = blocks
+            .map { "\($0.heading) \($0.body)" }
+            .joined(separator: " ")
+            .lowercased()
+        return text.contains("standard") && text.contains("major") && text.contains("concentration")
+            || text.contains("do not elect") && text.contains("concentration")
+            || text.contains("may choose either") && text.contains("concentration")
+            || text.contains("may be fulfilled by completing a concentration")
     }
 
     private func isConcreteConcentrationHeading(_ heading: String) -> Bool {
@@ -744,7 +815,38 @@ public struct JMUHTMLCatalogParser: Sendable {
             return 1
         }
 
-        let wordValues = ["one": 1, "two": 2, "three": 3, "four": 4, "five": 5]
+        let wordValues = ["one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6]
+
+        // "Two courses at the 400-level", "three courses at the 300/400-level",
+        // "two 400-level courses", etc. — the body lists every eligible course
+        // at that level, but only N of them are required. Without this we
+        // treat the whole pool as mandatory and the category balloons to 50+
+        // credits.
+        for (word, value) in wordValues {
+            let levelPatterns = [
+                "\(word) courses at the",
+                "\(word) additional courses at the",
+                "\(word) \\d{3}-level",
+                "\(word) \\d{3}/\\d{3}-level",
+                "\(word) courses at \\d{3}-level"
+            ]
+            for pattern in levelPatterns {
+                if text.range(of: pattern, options: .regularExpression) != nil {
+                    return value
+                }
+            }
+        }
+        if let match = text.firstMatch(for: #"(?i)(\d+)\s+(?:additional\s+)?courses?\s+at\s+the\s+\d{3}"#),
+           match.count > 1,
+           let n = Int(match[1]) {
+            return n
+        }
+        if let match = text.firstMatch(for: #"(?i)(\d+)\s+\d{3}-level\s+courses?"#),
+           match.count > 1,
+           let n = Int(match[1]) {
+            return n
+        }
+
         for (word, value) in wordValues where text.contains("choose \(word)") || text.contains("select \(word)") {
             return value
         }
@@ -769,7 +871,14 @@ public struct JMUHTMLCatalogParser: Sendable {
         }
 
         if let selectionCount, selectionCount > 1 {
-            return unique(courseIDs).prefix(selectionCount).map { [$0] }
+            // Pick N of the listed alternates: emit N parallel options, each
+            // exposing the full alternate pool, so the schedule produces N
+            // placeholder slots the student fills from the same menu.
+            // The previous behavior — `prefix(selectionCount).map { [$0] }` —
+            // hard-coded the first N catalog entries as required, which broke
+            // for "two courses at the 400-level" style requirements.
+            let alternates = unique(courseIDs)
+            return Array(repeating: alternates, count: selectionCount)
         }
 
         var options: [[String]] = []

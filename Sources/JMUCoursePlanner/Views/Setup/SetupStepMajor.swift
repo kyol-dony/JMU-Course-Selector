@@ -82,15 +82,17 @@ struct SetupStepMajor: View {
                                 text: program.requirementDataComplete ? "Verified" : "Partial",
                                 tone: program.requirementDataComplete ? .success : .warning
                             )
-                            if !program.concentrations.isEmpty {
+                            if program.concentrationSelectionRequired && !program.concentrations.isEmpty {
                                 StatusPill(text: "Concentration required", tone: .warning)
+                            } else if !program.concentrations.isEmpty {
+                                StatusPill(text: "Optional concentration", tone: .info)
                             }
                         }
                     }
                     Spacer(minLength: 0)
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(DesignTokens.Colors.brandPurple)
+                            .foregroundStyle(DesignTokens.Colors.brandGold)
                     }
                 }
                 .padding(.vertical, 6)
@@ -111,14 +113,18 @@ struct SetupStepMajor: View {
 
     private func concentrationPicker(for program: Program) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Concentration")
+            Text(program.concentrationSelectionRequired ? "Concentration" : "Concentration (optional)")
                 .font(DesignTokens.Typography.label)
                 .foregroundStyle(DesignTokens.Colors.textSecondary)
             Picker("Concentration", selection: Binding(
                 get: { store.plan.concentrationID ?? "" },
                 set: { store.selectConcentration(id: $0.isEmpty ? nil : $0) }
             )) {
-                Text("Select concentration").tag("")
+                if program.concentrationSelectionRequired {
+                    Text("Select concentration").tag("")
+                } else {
+                    Text("Standard major / No concentration").tag("")
+                }
                 ForEach(program.concentrations) { concentration in
                     Text(concentration.name).tag(concentration.id)
                 }

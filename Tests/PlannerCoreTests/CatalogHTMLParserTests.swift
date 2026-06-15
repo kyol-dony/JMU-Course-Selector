@@ -138,7 +138,12 @@ struct CatalogHTMLParserTests {
         let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
 
         let electives = try #require(parsed.requirements.first)
-        #expect(electives.courseOptions == [["CS343"], ["CS374"], ["CS444"]])
+        // "Choose three of the following" now emits three parallel options,
+        // each exposing the full alternate pool, so the schedule produces
+        // three picker placeholders rather than hard-coding the first three
+        // entries as required.
+        let fullPool = ["CS343", "CS374", "CS444", "CS450"]
+        #expect(electives.courseOptions == [fullPool, fullPool, fullPool])
         #expect(electives.note?.contains("choice requirement") == true)
     }
 
@@ -173,11 +178,57 @@ struct CatalogHTMLParserTests {
 
         #expect(parsed.requirements.map(\.name) == ["Physics Core: 4 Credit Hours"])
         #expect(parsed.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["PHYS240"])
+        #expect(parsed.concentrationSelectionRequired)
         #expect(parsed.concentrations.map(\.name) == ["Applied Physics", "Fundamental Studies"])
         #expect(parsed.concentrations[0].requirements.map(\.name) == ["Applied Physics Required Courses: 3 Credit Hours"])
         #expect(parsed.concentrations[0].requirements.flatMap(\.courseOptions).flatMap { $0 } == ["PHYS360"])
         #expect(parsed.concentrations[1].requirements.flatMap(\.courseOptions).flatMap { $0 } == ["PHYS390"])
         #expect(parsed.courses.map(\.id).sorted() == ["PHYS240", "PHYS360", "PHYS390"])
+    }
+
+    @Test("optional concentration sections keep base major selectable")
+    func parsesOptionalConcentrationSections() throws {
+        let html = """
+        <h1 id="acalog-content">Statistics, B.S.</h1>
+        <div class="acalog-core"><h2><a name="MajorRequirements"></a>Major Requirements</h2><hr>
+          <p>Students may choose either a standard statistics major or a statistics major with a data science concentration.</p>
+        </div>
+        <div class="acalog-core"><h3><a name="CoreCourses"></a>Core Courses: 3 Credit Hours</h3><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '1',this, 'x'); return false;">MATH 329. Introduction to Probability and Theoretical Statistics</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h3><a name="AdditionalRequirements"></a>Additional Requirements: 3 Credit Hours</h3><hr>
+          <p>Students who do not elect to complete a concentration in data science must take the following credit hours.</p>
+        </div>
+        <div class="acalog-core"><h4><a name="AdditionalRequiredCourses"></a>Additional Required Courses: 3 Credit Hours</h4><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '2',this, 'x'); return false;">MATH 428. Statistical Consulting</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h3><a name="DataScienceConcentration"></a>Data Science Concentration: 3 Credit Hours</h3><hr>
+          <p>Students who declare the concentration in data science must take the following credit hours in addition to the core courses.</p>
+        </div>
+        <div class="acalog-core"><h4><a name="DataScienceRequiredCourses"></a>Data Science Required Courses: 3 Credit Hours</h4><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '3',this, 'x'); return false;">DATA 200. Introduction to Data</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="RecommendedScheduleForMajors"></a>Recommended Schedule for Majors</h2><hr></div>
+        """
+
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=27125&returnto=3541"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+
+        #expect(!parsed.concentrationSelectionRequired)
+        #expect(parsed.requirements.map(\.name) == [
+            "Core Courses: 3 Credit Hours",
+            "Additional Requirements: 3 Credit Hours",
+            "Additional Required Courses: 3 Credit Hours"
+        ])
+        #expect(parsed.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["MATH329", "MATH428"])
+        #expect(parsed.concentrations.map(\.name) == ["Data Science"])
+        #expect(parsed.concentrations.first?.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["DATA200"])
     }
 
     @Test("required concentration sections create selectable concentration tracks")
@@ -216,6 +267,7 @@ struct CatalogHTMLParserTests {
 
         #expect(parsed.requirements.map(\.name) == ["Major Requirements"])
         #expect(parsed.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["CIS221"])
+        #expect(parsed.concentrationSelectionRequired)
         #expect(parsed.concentrations.map(\.name) == ["Information and Cybersecurity Management"])
         let cybersecurity = try #require(parsed.concentrations.first)
         #expect(cybersecurity.requirements.map(\.name) == [
@@ -223,6 +275,41 @@ struct CatalogHTMLParserTests {
             "Information and Cybersecurity Management Concentration Electives"
         ])
         #expect(cybersecurity.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["CIS301", "CIS424", "CIS425", "CIS420"])
+    }
+
+    @Test("concentration total caps inferred elective credits")
+    func concentrationTotalCapsInferredElectiveCredits() throws {
+        let html = """
+        <h1 id="acalog-content">Computer Information Systems, B.B.A.</h1>
+        <div class="acalog-core"><h2><a name="DegreeAndMajorRequirements"></a>Degree and Major Requirements</h2><hr></div>
+        <div class="acalog-core"><h2><a name="RequiredConcentration"></a>Required Concentration</h2><hr></div>
+        <div class="acalog-core"><h3><a name="InformationSystemsConcentration"></a>Information Systems Concentration</h3><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '1',this, 'x'); return false;">CIS 330. Database Design and Application</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '2',this, 'x'); return false;">CIS 454. Systems Analysis and Design</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '3',this, 'x'); return false;">CIS 484. Information Systems Development and Implementation</a> <em><strong>Credits:</strong></em> <em>1.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h4><a name="InformationSystemsConcentrationElectives"></a>Information Systems Concentration Electives</h4><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '4',this, 'x'); return false;">CIS 354. Advanced Visual Basic Programming</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '5',this, 'x'); return false;">CIS 366. Web Design and Development</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '6',this, 'x'); return false;">CIS 420. Advanced Topics in Computing Networks</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '7',this, 'x'); return false;">CIS 424. Computer Security Management</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '8',this, 'x'); return false;">CIS 490. Special Studies</a> <em><strong>Credits:</strong></em> <em>1.00 - 3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h4><a name="InformationSystemsConcentrationTotal13CreditHours"></a>Information Systems Concentration Total: 13 Credit Hours</h4><hr></div>
+        <div class="acalog-core"><h2><a name="RecommendedScheduleForMajors"></a>Recommended Schedule for Majors</h2><hr></div>
+        """
+
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=27090&returnto=3541"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+
+        let concentration = try #require(parsed.concentrations.first)
+        let electives = try #require(concentration.requirements.first { $0.name.contains("Electives") })
+        #expect(electives.requiredCredits == 6)
+        #expect(electives.courseOptions.count == 5)
     }
 
     @Test("minor page without a Requirements heading still produces requirements")

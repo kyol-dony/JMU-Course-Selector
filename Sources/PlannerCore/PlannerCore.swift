@@ -221,9 +221,27 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
     public var totalCredits: Int?
     public var requirements: [RequirementCategory]
     public var concentrations: [Concentration]
+    public var concentrationSelectionRequired: Bool
     public var verificationStatus: VerificationStatus
     public var requirementDataComplete: Bool
     public var sourceNote: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case degreeType
+        case kind
+        case college
+        case department
+        case catalogPage
+        case totalCredits
+        case requirements
+        case concentrations
+        case concentrationSelectionRequired
+        case verificationStatus
+        case requirementDataComplete
+        case sourceNote
+    }
 
     public init(
         id: String,
@@ -236,6 +254,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         totalCredits: Int?,
         requirements: [RequirementCategory],
         concentrations: [Concentration] = [],
+        concentrationSelectionRequired: Bool? = nil,
         verificationStatus: VerificationStatus,
         requirementDataComplete: Bool,
         sourceNote: String
@@ -250,9 +269,46 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         self.totalCredits = totalCredits
         self.requirements = requirements
         self.concentrations = concentrations
+        self.concentrationSelectionRequired = concentrationSelectionRequired ?? !concentrations.isEmpty
         self.verificationStatus = verificationStatus
         self.requirementDataComplete = requirementDataComplete
         self.sourceNote = sourceNote
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        degreeType = try container.decodeIfPresent(String.self, forKey: .degreeType)
+        kind = try container.decode(ProgramKind.self, forKey: .kind)
+        college = try container.decode(String.self, forKey: .college)
+        department = try container.decode(String.self, forKey: .department)
+        catalogPage = try container.decodeIfPresent(Int.self, forKey: .catalogPage)
+        totalCredits = try container.decodeIfPresent(Int.self, forKey: .totalCredits)
+        requirements = try container.decode([RequirementCategory].self, forKey: .requirements)
+        concentrations = try container.decodeIfPresent([Concentration].self, forKey: .concentrations) ?? []
+        concentrationSelectionRequired = try container.decodeIfPresent(Bool.self, forKey: .concentrationSelectionRequired) ?? !concentrations.isEmpty
+        verificationStatus = try container.decode(VerificationStatus.self, forKey: .verificationStatus)
+        requirementDataComplete = try container.decode(Bool.self, forKey: .requirementDataComplete)
+        sourceNote = try container.decode(String.self, forKey: .sourceNote)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(degreeType, forKey: .degreeType)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(college, forKey: .college)
+        try container.encode(department, forKey: .department)
+        try container.encodeIfPresent(catalogPage, forKey: .catalogPage)
+        try container.encodeIfPresent(totalCredits, forKey: .totalCredits)
+        try container.encode(requirements, forKey: .requirements)
+        try container.encode(concentrations, forKey: .concentrations)
+        try container.encode(concentrationSelectionRequired, forKey: .concentrationSelectionRequired)
+        try container.encode(verificationStatus, forKey: .verificationStatus)
+        try container.encode(requirementDataComplete, forKey: .requirementDataComplete)
+        try container.encode(sourceNote, forKey: .sourceNote)
     }
 }
 
@@ -368,19 +424,31 @@ public struct Pathway: Codable, Hashable, Identifiable, Sendable {
     /// the spec the UI uses to render the picker menu. Empty for pathways
     /// without any unfilled multi-alternate option slots.
     public var placeholders: [String: PlaceholderSpec]
+    /// Map from a resolved placeholder ID to the real course ID the student
+    /// picked. Lets the UI surface contributing courses for synthetic
+    /// categories (Open Electives) that have no `RequirementCategory`
+    /// backing them in the catalog.
+    public var resolvedPlaceholders: [String: String]
 
-    public init(id: String, name: String, semesters: [SemesterPlan], placeholders: [String: PlaceholderSpec] = [:]) {
+    public init(
+        id: String,
+        name: String,
+        semesters: [SemesterPlan],
+        placeholders: [String: PlaceholderSpec] = [:],
+        resolvedPlaceholders: [String: String] = [:]
+    ) {
         self.id = id
         self.name = name
         self.semesters = semesters
         self.placeholders = placeholders
+        self.resolvedPlaceholders = resolvedPlaceholders
     }
 
     public var projectedGraduation: SemesterIdentity? {
         semesters.last?.id
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, semesters, placeholders }
+    private enum CodingKeys: String, CodingKey { case id, name, semesters, placeholders, resolvedPlaceholders }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -388,6 +456,7 @@ public struct Pathway: Codable, Hashable, Identifiable, Sendable {
         self.name = try c.decode(String.self, forKey: .name)
         self.semesters = try c.decode([SemesterPlan].self, forKey: .semesters)
         self.placeholders = try c.decodeIfPresent([String: PlaceholderSpec].self, forKey: .placeholders) ?? [:]
+        self.resolvedPlaceholders = try c.decodeIfPresent([String: String].self, forKey: .resolvedPlaceholders) ?? [:]
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -396,6 +465,7 @@ public struct Pathway: Codable, Hashable, Identifiable, Sendable {
         try c.encode(name, forKey: .name)
         try c.encode(semesters, forKey: .semesters)
         try c.encode(placeholders, forKey: .placeholders)
+        try c.encode(resolvedPlaceholders, forKey: .resolvedPlaceholders)
     }
 }
 
@@ -615,6 +685,11 @@ public struct TransferCreditMapper: Sendable {
         genEdCreditClusterTagTable[courseID]
     }
 
+    public static func genEdCreditSatisfies(category: RequirementCategory, completedCourseIDs: Set<String>) -> Bool {
+        let completedClusterTags = Set(completedCourseIDs.compactMap { genEdCreditClusterTag(for: $0) })
+        return completedClusterTags.contains { category.name.contains($0) }
+    }
+
     private static let genEdCreditClusterTagTable: [String: String] = [
         // Cluster Two
         "GNED123": "[C2L]",   // Literature
@@ -715,6 +790,11 @@ public struct ScheduleGenerator: Sendable {
         var variantOrder: Int
     }
 
+    private enum GenEdTimingWindow: Sendable {
+        case firstYear
+        case sophomoreYear
+    }
+
     public func generatePathways(
         for programID: String,
         concentrationID: String? = nil,
@@ -726,29 +806,64 @@ public struct ScheduleGenerator: Sendable {
         let program = try programForScheduling(programID, concentrationID: concentrationID)
         let completed = Set(transferCredits.flatMap(\.courseIDs))
         var placeholders: [String: PlaceholderSpec] = [:]
-        var required = requiredCourseIDs(for: program, completed: completed, placeholders: &placeholders)
-        var seen = Set(required)
+        // Build one course list per program so the merge step below can
+        // interleave them. Appending all extras after the primary made the
+        // scheduler greedy-pack primary courses in early semesters and shove
+        // second-major / minor courses into the final terms. The merge step
+        // gives every program a proportional share of each semester instead.
+        var perProgramLists: [[String]] = []
+        var primaryList = requiredCourseIDs(for: program, completed: completed, placeholders: &placeholders)
+        // JMU degrees require 120 CRH total. If the primary major's declared
+        // requirements fall short, top up with Open Elective placeholders so
+        // the schedule reaches 120 on the major alone (before AP/transfer
+        // credits whittle it down). Secondary majors / minors are NOT topped
+        // up — those only contribute their own program-specific requirements.
+        primaryList.append(contentsOf: openElectivePlaceholders(for: program, placeholders: &placeholders))
+        perProgramLists.append(primaryList)
         for extra in additionalPrograms {
-            for id in requiredCourseIDs(for: extra, completed: completed, placeholders: &placeholders) {
-                if seen.insert(id).inserted {
-                    required.append(id)
-                }
-            }
+            perProgramLists.append(requiredCourseIDs(for: extra, completed: completed, placeholders: &placeholders))
         }
+        let required = Self.interleaveByProportion(perProgramLists)
         guard !required.isEmpty else {
             return (1...3).map { index in
                 Pathway(id: "path-\(index)", name: pathwayName(index), semesters: [])
             }
         }
 
+        let genEdCourseIDs: Set<String> = Set(
+            program.requirements
+                .filter { Self.isGenEdCategory(id: $0.id, name: $0.name) }
+                .flatMap { $0.courseOptions.flatMap { $0 } }
+        )
+        func isGenEd(_ courseID: String) -> Bool {
+            if PathwayPlaceholder.isPlaceholder(courseID) {
+                guard let spec = placeholders[courseID] else { return false }
+                return Self.isGenEdCategory(id: spec.categoryID, name: spec.categoryName)
+            }
+            return genEdCourseIDs.contains(courseID)
+        }
+
+        // Stable partition: non-Gen-Ed first for Major-First, Gen-Ed first for
+        // Gen-Ed-First. Preserves the catalog order inside each bucket so the
+        // downstream scheduler's prereq-aware placement still has a coherent
+        // starting list. The scheduler itself enforces workload caps, prereqs,
+        // coreqs, and semester availability, so these orderings only bias which
+        // courses get earliest legal slots.
+        let majorFirst = required.enumerated().sorted { lhs, rhs in
+            let lhsGen = isGenEd(lhs.element)
+            let rhsGen = isGenEd(rhs.element)
+            if lhsGen != rhsGen { return !lhsGen }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
+        let genEdFirst = required.enumerated().sorted { lhs, rhs in
+            let lhsGen = isGenEd(lhs.element)
+            let rhsGen = isGenEd(rhs.element)
+            if lhsGen != rhsGen { return lhsGen }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
+
         var pathways: [Pathway] = []
-        let variants = [
-            required,
-            required.sorted { lhs, rhs in
-                (credits(for: lhs, placeholders: placeholders), lhs) > (credits(for: rhs, placeholders: placeholders), rhs)
-            },
-            required.sorted()
-        ]
+        let variants = [required, majorFirst, genEdFirst]
 
         for (index, variant) in variants.enumerated() {
             let semesters = try buildSemesters(
@@ -819,12 +934,50 @@ public struct ScheduleGenerator: Sendable {
         var seen: Set<String> = []
         var result: [String] = []
         for category in program.requirements {
+            let lowerName = category.name.lowercased()
+            // Categories whose heading carries "required" are mandatory in
+            // full — every option must reach the schedule. Bypass the Gen Ed
+            // cluster shortcut and the selective-elective placeholder path
+            // so nothing trims the option list before iteration.
+            let categoryIsRequired = lowerName.contains("required")
+
             let categorySatisfiedByCluster = completedClusterTags.contains(where: category.name.contains)
+            if !categoryIsRequired && categorySatisfiedByCluster { continue }
+
             let optionCount = max(category.courseOptions.count, 1)
-            let perOptionCredits = max(category.requiredCredits / optionCount, 1)
+            let fallbackOptionCredits = max(category.requiredCredits / optionCount, 1)
+            if !categoryIsRequired,
+               appendSelectableElectivePlaceholders(
+                for: category,
+                completed: completed,
+                seen: &seen,
+                result: &result,
+                placeholders: &placeholders,
+                fallbackOptionCredits: fallbackOptionCredits
+            ) {
+                continue
+            }
+
+            var plannedCredits = 0
+            // Only honor `requiredCredits` as a hard cap on iteration when the
+            // category's name signals selective semantics ("Choose N",
+            // "Elective"). Required blocks ignore the cap so every option
+            // lands in the schedule.
+            let categoryIsSelective = !categoryIsRequired && (
+                lowerName.contains("choose")
+                || lowerName.contains("elective")
+                || lowerName.contains("select")
+            )
+            let hasCreditLimit = categoryIsSelective && category.requiredCredits > 0
             for (idx, option) in category.courseOptions.enumerated() {
-                if categorySatisfiedByCluster { continue }
-                if option.contains(where: completed.contains) { continue }
+                if hasCreditLimit && plannedCredits >= category.requiredCredits { break }
+
+                let optionCredits = credits(for: option, fallback: fallbackOptionCredits)
+                if option.contains(where: completed.contains) || option.contains(where: seen.contains) {
+                    plannedCredits += optionCredits
+                    continue
+                }
+
                 if option.count > 1 {
                     // Multi-alternate option → schedule a placeholder. UI lets
                     // the student pick the actual course in the Schedule tab.
@@ -835,7 +988,7 @@ public struct ScheduleGenerator: Sendable {
                             categoryID: category.id,
                             categoryName: category.name,
                             alternates: option,
-                            credits: perOptionCredits
+                            credits: optionCredits
                         )
                     }
                 } else {
@@ -844,9 +997,59 @@ public struct ScheduleGenerator: Sendable {
                         result.append(pick)
                     }
                 }
+                plannedCredits += optionCredits
             }
         }
         return result
+    }
+
+    private func appendSelectableElectivePlaceholders(
+        for category: RequirementCategory,
+        completed: Set<String>,
+        seen: inout Set<String>,
+        result: inout [String],
+        placeholders: inout [String: PlaceholderSpec],
+        fallbackOptionCredits: Int
+    ) -> Bool {
+        guard category.name.lowercased().contains("elective"),
+              category.requiredCredits > 0,
+              category.courseOptions.count > 1
+        else {
+            return false
+        }
+
+        let optionCredits = category.courseOptions.map { credits(for: $0, fallback: fallbackOptionCredits) }
+        let totalEligibleCredits = optionCredits.reduce(0, +)
+        guard totalEligibleCredits > category.requiredCredits else { return false }
+
+        let alternates = uniqueCourseIDs(category.courseOptions.flatMap { $0 })
+            .filter { !completed.contains($0) }
+        guard !alternates.isEmpty else { return true }
+
+        let slotCredits = max(optionCredits.max() ?? fallbackOptionCredits, 1)
+        let slotCount = max(Int(ceil(Double(category.requiredCredits) / Double(slotCredits))), 1)
+        for slot in 0..<slotCount {
+            let id = PathwayPlaceholder.id(categoryID: category.id, optionIndex: slot)
+            guard seen.insert(id).inserted else { continue }
+            result.append(id)
+            placeholders[id] = PlaceholderSpec(
+                categoryID: category.id,
+                categoryName: category.name,
+                alternates: alternates,
+                credits: min(slotCredits, max(category.requiredCredits - (slot * slotCredits), 1))
+            )
+        }
+        return true
+    }
+
+    private func uniqueCourseIDs(_ values: [String]) -> [String] {
+        var seen: Set<String> = []
+        return values.filter { seen.insert($0).inserted }
+    }
+
+    private func credits(for option: [String], fallback: Int) -> Int {
+        let knownCredits = option.compactMap { catalog.coursesByID[$0]?.credits }
+        return knownCredits.max() ?? fallback
     }
 
     private func buildSemesters(
@@ -894,7 +1097,7 @@ public struct ScheduleGenerator: Sendable {
                 return ScheduleCandidate(courseID: courseID, credits: courseCredits, variantOrder: order)
             }
             .sorted { lhs, rhs in
-                compare(lhs, rhs, targetLevel: target, placeholders: placeholders)
+                compare(lhs, rhs, targetLevel: target, semesterOffset: semesterOffset, placeholders: placeholders)
             }
 
             for candidate in ready {
@@ -908,11 +1111,14 @@ public struct ScheduleGenerator: Sendable {
                 emptySemesterCount += 1
                 guard emptySemesterCount <= 8 else {
                     if !strictPrereqs {
-                        if result.isEmpty {
-                            result.append(SemesterPlan(id: semester, courseIDs: remaining))
-                        } else {
-                            result[result.count - 1].courseIDs.append(contentsOf: remaining)
-                        }
+                        let fallbackStart = result.last?.id.next ?? semester
+                        result.append(contentsOf: buildBestEffortSemesters(
+                            courseIDs: remaining,
+                            workload: workload,
+                            starting: fallbackStart,
+                            placeholders: placeholders,
+                            baseSemesterOffset: result.count
+                        ))
                         return result
                     }
                     throw PlannerError.impossibleSchedule("Could not place the remaining courses while respecting prerequisites and semester availability.")
@@ -932,12 +1138,72 @@ public struct ScheduleGenerator: Sendable {
         return result
     }
 
+    private func buildBestEffortSemesters(
+        courseIDs: [String],
+        workload: WorkloadPreference,
+        starting start: SemesterIdentity,
+        placeholders: [String: PlaceholderSpec],
+        baseSemesterOffset: Int
+    ) -> [SemesterPlan] {
+        var remaining = courseIDs
+        var semester = start
+        var semesterOffset = baseSemesterOffset
+        var result: [SemesterPlan] = []
+        let maxCredits = workload.creditRange.upperBound
+
+        while !remaining.isEmpty {
+            var selected: [String] = []
+            var selectedCredits = 0
+            let target = targetLevel(for: semesterOffset)
+            let candidates = remaining.enumerated()
+                .map { order, courseID in
+                    ScheduleCandidate(
+                        courseID: courseID,
+                        credits: credits(for: courseID, placeholders: placeholders),
+                        variantOrder: order
+                    )
+                }
+                .sorted { lhs, rhs in
+                    compare(lhs, rhs, targetLevel: target, semesterOffset: semesterOffset, placeholders: placeholders)
+                }
+
+            for candidate in candidates {
+                if candidate.credits > maxCredits, selected.isEmpty {
+                    selected.append(candidate.courseID)
+                    break
+                }
+                guard selectedCredits + candidate.credits <= maxCredits else { continue }
+                selected.append(candidate.courseID)
+                selectedCredits += candidate.credits
+            }
+
+            if selected.isEmpty, let first = candidates.first {
+                selected.append(first.courseID)
+            }
+
+            result.append(SemesterPlan(id: semester, courseIDs: selected))
+            let selectedSet = Set(selected)
+            remaining.removeAll { selectedSet.contains($0) }
+            semester = semester.next
+            semesterOffset += 1
+        }
+
+        return result
+    }
+
     private func compare(
         _ lhs: ScheduleCandidate,
         _ rhs: ScheduleCandidate,
         targetLevel: Int,
+        semesterOffset: Int,
         placeholders: [String: PlaceholderSpec]
     ) -> Bool {
+        let lhsTimingPriority = genEdTimingPriority(for: lhs.courseID, semesterOffset: semesterOffset, placeholders: placeholders)
+        let rhsTimingPriority = genEdTimingPriority(for: rhs.courseID, semesterOffset: semesterOffset, placeholders: placeholders)
+        if lhsTimingPriority != rhsTimingPriority {
+            return lhsTimingPriority < rhsTimingPriority
+        }
+
         let lhsLevel = courseLevel(for: lhs.courseID, placeholders: placeholders)
         let rhsLevel = courseLevel(for: rhs.courseID, placeholders: placeholders)
         let lhsDistance = abs(lhsLevel - targetLevel)
@@ -954,8 +1220,56 @@ public struct ScheduleGenerator: Sendable {
         return lhs.courseID < rhs.courseID
     }
 
+    private func genEdTimingPriority(
+        for courseID: String,
+        semesterOffset: Int,
+        placeholders: [String: PlaceholderSpec]
+    ) -> Int {
+        guard let timingWindow = genEdTimingWindow(for: courseID, placeholders: placeholders) else {
+            return 1
+        }
+
+        switch timingWindow {
+        case .firstYear:
+            return 0
+        case .sophomoreYear:
+            return semesterOffset >= 2 ? 0 : 1
+        }
+    }
+
+    private func genEdTimingWindow(for courseID: String, placeholders: [String: PlaceholderSpec]) -> GenEdTimingWindow? {
+        guard let categoryName = placeholders[courseID]?.categoryName else { return nil }
+        let normalized = categoryName.lowercased()
+
+        if normalized.contains("[c1") ||
+            normalized.contains("madison foundations") ||
+            normalized.contains("critical thinking") ||
+            normalized.contains("human communication") ||
+            normalized.contains("writing") {
+            return .firstYear
+        }
+
+        if normalized.contains("[c3") ||
+            normalized.contains("[c5") ||
+            normalized.contains("sociocultural") ||
+            normalized.contains("wellness") ||
+            normalized.contains("quantitative reasoning") ||
+            normalized.contains("physical principles") ||
+            normalized.contains("natural systems") ||
+            normalized.contains("lab experience") ||
+            normalized.contains("natural world") {
+            return .sophomoreYear
+        }
+
+        return nil
+    }
+
     private func courseLevel(for courseID: String, placeholders: [String: PlaceholderSpec]) -> Int {
         if let spec = placeholders[courseID] {
+            // Open electives accept any course; defaulting to the mid level
+            // keeps them neutral in the level-ramp sorter without scanning
+            // the entire catalog every comparison.
+            if spec.categoryID == Self.openElectiveCategoryID { return 200 }
             return medianAlternateLevel(for: spec.alternates)
         }
         guard let course = catalog.coursesByID[courseID],
@@ -1002,8 +1316,108 @@ public struct ScheduleGenerator: Sendable {
         switch index {
         case 1: "Balanced Path"
         case 2: "Major-First Path"
-        default: "Flexible Path"
+        default: "Gen Ed-First Path"
         }
+    }
+
+    private static func isGenEdCategory(id: String, name: String) -> Bool {
+        id.contains("gened") || name.lowercased().contains("general education")
+    }
+
+    /// Synthetic category id for Open Elective placeholders that pad the
+    /// primary major's schedule out to the JMU degree credit minimum.
+    public static let openElectiveCategoryID = "open-elective"
+
+    /// Gap between the primary major's declared requirement credits and
+    /// JMU's 120 CRH degree minimum. Only fires for `.major` programs whose
+    /// declared credits clear a substance threshold — the catalog parser's
+    /// `totalCredits` often reports a section subtotal ("Major Requirements
+    /// Total: 49 CRH") rather than the full degree total, so we hardcode
+    /// 120 for real majors and ignore `program.totalCredits` here.
+    ///
+    /// Umbrella section headers (categories with no parseable course
+    /// options — e.g., "Additional Requirements: 22-24 CRH") are excluded
+    /// from the declared-credit tally because their sub-rows already
+    /// account for the same credits; counting both would zero the gap.
+    public static func openElectiveGap(for program: Program) -> Int {
+        guard program.kind == .major else { return 0 }
+        let declared = program.requirements
+            .filter { !$0.courseOptions.isEmpty }
+            .reduce(0) { $0 + $1.requiredCredits }
+        // Threshold gate keeps thin test fixtures (declared < 60) from
+        // generating dozens of placeholders. Real JMU majors easily clear
+        // 60 once Gen Ed clusters and concentration requirements are
+        // merged into the effective program.
+        guard declared >= 60 else { return 0 }
+        return max(0, 120 - declared)
+    }
+
+    /// Build Open Elective placeholders to cover the gap between the primary
+    /// major's declared requirement credits and JMU's degree credit minimum.
+    /// Each slot defaults to 3 credits with the last slot trimmed to whatever
+    /// remains. `alternates` lists every catalog course id so the schedule
+    /// board can offer a course picker on tap. Returns an empty array when
+    /// the program already declares ≥ target CRH of requirements.
+    private func openElectivePlaceholders(
+        for program: Program,
+        placeholders: inout [String: PlaceholderSpec]
+    ) -> [String] {
+        let gap = Self.openElectiveGap(for: program)
+        guard gap > 0 else { return [] }
+        let slotCredits = 3
+        let slotCount = Int(ceil(Double(gap) / Double(slotCredits)))
+        // Leave `alternates` empty. Storing every catalog course id per slot
+        // would balloon the persisted pathway JSON and make the sorter call
+        // `medianAlternateLevel` over 1000+ ids every comparison, freezing
+        // pathway generation. The UI special-cases open electives to render
+        // the full catalog picker on demand.
+        var ids: [String] = []
+        for slot in 0..<slotCount {
+            let id = PathwayPlaceholder.id(categoryID: Self.openElectiveCategoryID, optionIndex: slot)
+            let remaining = gap - slot * slotCredits
+            let credits = min(slotCredits, max(remaining, 1))
+            placeholders[id] = PlaceholderSpec(
+                categoryID: Self.openElectiveCategoryID,
+                categoryName: "Open Elective",
+                alternates: [],
+                credits: credits
+            )
+            ids.append(id)
+        }
+        return ids
+    }
+
+    /// Merge per-program ordered course lists into one list that spreads each
+    /// program's courses proportionally across the result. Each entry gets a
+    /// normalized position `(idx + 0.5) / list.count`; the merged list is
+    /// sorted by that fraction with a stable tiebreaker on the source program
+    /// index. A primary major with 40 courses and a minor with 10 will
+    /// interleave roughly 4-primary-then-1-minor instead of "all primary then
+    /// all minor". Duplicates (same course id reached by multiple programs)
+    /// are kept at their first occurrence.
+    static func interleaveByProportion(_ lists: [[String]]) -> [String] {
+        struct Slot { let id: String; let fraction: Double; let listIndex: Int }
+        var slots: [Slot] = []
+        for (listIndex, list) in lists.enumerated() {
+            let denominator = max(Double(list.count), 1)
+            for (idx, id) in list.enumerated() {
+                slots.append(Slot(
+                    id: id,
+                    fraction: (Double(idx) + 0.5) / denominator,
+                    listIndex: listIndex
+                ))
+            }
+        }
+        slots.sort { lhs, rhs in
+            if lhs.fraction != rhs.fraction { return lhs.fraction < rhs.fraction }
+            return lhs.listIndex < rhs.listIndex
+        }
+        var seen = Set<String>()
+        var result: [String] = []
+        for slot in slots where seen.insert(slot.id).inserted {
+            result.append(slot.id)
+        }
+        return result
     }
 }
 
@@ -1299,6 +1713,9 @@ public struct ProgressCalculator: Sendable {
 
         func progressRow(category: RequirementCategory, idPrefix: String = "", namePrefix: String = "") -> CategoryProgress {
             let completedCredits = category.courseOptions.reduce(0) { total, options in
+                if TransferCreditMapper.genEdCreditSatisfies(category: category, completedCourseIDs: completedCourseIDs) {
+                    return total + max(category.requiredCredits / max(category.courseOptions.count, 1), 1)
+                }
                 guard let completed = options.first(where: completedCourseIDs.contains),
                       let course = coursesByID[completed] else {
                     return total
@@ -1316,7 +1733,44 @@ public struct ProgressCalculator: Sendable {
             )
         }
 
-        var categories = effectiveProgram.requirements.map { progressRow(category: $0) }
+        // Drop section-header categories that have no parseable course options.
+        // JMU catalog pages often emit an umbrella row (e.g. "Additional
+        // Requirements: 22-24 CRH") whose credits are fully covered by the
+        // sub-rows that follow ("Additional Required Courses", "Restricted
+        // Electives"). The umbrella has zero `courseOptions` because the
+        // parser can't extract any course IDs from it, so surfacing it as a
+        // requirement just inflates the denominator and confuses the user.
+        var categories = effectiveProgram.requirements
+            .filter { !$0.courseOptions.isEmpty }
+            .map { progressRow(category: $0) }
+
+        // Mirror ScheduleGenerator's 120-CRH top-up: surface an "Open
+        // Electives" row whose required credits cover the gap between the
+        // primary major's declared requirements and the JMU degree minimum.
+        // Completion ticks up as the user resolves each Open Elective
+        // placeholder slot (the resolved credits stop appearing in
+        // pathway.placeholders).
+        let openElectiveGap = ScheduleGenerator.openElectiveGap(for: effectiveProgram)
+        if openElectiveGap > 0 {
+            let resolvedIDs = Set(pathway.resolvedPlaceholders.keys)
+            let unresolvedOpenElectiveCredits = pathway.placeholders
+                .filter { id, spec in
+                    spec.categoryID == ScheduleGenerator.openElectiveCategoryID
+                        && !resolvedIDs.contains(id)
+                }
+                .reduce(0) { $0 + $1.value.credits }
+            let completedOpenElectiveCredits = max(0, openElectiveGap - unresolvedOpenElectiveCredits)
+            categories.append(CategoryProgress(
+                id: ScheduleGenerator.openElectiveCategoryID,
+                name: "Open Electives",
+                completedCredits: min(completedOpenElectiveCredits, openElectiveGap),
+                requiredCredits: openElectiveGap,
+                // `.partial` makes ProgressRail paint the bar gold (the
+                // catalog-unverified tone). Open electives are synthetic so
+                // they're never catalog-verified.
+                verificationStatus: .partial
+            ))
+        }
 
         // Add a category row per minor / second-major requirement, prefixed
         // so the UI can show "Minor: Robotics: Required Courses" and never
@@ -1324,7 +1778,7 @@ public struct ProgressCalculator: Sendable {
         for extra in additionalPrograms {
             let label = extra.kind == .major ? "Second Major" : "Minor"
             let prefix = "\(label) (\(extra.title))"
-            for category in extra.requirements {
+            for category in extra.requirements where !category.courseOptions.isEmpty {
                 categories.append(progressRow(
                     category: category,
                     idPrefix: extra.id,
@@ -1364,6 +1818,7 @@ public extension Program {
     func effectiveProgram(concentrationID: String?) throws -> Program {
         guard !concentrations.isEmpty else { return self }
         guard let concentrationID else {
+            if !concentrationSelectionRequired { return self }
             throw PlannerError.concentrationRequired(title)
         }
         guard let concentration = concentrations.first(where: { $0.id == concentrationID }) else {

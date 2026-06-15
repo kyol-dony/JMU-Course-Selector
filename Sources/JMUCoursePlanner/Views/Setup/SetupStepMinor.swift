@@ -77,7 +77,7 @@ struct SetupStepMinor: View {
 
     private func concentrationPicker(for program: Program, selection: MinorSelection) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Pathway")
+            Text(program.concentrationSelectionRequired ? "Pathway" : "Pathway (optional)")
                 .font(DesignTokens.Typography.small)
                 .foregroundStyle(DesignTokens.Colors.textTertiary)
                 .textCase(.uppercase)
@@ -90,15 +90,19 @@ struct SetupStepMinor: View {
                     )
                 }
             )) {
-                Text("Select pathway").tag("")
+                if program.concentrationSelectionRequired {
+                    Text("Select pathway").tag("")
+                } else {
+                    Text("Standard \(program.kind == .major ? "major" : "minor") / No pathway").tag("")
+                }
                 ForEach(program.concentrations) { concentration in
                     Text(concentration.name).tag(concentration.id)
                 }
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            if selection.concentrationID == nil {
-                Text("This minor offers multiple pathways. Pick one so its requirements count toward your plan.")
+            if program.concentrationSelectionRequired, selection.concentrationID == nil {
+                Text("This minor/major offers multiple pathways. Pick one so its requirements count toward your plan.")
                     .font(DesignTokens.Typography.caption)
                     .foregroundStyle(DesignTokens.Colors.warning)
             }

@@ -119,17 +119,17 @@ struct GraduationProgressView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Next term")
                             .font(DesignTokens.Typography.small)
-                            .foregroundStyle(DesignTokens.Colors.brandPurple.opacity(0.75))
+                            .foregroundStyle(DesignTokens.Colors.brandGold.opacity(0.75))
                             .textCase(.uppercase)
                         Text("\(semester.id.displayName) · \(semester.courseIDs.count) course\(semester.courseIDs.count == 1 ? "" : "s")")
                             .font(DesignTokens.Typography.bodyEmphasized)
-                            .foregroundStyle(DesignTokens.Colors.brandPurple)
+                            .foregroundStyle(DesignTokens.Colors.brandGold)
                             .monospacedDigit()
                     }
                     Spacer(minLength: DesignTokens.Spacing.s)
                     Image(systemName: "arrow.right")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(DesignTokens.Colors.brandPurple)
+                        .foregroundStyle(DesignTokens.Colors.brandGold)
                 }
                 .padding(.horizontal, DesignTokens.Spacing.m)
                 .padding(.vertical, DesignTokens.Spacing.s)
@@ -163,15 +163,22 @@ struct GraduationProgressView: View {
         // Defensive uniquing: requirement IDs SHOULD be unique within a program
         // but parser regressions or appended Gen Ed clusters could collide;
         // keep the first occurrence rather than crashing the whole tab.
-        let requirementsByID = Dictionary(
-            program.requirements.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        // Second-major / minor categories are added by ProgressCalculator with
+        // id "{programID}::{categoryID}" — mirror that prefix here so their
+        // contributing-courses lookup hits, not just the primary major's.
+        var pairs: [(String, RequirementCategory)] = program.requirements.map { ($0.id, $0) }
+        for extra in store.selectedMinorPrograms() {
+            for category in extra.requirements {
+                pairs.append(("\(extra.id)::\(category.id)", category))
+            }
+        }
+        let requirementsByID = Dictionary(pairs, uniquingKeysWith: { first, _ in first })
         return VStack(alignment: .leading, spacing: DesignTokens.Spacing.m) {
             SectionHeader("By category")
             ForEach(progress.categories) { category in
                 let requirement = requirementsByID[category.id]
-                let hasOptions = !(requirement?.courseOptions.isEmpty ?? true)
+                let isOpenElective = category.id == ScheduleGenerator.openElectiveCategoryID
+                let hasOptions = isOpenElective || !(requirement?.courseOptions.isEmpty ?? true)
                 Card {
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
                         HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
@@ -200,7 +207,11 @@ struct GraduationProgressView: View {
                                 .font(DesignTokens.Typography.caption)
                                 .foregroundStyle(DesignTokens.Colors.textSecondary)
                         }
-                        contributionList(for: requirement)
+                        if isOpenElective {
+                            contributionList(rows: openElectiveContributions())
+                        } else {
+                            contributionList(rows: contributions(for: requirement))
+                        }
                     }
                 }
             }
@@ -221,8 +232,7 @@ struct GraduationProgressView: View {
     }
 
     @ViewBuilder
-    private func contributionList(for requirement: RequirementCategory?) -> some View {
-        let rows = contributions(for: requirement)
+    private func contributionList(rows: [CourseContribution]) -> some View {
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Contributing courses")
@@ -242,9 +252,32 @@ struct GraduationProgressView: View {
         }
     }
 
+    /// Walk the pathway's `resolvedPlaceholders` map for entries whose key
+    /// matches an Open Elective slot. Each entry tells us which real course
+    /// the student picked for that slot and which semester it landed in.
+    private func openElectiveContributions() -> [CourseContribution] {
+        guard let pathway = store.activePathway else { return [] }
+        let openElectivePrefix = PathwayPlaceholder.id(
+            categoryID: ScheduleGenerator.openElectiveCategoryID,
+            optionIndex: 0
+        ).split(separator: "::").dropLast().joined(separator: "::") + "::"
+        let scheduled = Dictionary(
+            pathway.semesters
+                .sorted { $0.id < $1.id }
+                .flatMap { semester in semester.courseIDs.map { ($0, semester.id.displayName) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return pathway.resolvedPlaceholders.compactMap { placeholderID, courseID in
+            guard placeholderID.hasPrefix(openElectivePrefix) else { return nil }
+            guard let course = catalog.coursesByID[courseID] else { return nil }
+            let source = scheduled[courseID] ?? "Scheduled"
+            return CourseContribution(code: course.code, source: source, isTransfer: false)
+        }
+        .sorted { $0.code < $1.code }
+    }
+
     private func contributions(for requirement: RequirementCategory?) -> [CourseContribution] {
         guard let requirement else { return [] }
-        let transferIDs = Set(store.plan.transferCredits.flatMap(\.courseIDs))
         // If a course shows up in more than one semester of the pathway (e.g.,
         // after a manual drag that introduced a duplicate), keep the earliest
         // placement rather than crashing with a duplicate-key precondition.
@@ -254,22 +287,59 @@ struct GraduationProgressView: View {
                 .flatMap { semester in semester.courseIDs.map { ($0, semester.id.displayName) } },
             uniquingKeysWith: { first, _ in first }
         )
-        return requirement.courseOptions.compactMap { option in
+        return ProgressContributionBuilder.contributions(
+            for: requirement,
+            transferCredits: store.plan.transferCredits,
+            scheduled: scheduled,
+            coursesByID: catalog.coursesByID
+        )
+    }
+}
+
+struct ProgressContributionBuilder {
+    static func contributions(
+        for requirement: RequirementCategory,
+        transferCredits: [TransferCredit],
+        scheduled: [String: String],
+        coursesByID: [String: Course]
+    ) -> [CourseContribution] {
+        let transferIDs = Set(transferCredits.flatMap(\.courseIDs))
+        let rows = requirement.courseOptions.compactMap { option in
             if let transferID = option.first(where: transferIDs.contains),
-               let course = catalog.coursesByID[transferID] {
+               let course = coursesByID[transferID] {
                 return CourseContribution(code: course.code, source: "Transfer", isTransfer: true)
             }
             if let scheduledID = option.first(where: { scheduled[$0] != nil }),
-               let course = catalog.coursesByID[scheduledID],
+               let course = coursesByID[scheduledID],
                let semester = scheduled[scheduledID] {
                 return CourseContribution(code: course.code, source: semester, isTransfer: false)
             }
             return nil
         }
+        if !rows.isEmpty { return rows }
+        guard let apLit = apLiteratureContribution(for: requirement, transferCredits: transferCredits) else {
+            return []
+        }
+        return [apLit]
+    }
+
+    private static func apLiteratureContribution(
+        for requirement: RequirementCategory,
+        transferCredits: [TransferCredit]
+    ) -> CourseContribution? {
+        guard requirement.name.contains("[C2L]") else { return nil }
+        let apLitGNEDIDs: Set<String> = ["GNED123", "GNED124", "GNED129"]
+        guard transferCredits.contains(where: { credit in
+            !apLitGNEDIDs.isDisjoint(with: credit.courseIDs)
+                && credit.sourceDescription.localizedCaseInsensitiveContains("English Literature")
+        }) else {
+            return nil
+        }
+        return CourseContribution(code: "AP English Literature & Composition", source: "Transfer", isTransfer: true)
     }
 }
 
-private struct CourseContribution: Identifiable {
+struct CourseContribution: Identifiable, Equatable {
     var id: String { "\(code)-\(source)" }
     var code: String
     var source: String

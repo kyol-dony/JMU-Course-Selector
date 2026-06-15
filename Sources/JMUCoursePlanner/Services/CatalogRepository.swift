@@ -87,6 +87,7 @@ struct CatalogRepository {
 
             var parsedRequirements = requirements?.requirements ?? []
             let parsedConcentrations = requirements?.concentrations ?? []
+            let concentrationSelectionRequired = requirements?.concentrationSelectionRequired ?? !parsedConcentrations.isEmpty
             // Majors at JMU all require General Education unless the parsed page
             // already includes its own gen ed category. Append the shared cluster
             // set so progress tracking and schedule generation can see it.
@@ -112,6 +113,7 @@ struct CatalogRepository {
                 totalCredits: totalCredits,
                 requirements: parsedRequirements,
                 concentrations: parsedConcentrations,
+                concentrationSelectionRequired: concentrationSelectionRequired,
                 verificationStatus: parsedRequirements.isEmpty ? .unverified : .partial,
                 requirementDataComplete: hasSchedulableCourses,
                 sourceNote: sourceNote(for: entry, parsedRequirements: parsedRequirements, failed: failedPrograms.contains(entry.title))
@@ -204,15 +206,22 @@ struct CatalogRepository {
         try encoder.encode(catalog).write(to: url)
     }
 
-    /// Bump this whenever cached catalog requirement shape changes. v7 adds
-    /// the curated prereq/coreq overlay to `Catalog`, so cached catalogs need
+    /// Bump this whenever cached catalog requirement shape changes. v9 adds
+    /// optional-vs-required concentration metadata so standard majors such as
+    /// Statistics B.S. remain selectable without choosing the Data Science
+    /// concentration.
+    /// v8 fixes
+    /// concentration elective credits that must be derived from the
+    /// concentration's total-credit heading instead of summing every eligible
+    /// elective option.
+    /// v7 adds the curated prereq/coreq overlay to `Catalog`, so cached catalogs need
     /// the latest separate overlay attached on load.
     /// v6 added parsed prerequisite/corequisite expression fields, so older v5
     /// caches needed a fresh HTML refresh before warnings and detail sheets
     /// could use them. v4 handled JMU pages that label their concentration
     /// section "Required Concentration", so older v3 caches may still have
     /// CIS concentrations flattened into the parent major requirements.
-    private static let cacheSchemaVersion = 7
+    private static let cacheSchemaVersion = 9
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())
@@ -512,6 +521,7 @@ private struct SeedCatalog: Decodable {
                 totalCredits: seed.kind == .major ? 120 : nil,
                 requirements: reqs,
                 concentrations: concentrations,
+                concentrationSelectionRequired: nil,
                 verificationStatus: seed.verificationStatus ?? (reqs.isEmpty ? .unverified : .partial),
                 requirementDataComplete: seed.requirementDataComplete ?? false,
                 sourceNote: seed.sourceNote ?? "Listed in the JMU 2025-2026 Undergraduate Catalog table of contents."

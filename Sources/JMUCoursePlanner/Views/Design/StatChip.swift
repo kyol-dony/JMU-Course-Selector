@@ -14,7 +14,7 @@ struct StatChip: View {
             Text(value)
                 .font(DesignTokens.Typography.bodyEmphasized)
                 .monospacedDigit()
-                .foregroundStyle(emphasized ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.textPrimary)
+                .foregroundStyle(emphasized ? DesignTokens.Colors.brandGold : DesignTokens.Colors.textPrimary)
         }
         .padding(.horizontal, DesignTokens.Spacing.m)
         .padding(.vertical, DesignTokens.Spacing.s)

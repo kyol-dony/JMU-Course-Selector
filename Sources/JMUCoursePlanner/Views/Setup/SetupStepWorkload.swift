@@ -25,7 +25,7 @@ struct SetupStepWorkload: View {
         } label: {
             HStack(alignment: .top, spacing: DesignTokens.Spacing.m) {
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .foregroundStyle(isSelected ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.borderStrong)
+                    .foregroundStyle(isSelected ? DesignTokens.Colors.brandGold : DesignTokens.Colors.borderStrong)
                     .font(.system(size: 18))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(workload.rawValue)

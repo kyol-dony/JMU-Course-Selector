@@ -22,7 +22,10 @@ struct MyPlanView: View {
     private func content(program: Program) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.xl) {
-                hero(program: program)
+                hero(program: program, badge: nil, concentrationName: store.activeConcentration?.name)
+                ForEach(secondaryHeroEntries(), id: \.program.id) { entry in
+                    hero(program: entry.program, badge: entry.badge, concentrationName: entry.concentrationName)
+                }
                 stats
                 categoryBreakdown
                 footerActions
@@ -33,13 +36,37 @@ struct MyPlanView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func hero(program: Program) -> some View {
+    private struct SecondaryHeroEntry {
+        var program: Program
+        var badge: String
+        var concentrationName: String?
+    }
+
+    /// Build a hero entry per added minor / second major. Uses the raw catalog
+    /// program (not the gen-ed-stripped effective form) so the title/college
+    /// match what the user picked in setup, and surfaces the picked
+    /// concentration name if any.
+    private func secondaryHeroEntries() -> [SecondaryHeroEntry] {
+        store.plan.minors.compactMap { selection -> SecondaryHeroEntry? in
+            guard let program = catalog.programsByID[selection.programID] else { return nil }
+            let badge = program.kind == .major ? "Second major" : "Minor"
+            let concentrationName = selection.concentrationID.flatMap { id in
+                program.concentrations.first(where: { $0.id == id })?.name
+            }
+            return SecondaryHeroEntry(program: program, badge: badge, concentrationName: concentrationName)
+        }
+    }
+
+    private func hero(program: Program, badge: String?, concentrationName: String?) -> some View {
         Card {
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
                 HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
                     Text(program.title)
                         .font(DesignTokens.Typography.display)
                         .foregroundStyle(DesignTokens.Colors.textPrimary)
+                    if let badge {
+                        StatusPill(text: badge, tone: .info)
+                    }
                     if let degree = program.degreeType {
                         StatusPill(text: degree, tone: .info)
                     }
@@ -52,6 +79,11 @@ struct MyPlanView: View {
                 Text("\(program.college) · \(program.department)")
                     .font(DesignTokens.Typography.body)
                     .foregroundStyle(DesignTokens.Colors.textSecondary)
+                if let concentrationName {
+                    Text("Concentration: \(concentrationName)")
+                        .font(DesignTokens.Typography.caption)
+                        .foregroundStyle(DesignTokens.Colors.textSecondary)
+                }
                 if !program.requirementDataComplete {
                     Text(program.sourceNote)
                         .font(DesignTokens.Typography.caption)
@@ -158,10 +190,7 @@ struct MyPlanView: View {
     private var categoryBreakdown: some View {
         if let progress = store.progress, let program = store.activeProgram {
             let requirementProgram = store.effectiveActiveProgram ?? program
-            let lookup = Dictionary(
-                requirementProgram.requirements.map { ($0.id, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
+            let lookup = requirementLookup(primary: requirementProgram)
             Card {
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.l) {
                     SectionHeader("Requirement progress")
@@ -191,6 +220,19 @@ struct MyPlanView: View {
         )
     }
 
+    /// Mirror ProgressCalculator's "{programID}::{categoryID}" prefix for
+    /// second-major / minor categories so their requirement lookup resolves
+    /// and the schedule-filter tap targets the right id.
+    private func requirementLookup(primary: Program) -> [String: RequirementCategory] {
+        var pairs: [(String, RequirementCategory)] = primary.requirements.map { ($0.id, $0) }
+        for extra in store.selectedMinorPrograms() {
+            for category in extra.requirements {
+                pairs.append(("\(extra.id)::\(category.id)", category))
+            }
+        }
+        return Dictionary(pairs, uniquingKeysWith: { first, _ in first })
+    }
+
     private func remainingCodes(for category: RequirementCategory?) -> [String] {
         guard let category else { return [] }
         return store.remainingCourses(in: category)
@@ -202,6 +244,8 @@ struct MyPlanView: View {
                 .buttonStyle(.dtSecondary)
             Button("Regenerate pathways") { store.generateSchedules() }
                 .buttonStyle(.dtTertiary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
             Spacer()
         }
     }

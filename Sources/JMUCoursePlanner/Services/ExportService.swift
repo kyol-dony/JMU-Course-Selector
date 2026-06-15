@@ -6,12 +6,56 @@ import PlannerCore
 struct ExportService {
     func exportPDF(planName: String, pathway: Pathway, catalog: Catalog) throws {
         guard let destination = savePanel(defaultName: "\(planName).pdf", allowedTypes: ["pdf"]) else { return }
-        let view = NSTextView(frame: NSRect(x: 0, y: 0, width: 612, height: 792))
-        view.string = printableSummary(planName: planName, pathway: pathway, catalog: catalog)
-        view.font = NSFont.systemFont(ofSize: 12)
-        view.textContainerInset = NSSize(width: 36, height: 36)
-        let data = view.dataWithPDF(inside: view.bounds)
-        try data.write(to: destination)
+
+        // Build a text view sized to its content height. The previous
+        // implementation rendered `view.bounds` straight to a single PDF
+        // page via `dataWithPDF(inside:)`, which clipped anything past the
+        // first 8.5"x11". Route through NSPrintOperation instead so AppKit
+        // paginates automatically; any number of semesters fit across as
+        // many pages as needed.
+        let pageWidth: CGFloat = 612
+        let pageHeight: CGFloat = 792
+        let margin: CGFloat = 36
+
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+        textView.textContainerInset = NSSize(width: margin, height: margin)
+        textView.font = NSFont.systemFont(ofSize: 12)
+        textView.string = printableSummary(planName: planName, pathway: pathway, catalog: catalog)
+        textView.isEditable = false
+
+        // Force layout so we can size the view to fit all the content
+        // vertically before handing it to the print operation.
+        if let container = textView.textContainer, let layoutManager = textView.layoutManager {
+            layoutManager.ensureLayout(for: container)
+            let used = layoutManager.usedRect(for: container).size
+            let height = max(ceil(used.height) + margin * 2, pageHeight)
+            textView.frame = NSRect(x: 0, y: 0, width: pageWidth, height: height)
+        }
+
+        let printInfo = NSPrintInfo()
+        printInfo.paperSize = NSSize(width: pageWidth, height: pageHeight)
+        printInfo.topMargin = margin
+        printInfo.bottomMargin = margin
+        printInfo.leftMargin = margin
+        printInfo.rightMargin = margin
+        printInfo.horizontalPagination = .fit
+        printInfo.verticalPagination = .automatic
+        printInfo.isHorizontallyCentered = false
+        printInfo.isVerticallyCentered = false
+        let dict = printInfo.dictionary()
+        dict[NSPrintInfo.AttributeKey.jobDisposition] = NSPrintInfo.JobDisposition.save
+        dict[NSPrintInfo.AttributeKey.jobSavingURL] = destination
+
+        let operation = NSPrintOperation(view: textView, printInfo: printInfo)
+        operation.showsPrintPanel = false
+        operation.showsProgressPanel = false
+        if !operation.run() {
+            throw NSError(
+                domain: "JMUCoursePlanner.ExportService",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Print operation could not write the PDF."]
+            )
+        }
     }
 
     func exportICS(planName: String, pathway: Pathway, catalog: Catalog) throws {

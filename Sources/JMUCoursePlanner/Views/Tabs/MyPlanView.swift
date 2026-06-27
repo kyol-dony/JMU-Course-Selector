@@ -109,56 +109,59 @@ struct MyPlanView: View {
         let fraction = min(max(progress.overallFraction, 0), 1)
         let remaining = max(progress.overallRequiredCredits - progress.overallCompletedCredits, 0)
         return Card {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Completion")
-                    .font(DesignTokens.Typography.small)
-                    .foregroundStyle(DesignTokens.Colors.textTertiary)
-                    .textCase(.uppercase)
-                    .padding(.bottom, DesignTokens.Spacing.xs)
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text("\(pct)")
-                        .font(DesignTokens.Typography.display)
-                        .monospacedDigit()
-                        .foregroundStyle(DesignTokens.Colors.brandPurple)
-                    Text("%")
-                        .font(DesignTokens.Typography.title)
-                        .foregroundStyle(DesignTokens.Colors.brandPurple.opacity(0.6))
-                }
-                .padding(.bottom, DesignTokens.Spacing.s)
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: DesignTokens.Radius.rail, style: .continuous)
-                        .fill(DesignTokens.Colors.borderSubtle)
-                        .frame(height: 6)
-                    GeometryReader { geo in
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.rail, style: .continuous)
-                            .fill(DesignTokens.Colors.brandGold)
-                            .frame(width: max(geo.size.width * fraction, fraction > 0 ? 6 : 0), height: 6)
+            HStack(alignment: .center, spacing: DesignTokens.Spacing.m) {
+                ZStack {
+                    Circle()
+                        .stroke(DesignTokens.Colors.borderSubtle, lineWidth: 10)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(fraction))
+                        .stroke(
+                            DesignTokens.Colors.brandGold,
+                            style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                    VStack(spacing: 0) {
+                        Text("\(pct)%")
+                            .font(DesignTokens.Typography.title)
+                            .monospacedDigit()
+                            .foregroundStyle(DesignTokens.Colors.brandPurple)
+                        Text("complete")
+                            .font(DesignTokens.Typography.small)
+                            .foregroundStyle(DesignTokens.Colors.textTertiary)
                     }
-                    .frame(height: 6)
                 }
-                .frame(height: 6)
-                .padding(.bottom, DesignTokens.Spacing.s)
-                Text(
-                    remaining == 0
-                        ? "\(progress.overallCompletedCredits) of \(progress.overallRequiredCredits) credits planned"
-                        : "\(progress.overallCompletedCredits) of \(progress.overallRequiredCredits) credits planned · \(remaining) to go"
-                )
-                .font(DesignTokens.Typography.caption)
-                .foregroundStyle(DesignTokens.Colors.textSecondary)
-                .monospacedDigit()
+                .frame(width: 90, height: 90)
+
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
+                    Text("Completion")
+                        .font(DesignTokens.Typography.small)
+                        .foregroundStyle(DesignTokens.Colors.textTertiary)
+                        .textCase(.uppercase)
+                    Text("\(progress.overallCompletedCredits) of \(progress.overallRequiredCredits) credits")
+                        .font(DesignTokens.Typography.body)
+                        .foregroundStyle(DesignTokens.Colors.textPrimary)
+                        .monospacedDigit()
+                    if remaining > 0 {
+                        Text("\(remaining) credits to go")
+                            .font(DesignTokens.Typography.caption)
+                            .foregroundStyle(DesignTokens.Colors.textSecondary)
+                            .monospacedDigit()
+                    }
+                }
+                Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity)
     }
 
     private func graduationTile(progress: GraduationProgress) -> some View {
-        Card {
-            VStack(alignment: .leading, spacing: 0) {
+        let upcoming = nextUpcomingSemester()
+        return Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
                 Text("Projected graduation")
                     .font(DesignTokens.Typography.small)
                     .foregroundStyle(DesignTokens.Colors.textTertiary)
                     .textCase(.uppercase)
-                    .padding(.bottom, DesignTokens.Spacing.xs)
                 Text(progress.projectedGraduation?.displayName ?? "Not yet")
                     .font(DesignTokens.Typography.display)
                     .monospacedDigit()
@@ -167,15 +170,60 @@ struct MyPlanView: View {
                             ? DesignTokens.Colors.textTertiary
                             : DesignTokens.Colors.textPrimary
                     )
-                    .padding(.bottom, DesignTokens.Spacing.s + 6 + DesignTokens.Spacing.s)
                 Text(semestersAwayText(progress: progress))
                     .font(DesignTokens.Typography.caption)
                     .foregroundStyle(DesignTokens.Colors.textSecondary)
                     .monospacedDigit()
+                nextTermButton(upcoming)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func nextUpcomingSemester() -> SemesterPlan? {
+        guard let semesters = store.activePathway?.semesters else { return nil }
+        let month = Calendar.current.component(.month, from: Date())
+        let year = Calendar.current.component(.year, from: Date())
+        let currentTerm: SemesterTerm = month >= 7 ? .fall : .spring
+        let nowID = SemesterIdentity(year: year, term: currentTerm)
+        return semesters.sorted { $0.id < $1.id }.first { $0.id >= nowID }
+    }
+
+    @ViewBuilder
+    private func nextTermButton(_ semester: SemesterPlan?) -> some View {
+        if let semester {
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    store.selectedTab = .schedule
+                }
+            } label: {
+                HStack(spacing: DesignTokens.Spacing.s) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Next term")
+                            .font(DesignTokens.Typography.small)
+                            .foregroundStyle(DesignTokens.Colors.brandGold.opacity(0.75))
+                            .textCase(.uppercase)
+                        Text("\(semester.id.displayName) · \(semester.courseIDs.count) course\(semester.courseIDs.count == 1 ? "" : "s")")
+                            .font(DesignTokens.Typography.bodyEmphasized)
+                            .foregroundStyle(DesignTokens.Colors.brandGold)
+                            .monospacedDigit()
+                    }
+                    Spacer(minLength: DesignTokens.Spacing.s)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignTokens.Colors.brandGold)
+                }
+                .padding(.horizontal, DesignTokens.Spacing.m)
+                .padding(.vertical, DesignTokens.Spacing.s)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+                        .fill(DesignTokens.Colors.brandPurpleSoft)
+                )
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private func semestersAwayText(progress: GraduationProgress) -> String {

@@ -238,6 +238,73 @@ struct MyPlanView: View {
         return store.remainingCourses(in: category)
     }
 
+    @ViewBuilder
+    private func contributionList(rows: [MyPlanCourseContribution]) -> some View {
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Contributing courses")
+                    .font(DesignTokens.Typography.small)
+                    .foregroundStyle(DesignTokens.Colors.textTertiary)
+                    .textCase(.uppercase)
+                ForEach(rows) { row in
+                    HStack {
+                        Text(row.code)
+                            .font(DesignTokens.Typography.caption)
+                            .monospacedDigit()
+                        Spacer()
+                        StatusPill(text: row.source, tone: row.isTransfer ? .info : .neutral)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Walk the pathway's `resolvedPlaceholders` map for entries whose key
+    /// matches an Open Elective slot.
+    private func openElectiveContributions() -> [MyPlanCourseContribution] {
+        guard let pathway = store.activePathway else { return [] }
+        let openElectivePrefix = PathwayPlaceholder.id(
+            categoryID: ScheduleGenerator.openElectiveCategoryID,
+            optionIndex: 0
+        ).split(separator: "::").dropLast().joined(separator: "::") + "::"
+        let scheduled = Dictionary(
+            pathway.semesters
+                .sorted { $0.id < $1.id }
+                .flatMap { semester in semester.courseIDs.map { ($0, semester.id.displayName) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return pathway.resolvedPlaceholders.compactMap { placeholderID, courseID in
+            guard placeholderID.hasPrefix(openElectivePrefix) else { return nil }
+            guard let course = catalog.coursesByID[courseID] else { return nil }
+            let source = scheduled[courseID] ?? "Scheduled"
+            return MyPlanCourseContribution(code: course.code, source: source, isTransfer: false)
+        }
+        .sorted { $0.code < $1.code }
+    }
+
+    private func contributions(for requirement: RequirementCategory?) -> [MyPlanCourseContribution] {
+        guard let requirement else { return [] }
+        let transferIDs = Set(store.plan.transferCredits.flatMap(\.courseIDs))
+        let scheduled = Dictionary(
+            (store.activePathway?.semesters ?? [])
+                .sorted { $0.id < $1.id }
+                .flatMap { semester in semester.courseIDs.map { ($0, semester.id.displayName) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return requirement.courseOptions.compactMap { option in
+            if let transferID = option.first(where: transferIDs.contains),
+               let course = catalog.coursesByID[transferID] {
+                return MyPlanCourseContribution(code: course.code, source: "Transfer", isTransfer: true)
+            }
+            if let scheduledID = option.first(where: { scheduled[$0] != nil }),
+               let course = catalog.coursesByID[scheduledID],
+               let semester = scheduled[scheduledID] {
+                return MyPlanCourseContribution(code: course.code, source: semester, isTransfer: false)
+            }
+            return nil
+        }
+    }
+
     private var footerActions: some View {
         HStack(spacing: DesignTokens.Spacing.s) {
             Button("Edit setup") { store.setupSheetPresented = true }
@@ -280,4 +347,11 @@ private struct RequirementProgressRow: View {
             }
         }
     }
+}
+
+private struct MyPlanCourseContribution: Identifiable {
+    var id: String { "\(code)-\(source)" }
+    var code: String
+    var source: String
+    var isTransfer: Bool
 }

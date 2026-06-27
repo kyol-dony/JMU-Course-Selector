@@ -4,7 +4,6 @@ enum AppTab: String, CaseIterable, Identifiable {
     case myPlan
     case schedule
     case catalog
-    case progress
 
     var id: String { rawValue }
 
@@ -13,7 +12,6 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .myPlan: "My Plan"
         case .schedule: "Schedule"
         case .catalog: "Catalog"
-        case .progress: "Progress"
         }
     }
 
@@ -22,7 +20,6 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .myPlan: "graduationcap.fill"
         case .schedule: "calendar"
         case .catalog: "books.vertical.fill"
-        case .progress: "chart.bar.fill"
         }
     }
 }

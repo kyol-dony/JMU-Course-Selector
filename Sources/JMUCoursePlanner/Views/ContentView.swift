@@ -56,8 +56,6 @@ struct ContentView: View {
             ScheduleBoardView(catalog: catalog)
         case .catalog:
             CatalogView(catalog: catalog)
-        case .progress:
-            GraduationProgressView(catalog: catalog)
         }
     }
 }

@@ -245,27 +245,27 @@ struct MyPlanView: View {
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.l) {
                         ForEach(progress.categories) { category in
                             let requirement = lookup[category.id]
-                            requirementProgressRow(category: category, requirement: requirement)
+                            let isOpenElective = category.id == ScheduleGenerator.openElectiveCategoryID
+                            let rows = isOpenElective ? openElectiveContributions() : contributions(for: requirement)
+                            RequirementProgressRow(
+                                category: category,
+                                requirement: requirement,
+                                remainingCourseCodes: remainingCodes(for: requirement),
+                                contributions: rows,
+                                isOpenElective: isOpenElective,
+                                contributionList: { rows in AnyView(contributionList(rows: rows)) },
+                                onTap: {
+                                    store.scheduleCategoryFilter = category.id
+                                    withAnimation(.easeOut(duration: 0.15)) {
+                                        store.selectedTab = .schedule
+                                    }
+                                }
+                            )
                         }
                     }
                 }
             }
         }
-    }
-
-    @ViewBuilder
-    private func requirementProgressRow(category: CategoryProgress, requirement: RequirementCategory?) -> some View {
-        RequirementProgressRow(
-            category: category,
-            requirement: requirement,
-            remainingCourseCodes: remainingCodes(for: requirement),
-            onTap: {
-                store.scheduleCategoryFilter = category.id
-                withAnimation(.easeOut(duration: 0.15)) {
-                    store.selectedTab = .schedule
-                }
-            }
-        )
     }
 
     /// Mirror ProgressCalculator's "{programID}::{categoryID}" prefix for
@@ -370,18 +370,45 @@ private struct RequirementProgressRow: View {
     var category: CategoryProgress
     var requirement: RequirementCategory?
     var remainingCourseCodes: [String]
+    var contributions: [MyPlanCourseContribution]
+    var isOpenElective: Bool
+    var contributionList: ([MyPlanCourseContribution]) -> AnyView
     var onTap: () -> Void
     @State private var isHovering = false
 
     var body: some View {
         Button(action: onTap) {
-            ProgressRail(
-                category: category,
-                hasCourseOptions: !(requirement?.courseOptions.isEmpty ?? true),
-                remainingCourseCodes: remainingCourseCodes
-            )
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
+                HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
+                    Text(category.name)
+                        .font(DesignTokens.Typography.bodyEmphasized)
+                        .foregroundStyle(DesignTokens.Colors.textPrimary)
+                    if category.remainingCredits == 0 {
+                        StatusPill(text: "Complete", tone: .success, systemImage: "checkmark.circle.fill")
+                    } else if category.verificationStatus != .verified {
+                        StatusPill(text: "Partial", tone: .warning)
+                    }
+                    Spacer(minLength: DesignTokens.Spacing.s)
+                    Text("\(category.completedCredits)/\(category.requiredCredits)")
+                        .font(DesignTokens.Typography.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(DesignTokens.Colors.textTertiary)
+                }
+                ProgressRail(
+                    category: category,
+                    hasCourseOptions: isOpenElective || !(requirement?.courseOptions.isEmpty ?? true),
+                    remainingCourseCodes: remainingCourseCodes,
+                    showHeader: false
+                )
+                if let note = requirement?.note, requirement?.courseOptions.isEmpty == true, !isOpenElective {
+                    Text(note)
+                        .font(DesignTokens.Typography.caption)
+                        .foregroundStyle(DesignTokens.Colors.textSecondary)
+                }
+                contributionList(contributions)
+            }
             .padding(.horizontal, DesignTokens.Spacing.s)
-            .padding(.vertical, DesignTokens.Spacing.xs)
+            .padding(.vertical, DesignTokens.Spacing.s)
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)

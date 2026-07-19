@@ -17,6 +17,9 @@ final class PlanStore: ObservableObject {
     @Published var setupSheetPresented: Bool = false
     @Published var catalogSelectedProgramID: String?
     @Published var scheduleCategoryFilter: String?
+    /// Non-nil while pathway generation is running off-main. Drives the
+    /// modal progress overlay and disables the Regenerate buttons.
+    @Published var scheduleGenerationProgress: ScheduleGenerationProgress?
 
     private let catalogRepository = CatalogRepository()
     private let detailService = CourseDetailService()
@@ -300,7 +303,8 @@ final class PlanStore: ObservableObject {
         autosave()
     }
 
-    func generateSchedules() {
+    func generateSchedules() async {
+        guard scheduleGenerationProgress == nil else { return }
         guard let catalog, let programID = plan.programID else {
             errorMessage = "Choose a major before generating a plan."
             return
@@ -312,21 +316,50 @@ final class PlanStore: ObservableObject {
             return
         }
 
-        do {
-            plan.pathways = try ScheduleGenerator(catalog: catalog).generatePathways(
-                for: programID,
-                concentrationID: plan.concentrationID,
-                workload: plan.workload,
-                transferCredits: plan.transferCredits,
-                starting: SemesterIdentity(year: 2026, term: .fall),
-                additionalPrograms: selectedMinorPrograms()
-            )
-            plan.activePathwayID = plan.pathways.first?.id
+        scheduleGenerationProgress = ScheduleGenerationProgress(current: 0, total: 3, pathwayName: "Preparing")
+
+        // Capture plain Sendable values so the detached task never touches
+        // the main-actor store. Progress hops back via MainActor.run.
+        let concentrationID = plan.concentrationID
+        let workload = plan.workload
+        let transferCredits = plan.transferCredits
+        let additionalPrograms = selectedMinorPrograms()
+
+        let result: Result<[Pathway], Error> = await Task.detached(priority: .userInitiated) {
+            do {
+                let pathways = try ScheduleGenerator(catalog: catalog).generatePathways(
+                    for: programID,
+                    concentrationID: concentrationID,
+                    workload: workload,
+                    transferCredits: transferCredits,
+                    starting: SemesterIdentity(year: 2026, term: .fall),
+                    additionalPrograms: additionalPrograms,
+                    progress: { [weak self] current, total, name in
+                        Task { @MainActor in
+                            self?.scheduleGenerationProgress = ScheduleGenerationProgress(
+                                current: current,
+                                total: total,
+                                pathwayName: name
+                            )
+                        }
+                    }
+                )
+                return .success(pathways)
+            } catch {
+                return .failure(error)
+            }
+        }.value
+
+        switch result {
+        case .success(let pathways):
+            plan.pathways = pathways
+            plan.activePathwayID = pathways.first?.id
             errorMessage = nil
             autosave()
-        } catch {
+        case .failure(let error):
             errorMessage = error.localizedDescription
         }
+        scheduleGenerationProgress = nil
     }
 
     func moveCourse(_ courseID: String, to semester: SemesterIdentity) {
@@ -548,4 +581,11 @@ final class PlanStore: ObservableObject {
         }
         .sorted { $0.updatedAt > $1.updatedAt }
     }
+}
+
+/// Snapshot of in-flight pathway generation shown by the modal overlay.
+struct ScheduleGenerationProgress: Equatable, Sendable {
+    var current: Int
+    var total: Int
+    var pathwayName: String
 }

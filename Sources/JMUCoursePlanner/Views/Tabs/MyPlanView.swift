@@ -350,10 +350,13 @@ struct MyPlanView: View {
         HStack(spacing: DesignTokens.Spacing.s) {
             Button("Edit setup") { store.setupSheetPresented = true }
                 .buttonStyle(.dtSecondary)
-            Button("Regenerate pathways") { store.generateSchedules() }
+            Button("Regenerate pathways") {
+                Task { await store.generateSchedules() }
+            }
                 .buttonStyle(.dtTertiary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
+                .disabled(store.scheduleGenerationProgress != nil)
             Spacer()
         }
     }

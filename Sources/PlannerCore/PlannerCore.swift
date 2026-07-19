@@ -801,7 +801,8 @@ public struct ScheduleGenerator: Sendable {
         workload: WorkloadPreference,
         transferCredits: [TransferCredit],
         starting start: SemesterIdentity = SemesterIdentity(year: Calendar.current.component(.year, from: Date()), term: .fall),
-        additionalPrograms: [Program] = []
+        additionalPrograms: [Program] = [],
+        progress: (@Sendable (Int, Int, String) -> Void)? = nil
     ) throws -> [Pathway] {
         let program = try programForScheduling(programID, concentrationID: concentrationID)
         let completed = Set(transferCredits.flatMap(\.courseIDs))
@@ -866,6 +867,7 @@ public struct ScheduleGenerator: Sendable {
         let variants = [required, majorFirst, genEdFirst]
 
         for (index, variant) in variants.enumerated() {
+            progress?(index + 1, variants.count, pathwayName(index + 1))
             let semesters = try buildSemesters(
                 courseIDs: variant,
                 completedAtStart: completed,

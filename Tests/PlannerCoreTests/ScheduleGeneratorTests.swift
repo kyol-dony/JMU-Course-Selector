@@ -31,6 +31,41 @@ struct ScheduleGeneratorTests {
         #expect(ConflictDetector(catalog: catalog).warnings(for: first, overrides: []).isEmpty)
     }
 
+    @Test("progress closure fires once per pathway variant in order")
+    func progressClosureFiresPerVariant() throws {
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "CS149", code: "CS 149", title: "Introduction to Programming", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "cs-bs",
+                title: "Computer Science, B.S.",
+                requirements: [
+                    RequirementCategory(id: "major-core", name: "Major Core Requirements", requiredCredits: 3, courseOptions: [["CS149"]])
+                ]
+            )
+        )
+
+        final class Recorder: @unchecked Sendable {
+            var events: [(Int, Int, String)] = []
+        }
+        let recorder = Recorder()
+
+        _ = try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "cs-bs",
+            workload: .light,
+            transferCredits: [],
+            starting: SemesterIdentity(year: 2026, term: .fall),
+            progress: { current, total, name in
+                recorder.events.append((current, total, name))
+            }
+        )
+
+        #expect(recorder.events.map(\.0) == [1, 2, 3])
+        #expect(recorder.events.map(\.1) == [3, 3, 3])
+        #expect(recorder.events.map(\.2) == ["Balanced Path", "Major-First Path", "Gen Ed-First Path"])
+    }
+
     @Test("a generated pathway is shorter when AP credit completes a required course")
     func generatedPathwayUsesTransferCredits() throws {
         let catalog = Catalog.fixture(

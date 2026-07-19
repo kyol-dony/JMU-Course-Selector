@@ -46,10 +46,13 @@ struct ScheduleBoardView: View {
                 StatChip(label: "Pathway", value: "\(total) cr")
             }
 
-            Button("Regenerate") { store.generateSchedules() }
+            Button("Regenerate") {
+                Task { await store.generateSchedules() }
+            }
                 .buttonStyle(.dtSecondary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
+                .disabled(store.scheduleGenerationProgress != nil)
         }
         .padding(.horizontal, DesignTokens.Spacing.xl)
         .padding(.vertical, DesignTokens.Spacing.m)

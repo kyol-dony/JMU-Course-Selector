@@ -21,6 +21,15 @@ struct SetupSheet: View {
         }
         .frame(minWidth: 640, minHeight: 560)
         .background(DesignTokens.Colors.surface)
+        // The sheet sits above the dashboard, so the dashboard's overlay is
+        // hidden while setup is up. Repeat it here so setup-triggered
+        // generation shows the same progress modal.
+        .overlay {
+            if let progress = store.scheduleGenerationProgress {
+                ScheduleGenerationOverlay(progress: progress)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: store.scheduleGenerationProgress)
     }
 
     private var header: some View {
@@ -88,13 +97,15 @@ struct SetupSheet: View {
                 .disabled(step == 0 && !store.majorSelectionComplete)
             } else {
                 Button("Generate Plan") {
-                    store.generateSchedules()
-                    if store.errorMessage == nil {
-                        dismiss()
+                    Task {
+                        await store.generateSchedules()
+                        if store.errorMessage == nil {
+                            dismiss()
+                        }
                     }
                 }
                 .buttonStyle(.dtPrimary)
-                .disabled(!store.majorSelectionComplete)
+                .disabled(!store.majorSelectionComplete || store.scheduleGenerationProgress != nil)
             }
         }
         .padding(.horizontal, DesignTokens.Spacing.xl)

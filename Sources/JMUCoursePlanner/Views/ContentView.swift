@@ -21,6 +21,12 @@ struct ContentView: View {
             tabContent(catalog: catalog)
         }
         .background(DesignTokens.Colors.surface)
+        .overlay {
+            if let progress = store.scheduleGenerationProgress {
+                ScheduleGenerationOverlay(progress: progress)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: store.scheduleGenerationProgress)
         .sheet(isPresented: $store.setupSheetPresented) {
             SetupSheet(catalog: catalog)
                 .environmentObject(store)

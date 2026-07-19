@@ -34,6 +34,92 @@ struct PlanStoreConcentrationTests {
         #expect(store.majorSelectionComplete)
     }
 
+    @Test("removing a course resolved from an open-elective placeholder restores the placeholder")
+    func removingResolvedOpenElectiveRestoresPlaceholder() throws {
+        let store = PlanStore()
+        store.catalog = Catalog.fixture(
+            courses: [
+                Course(id: "ART200", code: "ART 200", title: "Studio Art", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(
+                id: "cs-bs",
+                title: "CS, B.S.",
+                requirements: [
+                    RequirementCategory(id: "core", name: "Core", requiredCredits: 3, courseOptions: [["CS149"]])
+                ]
+            )
+        )
+        let placeholderID = PathwayPlaceholder.id(
+            categoryID: ScheduleGenerator.openElectiveCategoryID,
+            optionIndex: 0
+        )
+        let spec = PlaceholderSpec(
+            categoryID: ScheduleGenerator.openElectiveCategoryID,
+            categoryName: "Open Elective",
+            alternates: [],
+            credits: 3
+        )
+        store.plan.pathways = [
+            Pathway(
+                id: "path-1",
+                name: "Balanced Path",
+                semesters: [
+                    SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: [placeholderID])
+                ],
+                placeholders: [placeholderID: spec]
+            )
+        ]
+        store.plan.activePathwayID = "path-1"
+
+        store.resolvePlaceholder(placeholderID, with: "ART200")
+        #expect(store.plan.pathways[0].semesters[0].courseIDs == ["ART200"])
+        #expect(store.plan.pathways[0].resolvedPlaceholders[placeholderID] == "ART200")
+        // Spec must survive resolution so removal can bring the slot back.
+        #expect(store.plan.pathways[0].placeholders[placeholderID] != nil)
+
+        store.removeCourse("ART200")
+        #expect(store.plan.pathways[0].semesters[0].courseIDs == [placeholderID])
+        #expect(store.plan.pathways[0].resolvedPlaceholders[placeholderID] == nil)
+        #expect(store.plan.pathways[0].placeholders[placeholderID] != nil)
+    }
+
+    @Test("removing a resolved course rebuilds a missing placeholder spec from stale data")
+    func removingResolvedCourseRebuildsMissingSpec() throws {
+        let store = PlanStore()
+        store.catalog = Catalog.fixture(
+            courses: [
+                Course(id: "ART200", code: "ART 200", title: "Studio Art", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            program: Program.fixture(id: "cs-bs", title: "CS, B.S.", requirements: [])
+        )
+        let placeholderID = PathwayPlaceholder.id(
+            categoryID: ScheduleGenerator.openElectiveCategoryID,
+            optionIndex: 2
+        )
+        // Simulate a pathway persisted before specs were kept at resolve
+        // time: the resolution mapping exists but the spec is gone.
+        store.plan.pathways = [
+            Pathway(
+                id: "path-1",
+                name: "Balanced Path",
+                semesters: [
+                    SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: ["ART200"])
+                ],
+                placeholders: [:],
+                resolvedPlaceholders: [placeholderID: "ART200"]
+            )
+        ]
+        store.plan.activePathwayID = "path-1"
+
+        store.removeCourse("ART200")
+
+        #expect(store.plan.pathways[0].semesters[0].courseIDs == [placeholderID])
+        let spec = try #require(store.plan.pathways[0].placeholders[placeholderID])
+        #expect(spec.categoryID == ScheduleGenerator.openElectiveCategoryID)
+        #expect(spec.alternates.isEmpty)
+        #expect(spec.credits == 3)
+    }
+
     @Test("selecting a major with optional concentrations allows base major")
     func optionalConcentrationsAllowBaseMajorSelection() throws {
         let statistics = Program(

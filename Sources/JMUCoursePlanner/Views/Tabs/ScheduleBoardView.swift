@@ -107,6 +107,7 @@ struct ScheduleBoardView: View {
 
 private struct SemesterColumn: View {
     @EnvironmentObject private var store: PlanStore
+    @State private var coursePickerRequest: CoursePickerRequest?
     var semester: SemesterPlan
     var catalog: Catalog
     var visibleWarnings: [ConflictWarning]
@@ -123,8 +124,16 @@ private struct SemesterColumn: View {
                 header
                 Divider().opacity(0.5)
                 ForEach(semester.courseIDs, id: \.self) { id in
-                    if PathwayPlaceholder.isPlaceholder(id),
-                       let spec = store.activePathway?.placeholders[id] {
+                    if PathwayPlaceholder.isPlaceholder(id) {
+                        // Missing spec (stale persisted pathway) falls back to
+                        // an open-elective-style full-catalog picker rather
+                        // than silently dropping the slot.
+                        let spec = store.activePathway?.placeholders[id] ?? PlaceholderSpec(
+                            categoryID: ScheduleGenerator.openElectiveCategoryID,
+                            categoryName: "Choose a course",
+                            alternates: [],
+                            credits: 3
+                        )
                         placeholderChip(id: id, spec: spec)
                             .draggable(id)
                     } else if let course = store.course(forID: id) {
@@ -157,59 +166,73 @@ private struct SemesterColumn: View {
             store.moveCourse(id, to: semester.id)
             return true
         }
+        .sheet(item: $coursePickerRequest) { request in
+            CoursePickerSheet(title: "Choose \(request.categoryName)", courses: catalog.courses) { course in
+                store.resolvePlaceholder(request.placeholderID, with: course.id)
+            }
+        }
     }
 
     /// Dashed-outline chip rendered for unfilled multi-alternate requirement
     /// options. Tap to pick a course from the option's alternates. Open
-    /// electives use an empty `alternates` list as a sentinel — the menu
-    /// then offers the full catalog so the student can pick any course.
+    /// electives use an empty `alternates` list as a sentinel and open the
+    /// searchable, virtualized full-catalog picker instead of an eager menu.
+    @ViewBuilder
     private func placeholderChip(id: String, spec: PlaceholderSpec) -> some View {
-        let alternateIDs: [String]
-        if spec.categoryID == ScheduleGenerator.openElectiveCategoryID, spec.alternates.isEmpty {
-            alternateIDs = catalog.courses.sorted { $0.code < $1.code }.map(\.id)
+        // Empty alternates = "any catalog course" (open electives, plus any
+        // restored slot whose original alternates are gone). A Menu over an
+        // empty list would be a dead end, so route to the catalog picker.
+        if spec.alternates.isEmpty {
+            Button {
+                coursePickerRequest = CoursePickerRequest(
+                    placeholderID: id,
+                    categoryName: spec.categoryName
+                )
+            } label: {
+                placeholderLabel(spec)
+            }
+            .buttonStyle(.plain)
         } else {
-            alternateIDs = spec.alternates
-        }
-        return Menu {
-            ForEach(alternateIDs, id: \.self) { altID in
-                let label = catalog.coursesByID[altID].map { "\($0.code) - \($0.title)" } ?? altID
-                Button(label) { store.resolvePlaceholder(id, with: altID) }
-            }
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
-                Image(systemName: "questionmark.circle")
-                    .foregroundStyle(DesignTokens.Colors.brandPurple)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Choose course")
-                        .font(DesignTokens.Typography.bodyEmphasized)
-                        .foregroundStyle(DesignTokens.Colors.brandPurple)
-                    Text(spec.categoryName)
-                        .font(DesignTokens.Typography.caption)
-                        .foregroundStyle(DesignTokens.Colors.textSecondary)
-                        .lineLimit(2)
+            Menu {
+                let coursesByID = catalog.coursesByID
+                ForEach(spec.alternates, id: \.self) { altID in
+                    let label = coursesByID[altID].map { "\($0.code) - \($0.title)" } ?? altID
+                    Button(label) { store.resolvePlaceholder(id, with: altID) }
                 }
-                Spacer(minLength: 0)
-                Text("\(spec.credits) cr")
-                    .font(DesignTokens.Typography.caption)
-                    .foregroundStyle(DesignTokens.Colors.textTertiary)
-                    .monospacedDigit()
+            } label: {
+                placeholderLabel(spec)
             }
-            .padding(DesignTokens.Spacing.s)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                    .foregroundStyle(DesignTokens.Colors.brandPurple)
-            )
-            .contentShape(Rectangle())
+            .menuStyle(.button)
+            .buttonStyle(.plain)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        // Press-and-hold to drag the placeholder into another semester;
-        // a quick tap still opens the course picker menu. Same gesture
-        // grammar as `CourseChip.draggable(id)` above, so the existing
-        // semester-card `.dropDestination(for: String.self)` handler
-        // routes the drop through `store.moveCourse`.
-        .draggable(id)
+    }
+
+    private func placeholderLabel(_ spec: PlaceholderSpec) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
+            Image(systemName: "questionmark.circle")
+                .foregroundStyle(DesignTokens.Colors.brandPurple)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Choose course")
+                    .font(DesignTokens.Typography.bodyEmphasized)
+                    .foregroundStyle(DesignTokens.Colors.brandPurple)
+                Text(spec.categoryName)
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textSecondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+            Text("\(spec.credits) cr")
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(DesignTokens.Colors.textTertiary)
+                .monospacedDigit()
+        }
+        .padding(DesignTokens.Spacing.s)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                .foregroundStyle(DesignTokens.Colors.brandPurple)
+        )
+        .contentShape(Rectangle())
     }
 
     private var header: some View {
@@ -300,4 +323,11 @@ private struct SemesterColumn: View {
         }
         return false
     }
+}
+
+private struct CoursePickerRequest: Identifiable {
+    let placeholderID: String
+    let categoryName: String
+
+    var id: String { placeholderID }
 }

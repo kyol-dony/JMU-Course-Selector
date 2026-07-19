@@ -391,6 +391,27 @@ final class PlanStore: ObservableObject {
                 }
             }
             pathway.resolvedPlaceholders.removeValue(forKey: placeholderID)
+            // Pathways resolved before specs were kept around have no
+            // PlaceholderSpec left for this slot; without one the schedule
+            // board can't render the restored chip. Rebuild a minimal spec —
+            // open-elective slots take any course, so an empty alternates
+            // sentinel is fully faithful. Other categories fall back to the
+            // full-catalog sentinel too rather than losing the slot.
+            if pathway.placeholders[placeholderID] == nil {
+                let credits = catalog?.coursesByID[courseID]?.credits ?? 3
+                // Placeholder ids are "__pl::<categoryID>::<optionIndex>".
+                let categoryID = placeholderID
+                    .dropFirst(PathwayPlaceholder.prefix.count)
+                    .components(separatedBy: "::")
+                    .first ?? ScheduleGenerator.openElectiveCategoryID
+                let isOpenElective = categoryID == ScheduleGenerator.openElectiveCategoryID
+                pathway.placeholders[placeholderID] = PlaceholderSpec(
+                    categoryID: categoryID,
+                    categoryName: isOpenElective ? "Open Elective" : "Choose a course",
+                    alternates: [],
+                    credits: credits
+                )
+            }
         } else {
             for index in pathway.semesters.indices {
                 pathway.semesters[index].courseIDs.removeAll { $0 == courseID }

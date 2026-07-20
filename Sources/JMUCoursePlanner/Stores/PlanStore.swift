@@ -62,7 +62,11 @@ final class PlanStore: ObservableObject {
         return ConflictDetector(catalog: catalog).warnings(
             for: activePathway,
             overrides: plan.overrides,
-            activeProgramTitle: effectiveActiveProgram?.title
+            activeProgramTitle: effectiveActiveProgram?.title,
+            // AP / dual-enrollment awards count as completed before the first
+            // term so prereq/coreq checks see them the same way the schedule
+            // generator does.
+            completedAtStart: Set(plan.transferCredits.flatMap(\.courseIDs))
         )
     }
 
@@ -161,7 +165,8 @@ final class PlanStore: ObservableObject {
                 plan = autosave
                 validateSelectedConcentration()
             }
-            statusMessage = "Catalog loaded from the 2025-2026 JMU undergraduate catalog cache."
+            let catalogYear = catalog?.source.catalogYear ?? JMUCatalogConfiguration.catalogYear
+            statusMessage = "Catalog loaded from the \(catalogYear) JMU undergraduate catalog cache."
         } catch {
             errorMessage = "The catalog cache could not be opened. First launch needs the bundled catalog data or an internet connection to refresh it."
             statusMessage = error.localizedDescription
@@ -442,7 +447,7 @@ final class PlanStore: ObservableObject {
             courseDetail = detail
 
             // If the cached catalog doesn't carry a description for this course,
-            // try a live fetch against JMU's preview_course.php page. Updates the
+            // try a live fetch against JMU's course search page. Updates the
             // sheet in place when it succeeds and persists into the in-memory
             // catalog so subsequent clicks during this session skip the network.
             if detail.description == nil,

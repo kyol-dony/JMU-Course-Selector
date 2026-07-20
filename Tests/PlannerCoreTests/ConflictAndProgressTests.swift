@@ -36,6 +36,43 @@ struct ConflictAndProgressTests {
         #expect(overridden.first?.isOverridden == true)
     }
 
+    @Test("transfer credits satisfy prereqs and coreqs in conflict detection")
+    func transferCreditsSatisfyPrereqsInConflictDetection() throws {
+        let catalog = Catalog.fixture(
+            courses: [
+                Course(id: "MATH231", code: "MATH 231", title: "Calculus I", credits: 4, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "MATH232", code: "MATH 232", title: "Calculus II", credits: 4, availability: [.fall, .spring], prerequisites: ["MATH231"]),
+                Course(id: "PHYS240", code: "PHYS 240", title: "University Physics I", credits: 4, availability: [.fall, .spring], prerequisites: ["MATH231"])
+            ],
+            program: Program.fixture(
+                id: "physics-bs",
+                title: "Physics, B.S.",
+                requirements: [
+                    RequirementCategory(id: "core", name: "Core", requiredCredits: 8, courseOptions: [["MATH232"], ["PHYS240"]])
+                ]
+            )
+        )
+        let pathway = Pathway(
+            id: "manual",
+            name: "Manual Plan",
+            semesters: [
+                SemesterPlan(id: SemesterIdentity(year: 2026, term: .fall), courseIDs: ["MATH232", "PHYS240"])
+            ]
+        )
+
+        // Without the AP award the first semester trips two prereq warnings.
+        let bare = ConflictDetector(catalog: catalog).warnings(for: pathway, overrides: [])
+        #expect(bare.filter { $0.kind == .missingPrerequisite }.count == 2)
+
+        // AP Calculus AB awarding MATH 231 clears both.
+        let seeded = ConflictDetector(catalog: catalog).warnings(
+            for: pathway,
+            overrides: [],
+            completedAtStart: ["MATH231"]
+        )
+        #expect(seeded.filter { $0.kind == .missingPrerequisite }.isEmpty)
+    }
+
     @Test("progress counts transfer and scheduled credits by category")
     func progressCountsCreditsByRequirementCategory() throws {
         let catalog = Catalog.fixture(

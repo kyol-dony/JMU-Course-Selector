@@ -1537,10 +1537,15 @@ public struct ConflictDetector: Sendable {
     public func warnings(
         for pathway: Pathway,
         overrides: [ConflictOverride],
-        activeProgramTitle: String? = nil
+        activeProgramTitle: String? = nil,
+        completedAtStart: Set<String> = []
     ) -> [ConflictWarning] {
         let coursesByID = catalog.coursesByID
-        var completedBefore = Set<String>()
+        // Seed with courses already banked before the first semester — AP and
+        // dual-enrollment transfer credits. Without this the detector raises
+        // false prereq warnings for chains the student already started in
+        // high school (e.g., AP Calculus awarding MATH 231/232).
+        var completedBefore = completedAtStart
         var warnings: [ConflictWarning] = []
         let resolver = PrereqRuleResolver(catalog: catalog)
 

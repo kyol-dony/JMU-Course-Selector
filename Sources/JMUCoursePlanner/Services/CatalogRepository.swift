@@ -206,7 +206,11 @@ struct CatalogRepository {
         try encoder.encode(catalog).write(to: url)
     }
 
-    /// Bump this whenever cached catalog requirement shape changes. v9 adds
+    /// Bump this whenever cached catalog requirement shape changes. v10 widens
+    /// concentration splitting so umbrella sections with plain-named children
+    /// (Music B.M.'s 15 concentrations, "Areas of Study" umbrellas) parse as
+    /// selectable concentrations instead of vanishing.
+    /// v9 adds
     /// optional-vs-required concentration metadata so standard majors such as
     /// Statistics B.S. remain selectable without choosing the Data Science
     /// concentration.
@@ -221,7 +225,7 @@ struct CatalogRepository {
     /// could use them. v4 handled JMU pages that label their concentration
     /// section "Required Concentration", so older v3 caches may still have
     /// CIS concentrations flattened into the parent major requirements.
-    private static let cacheSchemaVersion = 9
+    private static let cacheSchemaVersion = 10
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

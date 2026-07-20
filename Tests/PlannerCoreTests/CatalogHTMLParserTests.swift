@@ -186,6 +186,49 @@ struct CatalogHTMLParserTests {
         #expect(parsed.courses.map(\.id).sorted() == ["PHYS240", "PHYS360", "PHYS390"])
     }
 
+    @Test("umbrella concentrations with plain-named children are split out (Music B.M. shape)")
+    func parsesPlainNamedConcentrationsUnderUmbrella() throws {
+        let html = """
+        <h1 id="acalog-content">Music, B.M.</h1>
+        <div class="acalog-core"><h2><a name="MajorRequirements"></a>Major Requirements</h2><hr></div>
+        <div class="acalog-core"><h3><a name="MusicCore"></a>Music Core: 3 Credit Hours</h3><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '1',this, 'x'); return false;">MUS 141. Music Theory I</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="Concentrations"></a>Concentrations</h2><hr></div>
+        <div class="acalog-core"><h3><a name="Composition"></a>Composition</h3><hr></div>
+        <div class="acalog-core"><h4><a name="CompositionRequiredCourses"></a>Required Courses: 3 Credit Hours</h4><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '2',this, 'x'); return false;">MUS 300. Composition Seminar</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h3><a name="JazzStudies"></a>Jazz Studies</h3><hr></div>
+        <div class="acalog-core"><h4><a name="JazzRequiredCourses"></a>Required Courses: 3 Credit Hours</h4><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '3',this, 'x'); return false;">MUS 310. Jazz Improvisation</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h3><a name="MusicIndustry"></a>Music Industry</h3><hr></div>
+        <div class="acalog-core"><h4><a name="IndustryRequiredCourses"></a>Required Courses: 3 Credit Hours</h4><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '4',this, 'x'); return false;">MUS 320. Music Business</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        <div class="acalog-core"><h2><a name="RecommendedScheduleForMajors"></a>Recommended Schedule for Majors</h2><hr></div>
+        """
+
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=27191&returnto=3541"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+
+        #expect(parsed.requirements.map(\.name) == ["Music Core: 3 Credit Hours"])
+        #expect(parsed.concentrations.map(\.name) == ["Composition", "Jazz Studies", "Music Industry"])
+        #expect(parsed.concentrationSelectionRequired)
+        #expect(parsed.concentrations[0].requirements.flatMap(\.courseOptions).flatMap { $0 } == ["MUS300"])
+        #expect(parsed.concentrations[1].requirements.flatMap(\.courseOptions).flatMap { $0 } == ["MUS310"])
+        #expect(parsed.concentrations[2].requirements.flatMap(\.courseOptions).flatMap { $0 } == ["MUS320"])
+    }
+
     @Test("optional concentration sections keep base major selectable")
     func parsesOptionalConcentrationSections() throws {
         let html = """

@@ -482,10 +482,30 @@ public struct JMUHTMLCatalogParser: Sendable {
         var currentName: String?
         var currentCleanName: String?
         var currentBlocks: [RequirementBlock] = []
+        // Level of the first run-starting heading. Under an explicit umbrella
+        // ("Concentrations"), every sibling heading at this level is its own
+        // concentration even when the heading is a plain name with no
+        // "concentration"/"track" noun — Music B.M. lists all 15 that way
+        // ("Composition", "Jazz Studies", ...). Deeper headings and generic
+        // sub-headings ("Required Courses", electives) fold into the open run.
+        var runLevel: Int?
 
         for block in tail {
             guard block.level > sectionLevel else { break }
+            let startsRun: Bool
             if isConcreteConcentrationHeading(block.heading) {
+                startsRun = true
+            } else if isGenericConcentrationSubHeading(block.heading) {
+                startsRun = false
+            } else if let runLevel {
+                startsRun = block.level == runLevel
+            } else {
+                // First child heading under the umbrella opens the first run
+                // even without a concentration noun.
+                startsRun = true
+            }
+
+            if startsRun {
                 let candidateClean = JMUHTMLCatalogParser.cleanConcentrationName(block.heading)
                 if let cleaned = currentCleanName,
                    !candidateClean.isEmpty,
@@ -499,6 +519,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                 currentName = block.heading
                 currentCleanName = candidateClean.isEmpty ? block.heading : candidateClean
                 currentBlocks = [block]
+                if runLevel == nil { runLevel = block.level }
             } else if currentName != nil {
                 currentBlocks.append(block)
             }
@@ -508,6 +529,19 @@ public struct JMUHTMLCatalogParser: Sendable {
             runs.append((currentName, currentBlocks))
         }
         return (shared, runs)
+    }
+
+    /// Headings that are structural sub-blocks of a concentration rather than
+    /// a new concentration: required-course lists, electives, choose-from
+    /// buckets, ensembles, totals. Compared lowercase.
+    private func isGenericConcentrationSubHeading(_ heading: String) -> Bool {
+        let lower = heading.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let markers = [
+            "required course", "required credit", "elective", "choose", "select",
+            "total", "additional course", "additional requirement", "core course",
+            "ensemble", "recital", "audition", "capstone"
+        ]
+        return markers.contains { lower.contains($0) }
     }
 
     private func partitionInline(firstConcentration: Int, blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])]) {
@@ -557,6 +591,13 @@ public struct JMUHTMLCatalogParser: Sendable {
             || lower == "areas of emphasis"
             || lower == "required concentration"
             || lower == "required concentrations"
+            || lower == "concentration options"
+            || lower == "concentration areas"
+            || lower == "areas of study"
+            || lower == "degree options"
+            || lower == "program options"
+            || lower == "choose a concentration"
+            || lower == "select a concentration"
     }
 
     private func isRequiredConcentrationSectionHeading(_ block: RequirementBlock) -> Bool {
@@ -602,6 +643,7 @@ public struct JMUHTMLCatalogParser: Sendable {
             #"(?i)\s*:\s*\d+(?:\s*-\s*\d+)?\s+Credit\s+Hours.*$"#,
             #"(?i)\s*\(in addition to[^)]*\)\s*$"#,
             #"(?i)\s*Required Courses.*$"#,
+            #"(?i)^Concentration in\s+"#,
             #"(?i)\s*Concentration\s*$"#,
             #"(?i)\s*Track\s*$"#,
             #"(?i)\s*Emphasis\s*$"#,

@@ -1,4 +1,18 @@
 .build/
 .DS_Store
 *.xcuserstate
+
+# AI assistant working files
 .superpowers/
+.claude/
+.codex/
+.impeccable/
+.planning/
+docs/superpowers/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+GEMINI.md
+.claude-plugin/
+.cursorrules
+.aider*

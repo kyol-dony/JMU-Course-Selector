@@ -38,7 +38,7 @@ struct CourseDetailService {
         )
     }
 
-    /// On-demand fetch of the JMU registrar `preview_course.php` page for a
+    /// On-demand fetch of the JMU catalog search page for a
     /// course that has a `registrarURL` but no cached description. Returns nil
     /// when the network call fails, the page is empty, or there is no URL.
     /// Caller persists the result into the in-memory catalog so subsequent
@@ -47,15 +47,16 @@ struct CourseDetailService {
         guard let url = course.registrarURL else { return nil }
 
         var request = URLRequest(url: url)
-        request.setValue("JMUCoursePlanner/1.0 (+https://catalog.jmu.edu/)", forHTTPHeaderField: "User-Agent")
+        request.setValue(JMUCatalogConfiguration.browserUserAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 10
         request.cachePolicy = .returnCacheDataElseLoad
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
                 return nil
             }
+            guard !data.isEmpty else { return nil }
             guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
                 return nil
             }

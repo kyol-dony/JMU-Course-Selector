@@ -37,6 +37,73 @@ struct CoursePickerIndexTests {
         #expect(index.entries(matching: "SUBJ 1999").map(\.course.id) == ["course-1999"])
     }
 
+    @Test("Gen Ed picker includes only eligible alternates")
+    func genEdPickerRestrictsCatalog() throws {
+        let courses = [
+            course(id: "wrtc-103", code: "WRTC 103", title: "Critical Reading and Writing"),
+            course(id: "wrtc-200", code: "WRTC 200", title: "Introduction to Studies in Writing"),
+            course(id: "cs-149", code: "CS 149", title: "Introduction to Programming")
+        ]
+        let spec = PlaceholderSpec(
+            categoryID: "gened-c1w",
+            categoryName: "General Education - Writing [C1W]",
+            alternates: ["wrtc-103", "wrtc-200", "missing-course"],
+            credits: 3
+        )
+
+        let eligible = PlaceholderCoursePickerPolicy.eligibleCourses(
+            for: spec,
+            catalog: catalog(courses: courses)
+        )
+
+        #expect(eligible.map(\.id) == ["wrtc-103", "wrtc-200"])
+        #expect(!eligible.contains { $0.id == "cs-149" })
+    }
+
+    @Test("non-Gen-Ed placeholders use the same bounded searchable course set")
+    func nonGenEdAlternativesUseSearchSheet() {
+        let courses = [
+            course(id: "cis-330", code: "CIS 330", title: "Database Design"),
+            course(id: "cis-331", code: "CIS 331", title: "Intermediate Computer Programming"),
+            course(id: "cs-149", code: "CS 149", title: "Introduction to Programming")
+        ]
+        let spec = PlaceholderSpec(
+            categoryID: "cis-elective",
+            categoryName: "CIS Elective",
+            alternates: ["cis-330", "cis-331"],
+            credits: 3
+        )
+
+        let eligible = PlaceholderCoursePickerPolicy.eligibleCourses(
+            for: spec,
+            catalog: catalog(courses: courses)
+        )
+
+        #expect(eligible.map(\.id) == ["cis-330", "cis-331"])
+        #expect(!eligible.contains { $0.id == "cs-149" })
+    }
+
+    @Test("open electives still expose the full catalog")
+    func openElectiveUsesFullCatalog() throws {
+        let courses = [
+            course(id: "cis-330", code: "CIS 330", title: "Database Design"),
+            course(id: "cs-149", code: "CS 149", title: "Introduction to Programming")
+        ]
+        let spec = PlaceholderSpec(
+            categoryID: ScheduleGenerator.openElectiveCategoryID,
+            categoryName: "Open Elective",
+            alternates: [],
+            credits: 3
+        )
+
+        let eligible = PlaceholderCoursePickerPolicy.eligibleCourses(
+            for: spec,
+            catalog: catalog(courses: courses)
+        )
+
+        #expect(eligible.map(\.id) == courses.map(\.id))
+    }
+
     private func course(id: String, code: String, title: String) -> Course {
         Course(
             id: id,
@@ -45,6 +112,13 @@ struct CoursePickerIndexTests {
             credits: 3,
             availability: [.fall, .spring],
             prerequisites: []
+        )
+    }
+
+    private func catalog(courses: [Course]) -> Catalog {
+        Catalog.fixture(
+            courses: courses,
+            program: .fixture(id: "test", title: "Test", requirements: [])
         )
     }
 }

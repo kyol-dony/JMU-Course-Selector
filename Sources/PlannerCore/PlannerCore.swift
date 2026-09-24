@@ -314,10 +314,16 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
 
 public struct Catalog: Codable, Sendable {
     public var source: CatalogSource
-    public var programs: [Program]
-    public var courses: [Course]
+    public var programs: [Program] {
+        didSet { programsByIDStorage = Self.index(programs) }
+    }
+    public var courses: [Course] {
+        didSet { coursesByIDStorage = Self.index(courses) }
+    }
     public var apCreditRules: [TransferCreditRule]
     public var prereqRuleOverlay: PrereqRuleOverlay
+    private var coursesByIDStorage: [String: Course]
+    private var programsByIDStorage: [String: Program]
 
     public init(
         source: CatalogSource,
@@ -331,6 +337,8 @@ public struct Catalog: Codable, Sendable {
         self.courses = courses
         self.apCreditRules = apCreditRules
         self.prereqRuleOverlay = prereqRuleOverlay
+        self.coursesByIDStorage = Self.index(courses)
+        self.programsByIDStorage = Self.index(programs)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -344,6 +352,8 @@ public struct Catalog: Codable, Sendable {
         self.courses = try c.decode([Course].self, forKey: .courses)
         self.apCreditRules = try c.decode([TransferCreditRule].self, forKey: .apCreditRules)
         self.prereqRuleOverlay = try c.decodeIfPresent(PrereqRuleOverlay.self, forKey: .prereqRuleOverlay) ?? .empty
+        self.coursesByIDStorage = Self.index(courses)
+        self.programsByIDStorage = Self.index(programs)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -356,11 +366,15 @@ public struct Catalog: Codable, Sendable {
     }
 
     public var coursesByID: [String: Course] {
-        Dictionary(uniqueKeysWithValues: courses.map { ($0.id, $0) })
+        coursesByIDStorage
     }
 
     public var programsByID: [String: Program] {
-        Dictionary(uniqueKeysWithValues: programs.map { ($0.id, $0) })
+        programsByIDStorage
+    }
+
+    private static func index<Value: Identifiable>(_ values: [Value]) -> [Value.ID: Value] {
+        Dictionary(uniqueKeysWithValues: values.map { ($0.id, $0) })
     }
 }
 
@@ -813,7 +827,17 @@ public struct ScheduleGenerator: Sendable {
         // second-major / minor courses into the final terms. The merge step
         // gives every program a proportional share of each semester instead.
         var perProgramLists: [[String]] = []
-        var primaryList = requiredCourseIDs(for: program, completed: completed, placeholders: &placeholders)
+        // A course may legitimately fulfill requirements in more than one
+        // program. Keep its planned ID while walking every selected program so
+        // an overlap is scheduled only once, while each program's requirement
+        // still treats it as fulfilled.
+        var plannedCourseIDs: Set<String> = []
+        var primaryList = requiredCourseIDs(
+            for: program,
+            completed: completed,
+            plannedCourseIDs: &plannedCourseIDs,
+            placeholders: &placeholders
+        )
         // JMU degrees require 120 CRH total. If the primary major's declared
         // requirements fall short, top up with Open Elective placeholders so
         // the schedule reaches 120 on the major alone (before AP/transfer
@@ -822,7 +846,12 @@ public struct ScheduleGenerator: Sendable {
         primaryList.append(contentsOf: openElectivePlaceholders(for: program, placeholders: &placeholders))
         perProgramLists.append(primaryList)
         for extra in additionalPrograms {
-            perProgramLists.append(requiredCourseIDs(for: extra, completed: completed, placeholders: &placeholders))
+            perProgramLists.append(requiredCourseIDs(
+                for: extra,
+                completed: completed,
+                plannedCourseIDs: &plannedCourseIDs,
+                placeholders: &placeholders
+            ))
         }
         let required = Self.interleaveByProportion(perProgramLists)
         guard !required.isEmpty else {
@@ -930,10 +959,14 @@ public struct ScheduleGenerator: Sendable {
     private func requiredCourseIDs(
         for program: Program,
         completed: Set<String>,
+        plannedCourseIDs: inout Set<String>,
         placeholders: inout [String: PlaceholderSpec]
     ) -> [String] {
         let completedClusterTags = Set(completed.compactMap { TransferCreditMapper.genEdCreditClusterTag(for: $0) })
-        var seen: Set<String> = []
+        // Seed the local de-duplication set with courses chosen for earlier
+        // programs. This allows, for example, a Mathematics core course to
+        // satisfy a Statistics elective without scheduling it twice.
+        var seen = plannedCourseIDs
         var result: [String] = []
         for category in program.requirements {
             let lowerName = category.name.lowercased()
@@ -952,6 +985,7 @@ public struct ScheduleGenerator: Sendable {
                appendSelectableElectivePlaceholders(
                 for: category,
                 completed: completed,
+                plannedCourseIDs: plannedCourseIDs,
                 seen: &seen,
                 result: &result,
                 placeholders: &placeholders,
@@ -1002,12 +1036,14 @@ public struct ScheduleGenerator: Sendable {
                 plannedCredits += optionCredits
             }
         }
+        plannedCourseIDs.formUnion(result.filter { !PathwayPlaceholder.isPlaceholder($0) })
         return result
     }
 
     private func appendSelectableElectivePlaceholders(
         for category: RequirementCategory,
         completed: Set<String>,
+        plannedCourseIDs: Set<String>,
         seen: inout Set<String>,
         result: inout [String],
         placeholders: inout [String: PlaceholderSpec],
@@ -1024,12 +1060,19 @@ public struct ScheduleGenerator: Sendable {
         let totalEligibleCredits = optionCredits.reduce(0, +)
         guard totalEligibleCredits > category.requiredCredits else { return false }
 
+        let satisfiedCourseIDs = completed.union(plannedCourseIDs)
+        let fulfilledCredits = uniqueCourseIDs(category.courseOptions.flatMap { $0 })
+            .filter(satisfiedCourseIDs.contains)
+            .reduce(0) { $0 + (catalog.coursesByID[$1]?.credits ?? fallbackOptionCredits) }
+        let remainingCredits = max(category.requiredCredits - fulfilledCredits, 0)
+        guard remainingCredits > 0 else { return true }
+
         let alternates = uniqueCourseIDs(category.courseOptions.flatMap { $0 })
-            .filter { !completed.contains($0) }
+            .filter { !satisfiedCourseIDs.contains($0) }
         guard !alternates.isEmpty else { return true }
 
         let slotCredits = max(optionCredits.max() ?? fallbackOptionCredits, 1)
-        let slotCount = max(Int(ceil(Double(category.requiredCredits) / Double(slotCredits))), 1)
+        let slotCount = max(Int(ceil(Double(remainingCredits) / Double(slotCredits))), 1)
         for slot in 0..<slotCount {
             let id = PathwayPlaceholder.id(categoryID: category.id, optionIndex: slot)
             guard seen.insert(id).inserted else { continue }
@@ -1038,7 +1081,7 @@ public struct ScheduleGenerator: Sendable {
                 categoryID: category.id,
                 categoryName: category.name,
                 alternates: alternates,
-                credits: min(slotCredits, max(category.requiredCredits - (slot * slotCredits), 1))
+                credits: min(slotCredits, max(remainingCredits - (slot * slotCredits), 1))
             )
         }
         return true

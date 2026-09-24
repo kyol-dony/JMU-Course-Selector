@@ -13,7 +13,7 @@ final class CatalogRepositoryPrereqPassTests: XCTestCase {
 
         let resolved = courses.first { $0.code == "CS 240" }!
         XCTAssertEqual(resolved.prerequisiteExpr,
-                       .all([.course("cs-159"), .course("math-235")]))
+                        .all([.course("cs-159"), .course("math-235")]))
         XCTAssertEqual(resolved.prerequisites.sorted(), ["cs-159", "math-235"])
         XCTAssertFalse(resolved.hasUnknownPrereqTokens)
     }

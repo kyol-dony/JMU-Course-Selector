@@ -299,6 +299,66 @@ struct ScheduleGeneratorTests {
         #expect(names.contains("Core"))
         #expect(names.contains { $0.hasPrefix("Minor (Robotics Minor)") })
     }
+
+    @Test("a shared course completes a second major's selective elective without being scheduled twice")
+    func sharedCourseCompletesSecondMajorElective() throws {
+        let mathematics = Program.fixture(
+            id: "mathematics-bs",
+            title: "Mathematics, B.S.",
+            requirements: [
+                RequirementCategory(id: "math-core", name: "Required Mathematics Courses", requiredCredits: 3, courseOptions: [["MATH245"]])
+            ]
+        )
+        let statistics = Program(
+            id: "statistics-bs",
+            title: "Statistics, B.S.",
+            degreeType: "B.S.",
+            kind: .major,
+            college: "College of Science and Mathematics",
+            department: "Mathematics and Statistics",
+            catalogPage: nil,
+            totalCredits: 120,
+            requirements: [
+                RequirementCategory(
+                    id: "statistics-electives",
+                    name: "Additional Mathematics Electives",
+                    requiredCredits: 3,
+                    courseOptions: [["MATH245"], ["STAT350"]]
+                )
+            ],
+            verificationStatus: .verified,
+            requirementDataComplete: true,
+            sourceNote: "Fixture"
+        )
+        let catalog = Catalog(
+            source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
+            programs: [mathematics, statistics],
+            courses: [
+                Course(id: "MATH245", code: "MATH 245", title: "Advanced Calculus I", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "STAT350", code: "STAT 350", title: "Statistical Methods", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            apCreditRules: []
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: mathematics.id,
+            workload: .standard,
+            transferCredits: [],
+            additionalPrograms: [statistics]
+        ).first)
+        let scheduled = pathway.semesters.flatMap(\.courseIDs)
+        #expect(scheduled.filter { $0 == "MATH245" }.count == 1)
+        #expect(!pathway.placeholders.values.contains { $0.categoryID == "statistics-electives" })
+
+        let progress = try ProgressCalculator(catalog: catalog).progress(
+            programID: mathematics.id,
+            pathway: pathway,
+            transferCredits: [],
+            additionalPrograms: [statistics]
+        )
+        let statsElective = try #require(progress.categories.first { $0.id == "statistics-bs::statistics-electives" })
+        #expect(statsElective.completedCredits == statsElective.requiredCredits)
+    }
 }
 
 @Suite("Schedule generator best-effort prereq fallback")

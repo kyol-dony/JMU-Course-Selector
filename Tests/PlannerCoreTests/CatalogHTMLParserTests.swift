@@ -4,6 +4,151 @@ import Testing
 
 @Suite("JMU catalog HTML parser")
 struct CatalogHTMLParserTests {
+    @Test("2026 program search extracts and deduplicates undergraduate majors and minors")
+    func parsesModernProgramIndex() throws {
+        let cards = """
+        <div class="filter-items filter-items--grid"><ul class="isotope">
+          <li class="item filter_1"><a href="/programs/computer-science-bs/"><div class="item-container"><span class="title">Computer Science, B.S.</span><span class="keyword">Undergraduate</span><span class="keyword">Bachelor's Degrees</span></div></a></li>
+          <li class="item filter_1"><a href="/programs/computer-science-minor/"><div class="item-container"><span class="title">Computer Science Minor</span><span class="keyword">Undergraduate</span><span class="keyword">Minors</span></div></a></li>
+          <li class="item filter_2"><a href="/programs/computer-science-ms/"><div class="item-container"><span class="title">Computer Science, M.S.</span><span class="keyword">Graduate</span><span class="keyword">Master's Degrees</span></div></a></li>
+        </ul></div>
+        """
+        let html = cards + cards
+
+        let entries = JMUHTMLCatalogParser().parseProgramsOfStudy(html)
+
+        #expect(entries.count == 2)
+        #expect(entries.map(\.kind) == [.major, .minor])
+        #expect(entries[0].sourceURL.absoluteString == "https://catalog.jmu.edu/programs/computer-science-bs/")
+        #expect(entries[0].printURL == entries[0].sourceURL)
+    }
+
+    @Test("2026 requirement tables preserve required rows, choices, and search URLs")
+    func parsesModernProgramRequirements() throws {
+        let html = """
+        <h1 class="page-title">Computer Science, B.S.</h1>
+        <div id="requirementstextcontainer">
+          <table class="sc_sctable"><tr><td><strong>Total</strong></td><td><strong>120</strong></td></tr></table>
+          <h2>Major Requirements</h2>
+          <table class="sc_courselist"><tbody>
+            <tr><td class="codecol"><a href="/search/?P=CS%20149">CS 149</a></td><td>Introduction to Programming</td><td class="hourscol">3</td></tr>
+            <tr><td class="codecol"><a href="/search/?P=CS%20159">CS 159</a></td><td>Advanced Programming</td><td class="hourscol">3</td></tr>
+            <tr><td colspan="2"><span class="courselistcomment">Choose one statistics course:</span></td><td class="hourscol">3-4</td></tr>
+            <tr><td class="codecol"><a href="/search/?P=MATH%20220">MATH 220</a></td><td>Elementary Statistics [C3QR]</td><td class="hourscol"></td></tr>
+            <tr><td class="codecol"><a href="/search/?P=MATH%20229">MATH 229</a></td><td>Introduction to Applied Statistics Using R [C3QR]</td><td class="hourscol"></td></tr>
+            <tr class="listsum"><td>Total Credits</td><td></td><td>9-10</td></tr>
+          </tbody></table>
+        </div>
+        <div id="recommendedscheduletextcontainer"></div>
+        """
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/programs/computer-science-bs/"))
+
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+
+        #expect(parsed.title == "Computer Science, B.S.")
+        #expect(parsed.totalCredits == 120)
+        #expect(parsed.requirements.count == 2)
+        #expect(parsed.requirements[0].courseOptions == [["CS149"], ["CS159"]])
+        #expect(parsed.requirements[1].courseOptions == [["MATH220", "MATH229"]])
+        #expect(parsed.courses.first(where: { $0.id == "CS149" })?.registrarURL?.absoluteString == "https://catalog.jmu.edu/search/?P=CS%20149")
+    }
+
+    @Test("2026 course search extracts description and prerequisite text")
+    func parsesModernCourseDetail() {
+        let html = """
+        <article class="searchresult search-courseresult"><div class="courseblock" data-coursecode="CS 149">
+          <div class="courseblockdesc noindent">Fundamental problem-solving techniques using a modern programming language.</div>
+          <div class="courseblockextra noindent">Prerequisites: <a href="/search/?P=MATH%20155">MATH 155</a> or sufficient placement score.</div>
+        </div></article>
+        """
+
+        let detail = JMUHTMLCatalogParser().parseCourseDetail(html)
+
+        #expect(detail.description == "Fundamental problem-solving techniques using a modern programming language.")
+        #expect(detail.prerequisiteText == "Prerequisites: MATH 155 or sufficient placement score.")
+    }
+
+    @Test("2026 Gen Ed tables retain a parent cluster tag below explanatory subheadings")
+    func parsesModernNestedGenEdHeading() throws {
+        let html = """
+        <h1 class="page-title">Arts and Humanities</h1>
+        <h3>Literature [C2L]</h3>
+        <p>Literature requirement overview.</p>
+        <h4>Literature and Writing Infusion</h4>
+        <table class="sc_courselist"><tbody>
+          <tr><td class="codecol"><a href="/search/?P=ENG%20221">ENG 221</a></td><td>Literature and Ideas [C2L]</td><td class="hourscol">3</td></tr>
+        </tbody></table>
+        """
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/general-education/arts-humanities/"))
+
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+
+        #expect(parsed.requirements.contains { $0.name == "Literature [C2L]" && $0.courseOptions == [["ENG221"]] })
+    }
+
+    @Test("2026 nested concentration tracks become selectable leaf pathways with inherited requirements")
+    func parsesModernNestedConcentrationTracks() throws {
+        let html = """
+        <h1 class="page-title">Music, B.M.</h1>
+        <div id="requirementstextcontainer">
+          <h2>Major Requirements</h2>
+          <table class="sc_courselist"><tbody>
+            <tr><td class="codecol"><a href="/search/?P=MUS%20143">MUS 143</a></td><td>Aural Skills I</td><td class="hourscol">1</td></tr>
+            <tr class="areaheader"><td colspan="2"><span class="courselistcomment areaheader">Concentrations</span></td><td class="hourscol"></td></tr>
+            <tr><td colspan="2"><span class="courselistcomment">Choose one of the following concentrations:</span></td><td class="hourscol">43-59</td></tr>
+          </tbody></table>
+          <h2>Concentrations</h2>
+          <h3>Jazz Studies Concentration</h3>
+          <table class="sc_courselist"><tbody>
+            <tr><td class="codecol"><a href="/search/?P=MUS%20340">MUS 340</a></td><td>Jazz Studies</td><td class="hourscol">3</td></tr>
+          </tbody></table>
+          <h3>Music Education Concentration</h3>
+          <h4>Professional Education Sequence Requirements</h4>
+          <table class="sc_courselist"><tbody>
+            <tr><td class="codecol"><a href="/search/?P=EDUC%20310">EDUC 310</a></td><td>Teaching and Learning</td><td class="hourscol">3</td></tr>
+          </tbody></table>
+          <h4>Music Education, Instrumental Track</h4>
+          <h5>Subtrack in Winds Requirements</h5>
+          <table class="sc_courselist"><tbody>
+            <tr><td class="codecol"><a href="/search/?P=MUS%20350">MUS 350</a></td><td>Wind Methods</td><td class="hourscol">3</td></tr>
+          </tbody></table>
+          <h5>Subtrack in Strings Requirements</h5>
+          <table class="sc_courselist"><tbody>
+            <tr><td class="codecol"><a href="/search/?P=MUS%20351">MUS 351</a></td><td>String Methods</td><td class="hourscol">3</td></tr>
+          </tbody></table>
+          <h4>Music Education, Vocal Track</h4>
+          <table class="sc_courselist"><tbody>
+            <tr><td class="codecol"><a href="/search/?P=MUS%20404">MUS 404</a></td><td>Vocal Pedagogy</td><td class="hourscol">3</td></tr>
+          </tbody></table>
+        </div>
+        <div id="recommendedscheduletextcontainer"></div>
+        """
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/programs/music-bm/"))
+
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+        let byName = Dictionary(uniqueKeysWithValues: parsed.concentrations.map { ($0.name, $0) })
+
+        #expect(parsed.concentrationSelectionRequired)
+        #expect(Set(byName.keys) == [
+            "Jazz Studies",
+            "Music Education, Instrumental Track - Winds",
+            "Music Education, Instrumental Track - Strings",
+            "Music Education, Vocal"
+        ])
+        let winds = try #require(byName["Music Education, Instrumental Track - Winds"])
+        let windCourses = Set(winds.requirements.flatMap(\.courseOptions).flatMap { $0 })
+        #expect(windCourses.contains("EDUC310"))
+        #expect(windCourses.contains("MUS350"))
+        #expect(!windCourses.contains("MUS351"))
+        #expect(!windCourses.contains("MUS404"))
+        let vocal = try #require(byName["Music Education, Vocal"])
+        let vocalCourses = Set(vocal.requirements.flatMap(\.courseOptions).flatMap { $0 })
+        #expect(vocalCourses.contains("EDUC310"))
+        #expect(vocalCourses.contains("MUS404"))
+        #expect(!vocalCourses.contains("MUS350"))
+        #expect(parsed.requirements.flatMap(\.courseOptions).flatMap { $0 } == ["MUS143"])
+    }
+
     @Test("program index extracts majors and minors from JMU program lists")
     func parsesProgramIndex() throws {
         let html = """
@@ -145,6 +290,49 @@ struct CatalogHTMLParserTests {
         let fullPool = ["CS343", "CS374", "CS444", "CS450"]
         #expect(electives.courseOptions == [fullPool, fullPool, fullPool])
         #expect(electives.note?.contains("choice requirement") == true)
+    }
+
+    @Test("credit-hour choice headings cap credits and placeholder slots")
+    func creditHourChoiceCapsPlaceholders() throws {
+        let html = """
+        <h1 id="acalog-content">Statistics, B.S.</h1>
+        <div class="acalog-core"><h2><a name="MajorRequirements"></a>Major Requirements</h2><hr></div>
+        <div class="acalog-core"><h3><a name="StatisticsElectives"></a>Please choose six credit hours from the following:</h3><hr>
+          <ul>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '1',this, 'x'); return false;">MATH 324. Applied Regression Analysis</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '2',this, 'x'); return false;">MATH 325. Applied Linear Regression</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '3',this, 'x'); return false;">MATH 326. Design and Analysis of Experiments</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '4',this, 'x'); return false;">MATH 354. Modern College Geometry</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '5',this, 'x'); return false;">MATH 368. Mathematical Models</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+            <li class="acalog-course"><span><a href="#" onClick="showCourse('62', '6',this, 'x'); return false;">MATH 410. Introduction to Real Analysis I</a> <em><strong>Credits:</strong></em> <em>3.00</em></span></li>
+          </ul>
+        </div>
+        """
+
+        let sourceURL = try #require(URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=1&returnto=3541"))
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: sourceURL)
+        let requirement = try #require(parsed.requirements.first)
+        let fullPool = ["MATH324", "MATH325", "MATH326", "MATH354", "MATH368", "MATH410"]
+
+        #expect(requirement.requiredCredits == 6)
+        #expect(requirement.courseOptions == [fullPool, fullPool])
+
+        let catalog = Catalog.fixture(
+            courses: parsed.courses,
+            program: Program.fixture(
+                id: "statistics-bs",
+                title: "Statistics, B.S.",
+                requirements: parsed.requirements
+            )
+        )
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "statistics-bs",
+            workload: .standard,
+            transferCredits: []
+        ).first)
+        let choicePlaceholders = pathway.placeholders.values.filter { $0.categoryID == requirement.id }
+        #expect(choicePlaceholders.count == 2)
+        #expect(choicePlaceholders.reduce(0) { $0 + $1.credits } == 6)
     }
 
     @Test("major concentrations are split out of parent requirements")

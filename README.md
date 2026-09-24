@@ -24,7 +24,7 @@ If that app is not present yet, read [BUILD_AND_LAUNCH_GUIDE.md](BUILD_AND_LAUNC
 
 ## Important Data Notice
 
-The project includes the official JMU 2025-2026 Undergraduate Catalog PDF and a structured seed file at [Data/catalog_seed.json](Data/catalog_seed.json). The app can now refresh from JMU's official `catalog.jmu.edu` HTML pages, parse major and minor requirement sections, and cache the result locally for schedule generation.
+The project includes the official JMU 2026-2027 Undergraduate Catalog PDF and a structured seed file at [Data/catalog_seed.json](Data/catalog_seed.json). The app refreshes from JMU's current path-based `catalog.jmu.edu` pages, parses major and minor requirement sections, and caches the result locally for schedule generation.
 
 The app does not invent missing catalog rules, course availability, course descriptions, or Rate My Professor ratings. Broad prose requirements, advisor-selected choices, and unknown data are shown as partial or unavailable.
 

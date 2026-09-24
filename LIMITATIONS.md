@@ -23,10 +23,10 @@ After each rebuild, verify by hand:
 
 ## Catalog requirements
 
-- The app lists JMU undergraduate majors and minors from the official 2025-2026 Undergraduate Catalog table of contents (200+ programs).
+- The app lists JMU undergraduate majors and minors from the official 2026-2027 Undergraduate Catalog program search.
 - On first launch, the app automatically fetches official `catalog.jmu.edu` HTML for every listed program when fewer than 10% of majors have schedulable data cached. A progress message is shown while this runs (one program per ~150ms, so roughly 30-60 seconds end-to-end). The **Refresh Requirements** button repeats the fetch on demand.
 - Programs with fixed course lists become schedulable after the refresh completes. Broad prose requirements ("choose 9 credits of upper-division electives", "see advisor"), unrestricted electives, and advisor-selected choices are flagged partial and surface a per-program note rather than being silently inferred.
-- General Education is now seeded from the live JMU Gen Ed program page (`poid=26976`). All 14 clusters are pulled with their full course buckets and merged into every undergraduate major's requirement set. Cluster credit allocations (C1CT, C1HC, C1W, C2HQC, C2VPA, C2L, C3QR, C3PP, C3NS, C3L, C4AE, C4GE, C5SD, C5W) are hand-coded from the JMU 2025-2026 catalog narrative because they don't appear in the cluster headings.
+- General Education is refreshed from JMU's five current General Education area pages. All 14 clusters are pulled with their full course buckets and merged into every undergraduate major's requirement set. Cluster credit allocations (C1CT, C1HC, C1W, C2HQC, C2VPA, C2L, C3QR, C3PP, C3NS, C3L, C4AE, C4GE, C5SD, C5W) follow the JMU 2026-2027 catalog narrative because they do not appear in the cluster headings.
 - Concentrations/tracks are supported for catalog pages where JMU exposes course-bearing concentration sections. The setup flow requires selecting one concentration for those majors, and generated plans include the shared major core plus the selected concentration only.
 - Concentration sections that are prose-only or cannot be safely split remain partially verified; the parser does not infer advisor-selected or unofficial tracks.
 

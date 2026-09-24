@@ -220,6 +220,40 @@ final class PrereqGrammarTests: XCTestCase {
                        .all([.course("cs-159"), .course("math-235")]))
     }
 
+    func testCommaSeparatedListEndingInOrEquivalentIsChoice() {
+        let courses = Self.stubCatalog.merging([
+            "math-220": Course(id: "math-220", code: "MATH 220", title: "", credits: 3, availability: nil, prerequisites: []),
+            "math-229": Course(id: "math-229", code: "MATH 229", title: "", credits: 3, availability: nil, prerequisites: []),
+            "math-318": Course(id: "math-318", code: "MATH 318", title: "", credits: 3, availability: nil, prerequisites: [])
+        ], uniquingKeysWith: { current, _ in current })
+
+        let result = parse(
+            "Prerequisites: MATH 220, MATH 229, MATH 318 or equivalent.",
+            coursesByID: courses
+        )
+
+        XCTAssertEqual(result.prerequisiteExpr, .any([
+            .course("math-220"),
+            .course("math-229"),
+            .course("math-318")
+        ]))
+        XCTAssertFalse(result.hasUnknownTokens)
+        XCTAssertEqual(
+            PrereqEvaluator(completedBefore: ["math-220"], scheduledThisTerm: [])
+                .evaluate(result.prerequisiteExpr, mode: .prereq),
+            .satisfied
+        )
+    }
+
+    func testAndRequirementEndingInOrEquivalentRemainsConjunctive() {
+        let result = parse("CS 159 and MATH 235 or equivalent.")
+
+        XCTAssertEqual(
+            result.prerequisiteExpr.enforcedCourseOnly,
+            .all([.course("cs-159"), .course("math-235")])
+        )
+    }
+
     func testSemicolonIsAnd() {
         XCTAssertEqual(parse("CS 159; MATH 235").prerequisiteExpr,
                        .all([.course("cs-159"), .course("math-235")]))

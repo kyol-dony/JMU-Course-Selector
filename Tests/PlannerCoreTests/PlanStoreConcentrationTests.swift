@@ -6,6 +6,66 @@ import Testing
 @Suite("Plan store concentration selection")
 @MainActor
 struct PlanStoreConcentrationTests {
+    @Test("derived progress and warnings invalidate when the plan changes")
+    func derivedStateInvalidatesWithPlanChanges() throws {
+        let cs149 = Course(
+            id: "CS149",
+            code: "CS 149",
+            title: "Introduction to Programming",
+            credits: 3,
+            availability: [.fall, .spring],
+            prerequisites: []
+        )
+        let cs159 = Course(
+            id: "CS159",
+            code: "CS 159",
+            title: "Advanced Programming",
+            credits: 3,
+            availability: [.fall, .spring],
+            prerequisites: ["CS149"]
+        )
+        let program = Program.fixture(
+            id: "cs-bs",
+            title: "Computer Science, B.S.",
+            requirements: [
+                RequirementCategory(
+                    id: "core",
+                    name: "Core",
+                    requiredCredits: 3,
+                    courseOptions: [["CS159"]]
+                )
+            ]
+        )
+        let store = PlanStore()
+        store.catalog = Catalog.fixture(courses: [cs149, cs159], program: program)
+        store.plan.programID = program.id
+        store.plan.pathways = [
+            Pathway(
+                id: "path",
+                name: "Path",
+                semesters: [
+                    SemesterPlan(
+                        id: SemesterIdentity(year: 2026, term: .fall),
+                        courseIDs: ["CS159"]
+                    )
+                ]
+            )
+        ]
+        store.plan.activePathwayID = "path"
+
+        #expect(try #require(store.progress).overallCompletedCredits == 3)
+        #expect(store.warnings.contains { $0.kind == .missingPrerequisite })
+
+        store.plan.pathways[0].semesters[0].courseIDs = []
+        #expect(try #require(store.progress).overallCompletedCredits == 0)
+
+        store.plan.pathways[0].semesters[0].courseIDs = ["CS159"]
+        store.plan.transferCredits = [
+            TransferCredit(sourceDescription: "AP Computer Science A", courseIDs: ["CS149"], credits: 3)
+        ]
+        #expect(!store.warnings.contains { $0.kind == .missingPrerequisite })
+    }
+
     @Test("selecting a major with concentrations requires concentration")
     func majorWithConcentrationsRequiresSelection() {
         let store = PlanStore()

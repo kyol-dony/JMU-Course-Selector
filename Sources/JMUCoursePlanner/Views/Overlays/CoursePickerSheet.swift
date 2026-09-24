@@ -45,6 +45,17 @@ struct CoursePickerIndex {
     }
 }
 
+enum PlaceholderCoursePickerPolicy {
+    static func eligibleCourses(for spec: PlaceholderSpec, catalog: Catalog) -> [Course] {
+        if spec.alternates.isEmpty {
+            return catalog.courses
+        }
+
+        let coursesByID = catalog.coursesByID
+        return spec.alternates.compactMap { coursesByID[$0] }
+    }
+}
+
 struct CoursePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""

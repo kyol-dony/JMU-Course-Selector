@@ -72,6 +72,10 @@ public struct JMUHTMLCatalogParser: Sendable {
     public init() {}
 
     public func parseProgramsOfStudy(_ html: String) -> [HTMLProgramIndexEntry] {
+        if html.contains("filter-items") && html.contains("/programs/") {
+            return parseModernProgramsOfStudy(html)
+        }
+
         let sectionPattern = #"(?is)<p\b[^>]*>\s*<strong>(.*?)</strong>\s*</p>\s*<ul\s+class="program-list"\s*>(.*?)</ul>"#
         let linkPattern = #"(?is)<a\s+href="([^"]*preview_program\.php[^"]*)"[^>]*>(.*?)</a>"#
         var entries: [HTMLProgramIndexEntry] = []
@@ -109,10 +113,55 @@ public struct JMUHTMLCatalogParser: Sendable {
         return entries
     }
 
+    private func parseModernProgramsOfStudy(_ html: String) -> [HTMLProgramIndexEntry] {
+        let itemPattern = #"(?is)<li\b[^>]*class="[^"]*\bitem\b[^"]*"[^>]*>\s*<a\s+href="(/programs/[^"]+/)"[^>]*>(.*?)</a>\s*</li>"#
+        var seenPaths: Set<String> = []
+        var entries: [HTMLProgramIndexEntry] = []
+
+        for item in html.matches(for: itemPattern) {
+            guard item.count >= 3 else { continue }
+            let path = HTMLCleaner.decodeEntities(in: item[1])
+            guard seenPaths.insert(path).inserted else { continue }
+            let body = item[2]
+            let keywords = body.matches(for: #"(?is)<span\b[^>]*class="[^"]*\bkeyword\b[^"]*"[^>]*>(.*?)</span>"#)
+                .compactMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
+            guard keywords.contains("Undergraduate") else { continue }
+
+            let kind: ProgramKind
+            if keywords.contains("Bachelor's Degrees") {
+                kind = .major
+            } else if keywords.contains("Minors") || keywords.contains("Cross-Disciplinary Minors") {
+                kind = .minor
+            } else {
+                continue
+            }
+
+            guard let titleMatch = body.firstMatch(for: #"(?is)<span\b[^>]*class="[^"]*\btitle\b[^"]*"[^>]*>(.*?)</span>"#),
+                  titleMatch.count > 1,
+                  let url = URL(string: path, relativeTo: baseURL)?.absoluteURL
+            else { continue }
+
+            let title = HTMLCleaner.clean(titleMatch[1])
+            let slug = path.split(separator: "/").last.map(String.init) ?? title
+            entries.append(HTMLProgramIndexEntry(
+                title: title,
+                kind: kind,
+                sectionTitle: "Undergraduate Programs",
+                sourceURL: url,
+                printURL: url,
+                catoid: "2026-2027",
+                poid: slug,
+                degreeType: degreeType(from: title, kind: kind)
+            ))
+        }
+
+        return entries
+    }
+
     public func parseProgramRequirements(_ html: String, kind: ProgramKind, sourceURL: URL) -> HTMLProgramRequirements {
         let title = parseTitle(from: html)
         let catoid = queryValue("catoid", in: sourceURL.absoluteString) ?? "62"
-        let requirementSlice = requirementsSlice(in: html, kind: kind) ?? ""
+        let requirementSlice = modernRequirementsSlice(in: html) ?? requirementsSlice(in: html, kind: kind) ?? ""
         var coursesByID: [String: Course] = [:]
         var usedCategoryIDs: Set<String> = []
         var categories: [RequirementCategory] = []
@@ -192,7 +241,15 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func concentrationTotalCredits(in blocks: [RequirementBlock]) -> Int? {
-        blocks.compactMap { block -> Int? in
+        let tableTotals = blocks.compactMap { block -> Int? in
+            guard block.heading.lowercased().hasPrefix("catalog table total") else { return nil }
+            return parseCredits(from: block.heading)
+        }
+        if !tableTotals.isEmpty {
+            return tableTotals.reduce(0, +)
+        }
+
+        return blocks.compactMap { block -> Int? in
             let lower = block.heading.lowercased()
             guard lower.contains("concentration"), lower.contains("total") else { return nil }
             return parseCredits(from: block.heading)
@@ -200,6 +257,10 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     public func parseCourseDetail(_ html: String) -> HTMLCourseDetail {
+        if let modernDetail = parseModernCourseDetail(html) {
+            return modernDetail
+        }
+
         // The live JMU `preview_course.php` popup format does not wrap the
         // description in `<p>` tags. Try the popup-format extractor first; if it
         // finds a description, return it. Otherwise fall through to the
@@ -237,6 +298,23 @@ public struct JMUHTMLCatalogParser: Sendable {
             description: description.isEmpty ? nil : description,
             prerequisiteText: prerequisiteText
         )
+    }
+
+    private func parseModernCourseDetail(_ html: String) -> HTMLCourseDetail? {
+        guard html.contains("search-courseresult"),
+              let article = html.firstMatch(for: #"(?is)<article\b[^>]*class="[^"]*\bsearch-courseresult\b[^"]*"[^>]*>(.*?)</article>"#),
+              article.count > 1
+        else { return nil }
+
+        let description = article[1]
+            .firstMatch(for: #"(?is)<div\b[^>]*class="[^"]*\bcourseblockdesc\b[^"]*"[^>]*>(.*?)</div>"#)
+            .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
+        let prerequisiteText = article[1]
+            .firstMatch(for: #"(?is)<div\b[^>]*class="[^"]*\bcourseblockextra\b[^"]*"[^>]*>(.*?)</div>"#)
+            .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
+
+        guard description?.isEmpty == false || prerequisiteText?.isEmpty == false else { return nil }
+        return HTMLCourseDetail(description: description, prerequisiteText: prerequisiteText)
     }
 
     /// Handles the live JMU popup-style `preview_course.php` page. Format:
@@ -351,12 +429,22 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func parseTitle(from html: String) -> String? {
-        guard let match = html.firstMatch(for: #"(?is)<h1\b[^>]*id="acalog-content"[^>]*>(.*?)</h1>"#),
+        guard let match = html.firstMatch(for: #"(?is)<h1\b[^>]*(?:id="acalog-content"|class="[^"]*\bpage-title\b[^"]*")[^>]*>(.*?)</h1>"#),
               match.count > 1
         else {
             return nil
         }
         return HTMLCleaner.clean(match[1])
+    }
+
+    private func modernRequirementsSlice(in html: String) -> String? {
+        guard let start = html.range(of: #"<div\b[^>]*id="requirementstextcontainer"[^>]*>"#, options: [.regularExpression, .caseInsensitive]) else {
+            return html.contains("sc_courselist") ? html : nil
+        }
+        let remainder = html[start.upperBound...]
+        let end = remainder.range(of: #"<div\b[^>]*id="recommendedscheduletextcontainer""#, options: [.regularExpression, .caseInsensitive])?.lowerBound
+            ?? html.endIndex
+        return String(html[start.upperBound..<end])
     }
 
     private func requirementsSlice(in html: String, kind: ProgramKind) -> String? {
@@ -424,9 +512,14 @@ public struct JMUHTMLCatalogParser: Sendable {
         var level: Int
         var heading: String
         var body: String
+        var isStructuralHeading: Bool = true
     }
 
     private func requirementBlocks(in html: String) -> [RequirementBlock] {
+        if html.contains("sc_courselist") {
+            return modernRequirementBlocks(in: html)
+        }
+
         let markerPattern = #"(?is)<div\s+class="acalog-core"\s*>\s*<h[2-5]\b[^>]*>"#
         let markers = html.matchesWithRanges(for: markerPattern).map(\.range)
 
@@ -447,6 +540,105 @@ public struct JMUHTMLCatalogParser: Sendable {
         }
     }
 
+    private func modernRequirementBlocks(in html: String) -> [RequirementBlock] {
+        let headingPattern = #"(?is)<h([2-5])\b[^>]*>(.*?)</h\1>"#
+        let headings = html.matchesWithRanges(for: headingPattern)
+        var blocks: [RequirementBlock] = []
+        var clusterParents: [(level: Int, heading: String)] = []
+
+        for (index, headingMatch) in headings.enumerated() {
+            guard let parts = headingMatch.match.firstMatch(for: headingPattern), parts.count >= 3 else { continue }
+            let level = Int(parts[1]) ?? 3
+            let rawHeading = HTMLCleaner.clean(parts[2])
+            guard !rawHeading.isEmpty else { continue }
+            clusterParents.removeAll { $0.level >= level }
+            if rawHeading.range(of: #"\[C\d[A-Z]+\]"#, options: .regularExpression) != nil {
+                clusterParents.append((level, rawHeading))
+            }
+            // C2L places its course table below an explanatory h4. Keep the
+            // bracketed h3 cluster name so Gen Ed refresh still recognizes it.
+            let heading = rawHeading.range(of: #"\[C\d[A-Z]+\]"#, options: .regularExpression) != nil
+                ? rawHeading
+                : (clusterParents.last?.heading ?? rawHeading)
+
+            let bodyStart = headingMatch.range.upperBound
+            let bodyEnd = index + 1 < headings.count ? headings[index + 1].range.lowerBound : html.endIndex
+            let segment = String(html[bodyStart..<bodyEnd])
+            let tables = segment.matchesWithRanges(for: #"(?is)<table\b[^>]*class="[^"]*\bsc_courselist\b[^"]*"[^>]*>(.*?)</table>"#)
+
+            guard !tables.isEmpty else {
+                blocks.append(RequirementBlock(level: level, heading: heading, body: segment))
+                continue
+            }
+
+            var baseBody = String(segment[..<tables[0].range.lowerBound])
+            var commentBlocks: [RequirementBlock] = []
+
+            for table in tables {
+                var currentCommentHeading: String?
+                var currentCommentBody = ""
+
+                func flushComment() {
+                    guard let heading = currentCommentHeading else { return }
+                    commentBlocks.append(RequirementBlock(
+                        level: min(level + 1, 5),
+                        heading: heading,
+                        body: currentCommentBody,
+                        isStructuralHeading: false
+                    ))
+                    currentCommentHeading = nil
+                    currentCommentBody = ""
+                }
+
+                for row in table.match.matches(for: #"(?is)<tr\b[^>]*>(.*?)</tr>"#) {
+                    guard row.count > 1 else { continue }
+                    let rowHTML = row[0]
+                    if rowHTML.range(of: #"class="[^"]*\blistsum\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+                        flushComment()
+                        if let credits = parseLeadingCredits(HTMLCleaner.clean(rowHTML).replacingOccurrences(of: "Total Credits", with: "")) {
+                            commentBlocks.append(RequirementBlock(
+                                level: min(level + 1, 5),
+                                heading: "Catalog Table Total: \(credits) Credit Hours",
+                                body: "",
+                                isStructuralHeading: false
+                            ))
+                        }
+                        continue
+                    }
+                    if let comment = rowHTML.firstMatch(for: #"(?is)<span\b[^>]*class="[^"]*\bcourselistcomment\b[^"]*"[^>]*>(.*?)</span>"#),
+                       comment.count > 1 {
+                        let commentHeading = HTMLCleaner.clean(comment[1])
+                        let hours = rowHTML
+                            .firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>(.*?)</td>"#)
+                            .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
+                        let isSectionHeader = rowHTML.contains("areaheader") || rowHTML.contains("areasubheader")
+                        let startsRequirement = isSectionHeader
+                            || hours?.isEmpty == false
+                            || choiceSelectionCount(heading: commentHeading, body: "") != nil
+                            || currentCommentHeading == nil
+                        if startsRequirement {
+                            flushComment()
+                            currentCommentHeading = commentHeading
+                            currentCommentBody = rowHTML
+                        } else {
+                            currentCommentBody += rowHTML
+                        }
+                    } else if currentCommentHeading != nil {
+                        currentCommentBody += rowHTML
+                    } else {
+                        baseBody += rowHTML
+                    }
+                }
+                flushComment()
+            }
+
+            blocks.append(RequirementBlock(level: level, heading: heading, body: baseBody))
+            blocks.append(contentsOf: commentBlocks)
+        }
+
+        return blocks
+    }
+
     private func splitConcentrationBlocks(_ blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])], concentrationSelectionRequired: Bool) {
         // Two layouts in the catalog:
         //
@@ -458,7 +650,16 @@ public struct JMUHTMLCatalogParser: Sendable {
         // First-try the umbrella path; if absent, fall back to scanning for
         // sibling concrete-concentration headings and treating the first such
         // heading as the partition point.
-        if let umbrellaIndex = blocks.firstIndex(where: isConcentrationSectionHeading) {
+        if let umbrellaIndex = blocks.firstIndex(where: { $0.isStructuralHeading && isConcentrationSectionHeading($0) }) {
+            if blocks.contains(where: { !$0.isStructuralHeading }) {
+                let partition = partitionModernHierarchyAfter(umbrellaIndex: umbrellaIndex, blocks: blocks)
+                return (
+                    shared: partition.shared,
+                    concentrationRuns: partition.concentrationRuns,
+                    concentrationSelectionRequired: isRequiredConcentrationSectionHeading(blocks[umbrellaIndex])
+                        || !allowsBaseMajorWithoutConcentration(in: partition.shared)
+                )
+            }
             let partition = partitionAfter(umbrellaIndex: umbrellaIndex, blocks: blocks)
             return (
                 shared: partition.shared,
@@ -467,11 +668,99 @@ public struct JMUHTMLCatalogParser: Sendable {
                     || !allowsBaseMajorWithoutConcentration(in: partition.shared)
             )
         }
-        guard let firstConcentration = blocks.firstIndex(where: { isConcreteConcentrationHeading($0.heading) }) else {
+        guard let firstConcentration = blocks.firstIndex(where: { $0.isStructuralHeading && isConcreteConcentrationHeading($0.heading) }) else {
             return (blocks, [], false)
         }
         let partition = partitionInline(firstConcentration: firstConcentration, blocks: blocks)
         return (partition.shared, partition.concentrationRuns, !allowsBaseMajorWithoutConcentration(in: partition.shared))
+    }
+
+    private func partitionModernHierarchyAfter(
+        umbrellaIndex: Int,
+        blocks: [RequirementBlock]
+    ) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])]) {
+        let umbrellaLevel = blocks[umbrellaIndex].level
+        let sectionEnd = blocks[(umbrellaIndex + 1)...].firstIndex {
+            $0.isStructuralHeading && $0.level <= umbrellaLevel
+        } ?? blocks.endIndex
+        let shared = Array(blocks[..<umbrellaIndex]).filter { !isConcentrationSummaryBlock($0) }
+
+        let directHeadings = blocks.indices.filter { index in
+            index > umbrellaIndex
+                && index < sectionEnd
+                && blocks[index].isStructuralHeading
+                && blocks[index].level == umbrellaLevel + 1
+        }
+        var runs: [(name: String, blocks: [RequirementBlock])] = []
+        for (offset, index) in directHeadings.enumerated() {
+            let end = offset + 1 < directHeadings.count ? directHeadings[offset + 1] : sectionEnd
+            runs.append(contentsOf: modernLeafRuns(
+                nodeIndex: index,
+                endIndex: end,
+                inherited: [],
+                pathHeadings: [],
+                blocks: blocks
+            ))
+        }
+        return (shared, runs)
+    }
+
+    private func modernLeafRuns(
+        nodeIndex: Int,
+        endIndex: Int,
+        inherited: [RequirementBlock],
+        pathHeadings: [String],
+        blocks: [RequirementBlock]
+    ) -> [(name: String, blocks: [RequirementBlock])] {
+        let node = blocks[nodeIndex]
+        let childCandidates = blocks.indices.filter { index in
+            index > nodeIndex
+                && index < endIndex
+                && blocks[index].isStructuralHeading
+                && blocks[index].level > node.level
+                && isConcreteConcentrationHeading(blocks[index].heading)
+        }
+        guard let childLevel = childCandidates.map({ blocks[$0].level }).min() else {
+            return [(modernConcentrationName(pathHeadings + [node.heading]), inherited + Array(blocks[nodeIndex..<endIndex]))]
+        }
+
+        let children = childCandidates.filter { blocks[$0].level == childLevel }
+        let localSharedEnd = children.first ?? endIndex
+        let localShared = inherited + Array(blocks[nodeIndex..<localSharedEnd])
+        var runs: [(name: String, blocks: [RequirementBlock])] = []
+        for (offset, childIndex) in children.enumerated() {
+            let childEnd = offset + 1 < children.count ? children[offset + 1] : endIndex
+            runs.append(contentsOf: modernLeafRuns(
+                nodeIndex: childIndex,
+                endIndex: childEnd,
+                inherited: localShared,
+                pathHeadings: pathHeadings + [node.heading],
+                blocks: blocks
+            ))
+        }
+        return runs
+    }
+
+    private func modernConcentrationName(_ headings: [String]) -> String {
+        guard var name = headings.first.map(JMUHTMLCatalogParser.cleanConcentrationName) else { return "Concentration" }
+        for heading in headings.dropFirst() {
+            var child = heading
+                .replacingOccurrences(of: #"(?i)\s+Requirements$"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if child.lowercased().hasPrefix(name.lowercased()) {
+                name = child
+            } else {
+                child = child.replacingOccurrences(of: #"(?i)^Subtrack in\s+"#, with: "", options: .regularExpression)
+                name += " - \(child)"
+            }
+        }
+        return name
+    }
+
+    private func isConcentrationSummaryBlock(_ block: RequirementBlock) -> Bool {
+        guard !block.isStructuralHeading else { return false }
+        let lower = block.heading.lowercased()
+        return lower == "concentrations" || lower.contains("following concentrations")
     }
 
     private func partitionAfter(umbrellaIndex: Int, blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])]) {
@@ -625,6 +914,7 @@ public struct JMUHTMLCatalogParser: Sendable {
         if lower.contains("concentration") { return true }
         if lower.contains("emphasis") { return true }
         if lower.contains("specialization") { return true }
+        if lower.contains("subtrack") { return true }
         if lower.contains(" track") || lower.hasSuffix("track") { return true }
         // Match "Option N", "Path N", "Route N" word boundaries. Avoid
         // matching every "Course Options" sub-heading by requiring the noun
@@ -679,8 +969,12 @@ public struct JMUHTMLCatalogParser: Sendable {
             coursesByID[course.id] = course
         }
 
-        let selectionCount = choiceSelectionCount(heading: block.heading, body: block.body)
-        let requiredCredits = parseCredits(from: block.heading)
+        let selectedCreditHours = choiceCreditHours(heading: block.heading, body: block.body)
+        let selectionCount = selectedCreditHours.map { creditHours in
+            choiceCourseCount(for: creditHours, courses: courses)
+        } ?? choiceSelectionCount(heading: block.heading, body: block.body)
+        let requiredCredits = selectedCreditHours
+            ?? parseCredits(from: block.heading)
             ?? parseTotalCreditsFromBody(block.body)
             ?? inferredCredits(for: courseItems, selectionCount: selectionCount)
 
@@ -733,6 +1027,10 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func courseItems(in html: String, catoid: String) -> [CourseItem] {
+        if html.contains("<tr") && html.contains("/search/?P=") {
+            return modernCourseItems(in: html)
+        }
+
         let listItemPattern = #"(?is)<li\b([^>]*)>(.*?)</li>"#
         return html.matches(for: listItemPattern).compactMap { match in
             guard match.count >= 3 else { return nil }
@@ -753,6 +1051,52 @@ public struct JMUHTMLCatalogParser: Sendable {
             }
             return .course(course)
         }
+    }
+
+    private func modernCourseItems(in html: String) -> [CourseItem] {
+        var items: [CourseItem] = []
+        for row in html.matches(for: #"(?is)<tr\b[^>]*>(.*?)</tr>"#) {
+            guard row.count > 1,
+                  !row[0].contains("courselistcomment"),
+                  !row[0].contains("listsum"),
+                  let codeCell = row[1].firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bcodecol\b[^"]*"[^>]*>(.*?)</td>"#),
+                  codeCell.count > 1
+            else { continue }
+
+            let cells = row[1].matches(for: #"(?is)<td\b[^>]*>(.*?)</td>"#)
+            let title = cells.count > 1 && cells[1].count > 1 ? HTMLCleaner.clean(cells[1][1]) : ""
+            let hoursText = row[1]
+                .firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>(.*?)</td>"#)
+                .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
+            let links = codeCell[1].matches(for: #"(?is)<a\b[^>]*href="([^"]*/search/\?P=[^"]+)"[^>]*>(.*?)</a>"#)
+            let rowCredits = hoursText.flatMap(parseLeadingCredits)
+            let perCourseCredits = rowCredits.map { max(Int(ceil(Double($0) / Double(max(links.count, 1)))), 1) } ?? 3
+
+            for link in links where link.count >= 3 {
+                let code = HTMLCleaner.clean(link[2])
+                guard let parsedCode = code.firstMatch(for: #"^([A-Z]{2,5})\s+(\d{3}[A-Z]?)$"#), parsedCode.count >= 3 else { continue }
+                let subject = parsedCode[1]
+                let number = parsedCode[2]
+                let url = URL(string: HTMLCleaner.decodeEntities(in: link[1]), relativeTo: baseURL)?.absoluteURL
+                items.append(.course(Course(
+                    id: "\(subject)\(number)",
+                    code: "\(subject) \(number)",
+                    title: title,
+                    credits: perCourseCredits,
+                    availability: nil,
+                    prerequisites: [],
+                    verificationStatus: .partial,
+                    registrarURL: url
+                )))
+            }
+        }
+        return items
+    }
+
+    private func parseLeadingCredits(_ text: String) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let match = trimmed.firstMatch(for: #"^(\d+)(?:\s*-\s*\d+)?"#), match.count > 1 else { return nil }
+        return Int(match[1])
     }
 
     private func parseCourse(fromListItem html: String, catoid: String) -> Course? {
@@ -848,7 +1192,38 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func isChoiceRequirement(heading: String, body: String) -> Bool {
-        choiceSelectionCount(heading: heading, body: body) != nil
+        choiceCreditHours(heading: heading, body: body) != nil
+            || choiceSelectionCount(heading: heading, body: body) != nil
+    }
+
+    private func choiceCreditHours(heading: String, body: String) -> Int? {
+        let text = HTMLCleaner.clean("\(heading) \(body)").lowercased()
+        if let match = text.firstMatch(for: #"(?i)(?:choose|select)\s+(\d+)\s+credit\s*hours?"#),
+           match.count > 1,
+           let credits = Int(match[1]) {
+            return credits
+        }
+
+        let wordValues = [
+            "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+            "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+            "twelve": 12, "fifteen": 15, "eighteen": 18, "twenty-one": 21,
+            "twenty-four": 24
+        ]
+        for (word, value) in wordValues {
+            if text.range(
+                of: "(?:choose|select)\\s+\(word)\\s+credit\\s*hours?",
+                options: .regularExpression
+            ) != nil {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private func choiceCourseCount(for requiredCredits: Int, courses: [Course]) -> Int {
+        let slotCredits = max(courses.map(\.credits).max() ?? 3, 1)
+        return max(Int(ceil(Double(requiredCredits) / Double(slotCredits))), 1)
     }
 
     private func choiceSelectionCount(heading: String, body: String) -> Int? {
@@ -963,12 +1338,17 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func parseProgramTotal(from html: String) -> Int? {
-        guard let match = HTMLCleaner.clean(html).firstMatch(for: #"(?i)(?:Program\s+)?Total:\s*(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#),
-              match.count > 1
-        else {
-            return nil
+        let cleaned = HTMLCleaner.clean(html)
+        let patterns = [
+            #"(?i)(?:Program\s+)?Total:\s*(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#,
+            #"(?i)\bTotal\s+(\d+)(?:\s*-\s*\d+)?\b"#
+        ]
+        for pattern in patterns {
+            if let match = cleaned.firstMatch(for: pattern), match.count > 1 {
+                return Int(match[1])
+            }
         }
-        return Int(match[1])
+        return nil
     }
 
     private func slug(from text: String) -> String {

@@ -132,6 +132,20 @@ final class PrereqRuleOverlayTests: XCTestCase {
 }
 
 final class CatalogPrereqOverlayCodableTests: XCTestCase {
+    func testCatalogIndexesStayCurrentWhenCollectionsChange() throws {
+        let initialCourse = Course(id: "CS149", code: "CS 149", title: "Intro", credits: 3, availability: nil, prerequisites: [])
+        let addedCourse = Course(id: "CS159", code: "CS 159", title: "Advanced", credits: 3, availability: nil, prerequisites: [])
+        let initialProgram = Program.fixture(id: "cs-bs", title: "Computer Science, B.S.", requirements: [])
+        let addedProgram = Program.fixture(id: "cis-bba", title: "Computer Information Systems, B.B.A.", requirements: [])
+        var catalog = Catalog.fixture(courses: [initialCourse], program: initialProgram)
+
+        catalog.courses.append(addedCourse)
+        catalog.programs.append(addedProgram)
+
+        XCTAssertEqual(catalog.coursesByID["CS159"]?.title, "Advanced")
+        XCTAssertEqual(catalog.programsByID["cis-bba"]?.title, "Computer Information Systems, B.B.A.")
+    }
+
     func testCatalogDefaultsToEmptyOverlayWhenDecodedFromOldJSON() throws {
         let json = """
         {

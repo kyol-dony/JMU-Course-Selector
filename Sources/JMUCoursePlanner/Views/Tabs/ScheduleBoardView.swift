@@ -6,6 +6,7 @@ struct ScheduleBoardView: View {
     var catalog: Catalog
 
     var body: some View {
+        let visibleWarnings = store.warnings.filter { $0.kind != .unknownAvailability }
         if store.plan.pathways.isEmpty {
             EmptyState(
                 systemImage: "calendar.badge.plus",
@@ -18,8 +19,8 @@ struct ScheduleBoardView: View {
             VStack(spacing: 0) {
                 subToolbar
                 Divider().opacity(0.5)
-                warningsBanner
-                board
+                warningsBanner(visibleWarnings)
+                board(visibleWarnings)
             }
         }
     }
@@ -59,7 +60,7 @@ struct ScheduleBoardView: View {
     }
 
     @ViewBuilder
-    private var warningsBanner: some View {
+    private func warningsBanner(_ visibleWarnings: [ConflictWarning]) -> some View {
         let active = visibleWarnings.filter { !$0.isOverridden }
         if !active.isEmpty {
             HStack(spacing: DesignTokens.Spacing.s) {
@@ -76,7 +77,7 @@ struct ScheduleBoardView: View {
         }
     }
 
-    private var board: some View {
+    private func board(_ visibleWarnings: [ConflictWarning]) -> some View {
         ScrollView([.horizontal, .vertical]) {
             HStack(alignment: .top, spacing: DesignTokens.Spacing.m) {
                 if let pathway = store.activePathway {
@@ -100,9 +101,6 @@ struct ScheduleBoardView: View {
         }
     }
 
-    private var visibleWarnings: [ConflictWarning] {
-        store.warnings.filter { $0.kind != .unknownAvailability }
-    }
 }
 
 private struct SemesterColumn: View {
@@ -156,7 +154,7 @@ private struct SemesterColumn: View {
                     }
                 }
                 Spacer(minLength: 0)
-                addCourseMenu
+                addCourseButton
             }
         }
         .frame(width: 280)
@@ -167,44 +165,34 @@ private struct SemesterColumn: View {
             return true
         }
         .sheet(item: $coursePickerRequest) { request in
-            CoursePickerSheet(title: "Choose \(request.categoryName)", courses: catalog.courses) { course in
-                store.resolvePlaceholder(request.placeholderID, with: course.id)
+            CoursePickerSheet(title: request.title, courses: request.courses) { course in
+                switch request.action {
+                case .resolvePlaceholder(let placeholderID):
+                    store.resolvePlaceholder(placeholderID, with: course.id)
+                case .addCourse:
+                    store.moveCourse(course.id, to: semester.id)
+                }
             }
         }
     }
 
     /// Dashed-outline chip rendered for unfilled multi-alternate requirement
-    /// options. Tap to pick a course from the option's alternates. Open
-    /// electives use an empty `alternates` list as a sentinel and open the
-    /// searchable, virtualized full-catalog picker instead of an eager menu.
-    @ViewBuilder
+    /// options. Every placeholder opens the searchable course picker. Empty
+    /// alternates mean any catalog course; otherwise results stay restricted
+    /// to the requirement's parsed alternatives.
     private func placeholderChip(id: String, spec: PlaceholderSpec) -> some View {
-        // Empty alternates = "any catalog course" (open electives, plus any
-        // restored slot whose original alternates are gone). A Menu over an
-        // empty list would be a dead end, so route to the catalog picker.
-        if spec.alternates.isEmpty {
-            Button {
-                coursePickerRequest = CoursePickerRequest(
-                    placeholderID: id,
-                    categoryName: spec.categoryName
-                )
-            } label: {
-                placeholderLabel(spec)
-            }
-            .buttonStyle(.plain)
-        } else {
-            Menu {
-                let coursesByID = catalog.coursesByID
-                ForEach(spec.alternates, id: \.self) { altID in
-                    let label = coursesByID[altID].map { "\($0.code) - \($0.title)" } ?? altID
-                    Button(label) { store.resolvePlaceholder(id, with: altID) }
-                }
-            } label: {
-                placeholderLabel(spec)
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
+        let eligibleCourses = PlaceholderCoursePickerPolicy.eligibleCourses(for: spec, catalog: catalog)
+        return Button {
+            coursePickerRequest = CoursePickerRequest(
+                id: id,
+                title: "Choose \(spec.categoryName)",
+                courses: eligibleCourses,
+                action: .resolvePlaceholder(id)
+            )
+        } label: {
+            placeholderLabel(spec)
         }
+        .buttonStyle(.plain)
     }
 
     private func placeholderLabel(_ spec: PlaceholderSpec) -> some View {
@@ -283,13 +271,14 @@ private struct SemesterColumn: View {
         }
     }
 
-    private var addCourseMenu: some View {
-        Menu {
-            ForEach(catalog.courses.sorted { $0.code < $1.code }) { course in
-                Button("\(course.code) - \(course.title)") {
-                    store.moveCourse(course.id, to: semester.id)
-                }
-            }
+    private var addCourseButton: some View {
+        Button {
+            coursePickerRequest = CoursePickerRequest(
+                id: "add::\(semester.id.year)::\(semester.id.term.rawValue)",
+                title: "Add course to \(semester.id.displayName)",
+                courses: catalog.courses,
+                action: .addCourse
+            )
         } label: {
             HStack {
                 Image(systemName: "plus.circle.fill")
@@ -304,7 +293,7 @@ private struct SemesterColumn: View {
                     .fill(DesignTokens.Colors.brandPurpleSoft)
             )
         }
-        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
     }
 
     private func isHighlighted(courseID: String) -> Bool {
@@ -326,8 +315,13 @@ private struct SemesterColumn: View {
 }
 
 private struct CoursePickerRequest: Identifiable {
-    let placeholderID: String
-    let categoryName: String
+    enum Action {
+        case resolvePlaceholder(String)
+        case addCourse
+    }
 
-    var id: String { placeholderID }
+    let id: String
+    let title: String
+    let courses: [Course]
+    let action: Action
 }

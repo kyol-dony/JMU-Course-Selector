@@ -145,7 +145,7 @@ components:
 
 **Creative North Star: "The Catalog, Translated"**
 
-The printed JMU 2025-2026 Undergraduate Catalog is the source material. This app is its translation: the same authority, the same scholarly restraint, but rendered for a freshman at a Mac at midnight. Surfaces feel like tinted paper. Royal Purple acts as ink-mark, never as banner. Madison Gold sits in the margin: course-code accents, the lone JMU monogram, a notation. The grid is calm. The numbers are tabular and aligned. Nothing shouts.
+The printed JMU 2026-2027 Undergraduate Catalog is the source material. This app is its translation: the same authority, the same scholarly restraint, but rendered for a freshman at a Mac at midnight. Surfaces feel like tinted paper. Royal Purple acts as ink-mark, never as banner. Madison Gold sits in the margin: course-code accents, the lone JMU monogram, a notation. The grid is calm. The numbers are tabular and aligned. Nothing shouts.
 
 The system rejects four reflexes. It rejects the default Mac app look (System gray, single blue accent, untreated form controls). It rejects the 1990s registrar portal (gray-on-gray tables, abbreviation-soup headers). It rejects the crypto/fintech dark mode (neon, gradient hero metrics on pure black). And it rejects the corporate enterprise dashboard cliché (big number, small label, sparkline, generic blue). When a choice feels like it might be one of those, we stop and choose otherwise.
 

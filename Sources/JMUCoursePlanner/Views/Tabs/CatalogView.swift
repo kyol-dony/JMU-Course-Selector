@@ -47,11 +47,11 @@ struct CatalogView: View {
                 .padding(.horizontal, DesignTokens.Spacing.l)
                 .padding(.top, DesignTokens.Spacing.l)
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(grouped, id: \.college) { college, departments in
-                        DisclosureGroup {
+                        InteractiveDisclosureGroup {
                             ForEach(departments, id: \.name) { department in
-                                DisclosureGroup {
+                                InteractiveDisclosureGroup {
                                     ForEach(department.programs) { program in
                                         programRow(program)
                                     }
@@ -178,7 +178,7 @@ struct CatalogView: View {
 
     private func requirementCard(_ requirement: RequirementCategory) -> some View {
         Card {
-            DisclosureGroup {
+            InteractiveDisclosureGroup(contentIndent: DesignTokens.Spacing.m) {
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
                     if let note = requirement.note {
                         Text(note)

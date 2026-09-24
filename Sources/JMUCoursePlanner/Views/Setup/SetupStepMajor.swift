@@ -39,9 +39,9 @@ struct SetupStepMajor: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
                     ForEach(grouped, id: \.college) { college, departments in
-                        DisclosureGroup {
+                        InteractiveDisclosureGroup {
                             ForEach(departments, id: \.name) { department in
-                                DisclosureGroup {
+                                InteractiveDisclosureGroup {
                                     ForEach(department.programs) { program in
                                         programRow(program)
                                     }

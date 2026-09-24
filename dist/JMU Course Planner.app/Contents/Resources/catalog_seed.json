@@ -3584,16 +3584,17 @@
     ]
   },
   "source" : {
-    "catalogYear" : "2025-2026",
-    "issueDate" : "2025-05-01T00:00:00Z",
+    "catalogYear" : "2026-2027",
+    "issueDate" : "2026-05-01T00:00:00Z",
     "retrievalNotes" : [
-      "Primary catalog.jmu.edu PHP pages were not accessible in this environment; direct requests returned a protected\/empty response.",
-      "The official JMU 2025-2026 Undergraduate Catalog PDF was downloaded from jmu.edu\/catalog\/pdfs and used as the verified source for the seed list.",
+      "The official JMU 2026-2027 Undergraduate Catalog PDF is bundled as the current offline catalog source.",
+      "Program requirements refresh from the current path-based catalog.jmu.edu program and course pages.",
+      "AP transfer rules retain their 2025-2026 source labels until that chart is independently re-verified against the current edition.",
       "Programs without parsed requirement rows are included as catalog shells and are flagged unverified in the app."
     ],
-    "retrievedDate" : "2026-05-19T00:00:00Z",
+    "retrievedDate" : "2026-07-20T00:00:00Z",
     "sourceURLs" : [
-      "https:\/\/www.jmu.edu\/catalog\/pdfs\/2025-2026-jmu-undergraduate-catalog.pdf",
+      "https:\/\/catalog.jmu.edu\/pdf\/JMU2026-2027UndergraduateCatalog.pdf",
       "https:\/\/catalog.jmu.edu\/"
     ]
   }

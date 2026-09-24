@@ -5,8 +5,12 @@ import SwiftUI
 
 @MainActor
 final class PlanStore: ObservableObject {
-    @Published var catalog: Catalog?
-    @Published var plan = SavedStudentPlan()
+    @Published var catalog: Catalog? {
+        didSet { invalidateDerivedState() }
+    }
+    @Published var plan = SavedStudentPlan() {
+        didSet { invalidateDerivedState() }
+    }
     @Published var savedPlans: [SavedStudentPlan] = []
     @Published var selectedCourse: Course?
     @Published var courseDetail: CourseDetail?
@@ -24,6 +28,9 @@ final class PlanStore: ObservableObject {
     private let catalogRepository = CatalogRepository()
     private let detailService = CourseDetailService()
     private var courseDetailCache: [String: CourseDetail] = [:]
+    private var cachedWarnings: [ConflictWarning]?
+    private var cachedProgress: GraduationProgress?
+    private var progressCacheIsValid = false
 
     var activeProgram: Program? {
         guard let catalog, let programID = plan.programID else { return nil }
@@ -58,8 +65,11 @@ final class PlanStore: ObservableObject {
     }
 
     var warnings: [ConflictWarning] {
+        if let cachedWarnings {
+            return cachedWarnings
+        }
         guard let catalog, let activePathway else { return [] }
-        return ConflictDetector(catalog: catalog).warnings(
+        let result = ConflictDetector(catalog: catalog).warnings(
             for: activePathway,
             overrides: plan.overrides,
             activeProgramTitle: effectiveActiveProgram?.title,
@@ -68,17 +78,35 @@ final class PlanStore: ObservableObject {
             // generator does.
             completedAtStart: Set(plan.transferCredits.flatMap(\.courseIDs))
         )
+        cachedWarnings = result
+        return result
     }
 
     var progress: GraduationProgress? {
-        guard let catalog, let programID = plan.programID, let activePathway else { return nil }
-        return try? ProgressCalculator(catalog: catalog).progress(
-            programID: programID,
-            concentrationID: plan.concentrationID,
-            pathway: activePathway,
-            transferCredits: plan.transferCredits,
-            additionalPrograms: selectedMinorPrograms()
-        )
+        if progressCacheIsValid {
+            return cachedProgress
+        }
+        let result: GraduationProgress?
+        if let catalog, let programID = plan.programID, let activePathway {
+            result = try? ProgressCalculator(catalog: catalog).progress(
+                programID: programID,
+                concentrationID: plan.concentrationID,
+                pathway: activePathway,
+                transferCredits: plan.transferCredits,
+                additionalPrograms: selectedMinorPrograms()
+            )
+        } else {
+            result = nil
+        }
+        cachedProgress = result
+        progressCacheIsValid = true
+        return result
+    }
+
+    private func invalidateDerivedState() {
+        cachedWarnings = nil
+        cachedProgress = nil
+        progressCacheIsValid = false
     }
 
     /// Effective Program for each added minor (parent program + its selected

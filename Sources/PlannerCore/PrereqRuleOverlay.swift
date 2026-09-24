@@ -113,10 +113,12 @@ public struct ResolvedPrereqRule: Hashable, Sendable {
 public struct PrereqRuleResolver: Sendable {
     public var catalog: Catalog
     public var overlay: PrereqRuleOverlay
+    private let parserIndex: PrereqParser.CourseIndex
 
     public init(catalog: Catalog, overlay: PrereqRuleOverlay? = nil) {
         self.catalog = catalog
         self.overlay = overlay ?? catalog.prereqRuleOverlay
+        self.parserIndex = PrereqParser.CourseIndex(coursesByID: catalog.coursesByID)
     }
 
     public func rule(for course: Course, activeProgramTitle: String?) -> ResolvedPrereqRule {
@@ -136,7 +138,7 @@ public struct PrereqRuleResolver: Sendable {
 
         let trimmedRaw = course.rawPrerequisiteText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !trimmedRaw.isEmpty {
-            let parser = PrereqParser(coursesByID: catalog.coursesByID, activeProgramTitle: activeProgramTitle)
+            let parser = PrereqParser(index: parserIndex, activeProgramTitle: activeProgramTitle)
             let parsed = parser.parse(trimmedRaw)
             return ResolvedPrereqRule(
                 courseID: course.id,

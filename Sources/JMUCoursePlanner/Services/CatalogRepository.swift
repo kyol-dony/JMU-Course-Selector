@@ -53,9 +53,14 @@ struct CatalogRepository {
 
     func refreshCatalogFromHTML(progress: ((CatalogRefreshProgress) -> Void)? = nil) async throws -> Catalog {
         let seed = try SeedCatalog.decode(from: try Data(contentsOf: bundledCatalogURL()))
-        let programsURL = URL(string: "https://catalog.jmu.edu/content.php?catoid=62&navoid=3541")!
+        let programsURL = JMUCatalogConfiguration.programsURL
         let indexHTML = try await Self.fetchHTML(from: programsURL)
         let entries = htmlParser.parseProgramsOfStudy(indexHTML)
+        guard !entries.isEmpty else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSLocalizedDescriptionKey: "The JMU program index returned no recognized undergraduate programs."
+            ])
+        }
         let seedProgramsByTitle = Dictionary(uniqueKeysWithValues: seed.programs.map { ($0.title.normalizedProgramTitle, $0) })
         var programIDsByTitle: [String: String] = [:]
         var usedProgramIDs: Set<String> = []
@@ -145,7 +150,7 @@ struct CatalogRepository {
         coursesByID = Dictionary(uniqueKeysWithValues: resolvedCourses.map { ($0.id, $0) })
 
         let catalogSource = CatalogSource(
-            catalogYear: seed.source.catalogYear,
+            catalogYear: JMUCatalogConfiguration.catalogYear,
             issueDate: seed.source.issueDate,
             retrievedDate: Date(),
             sourceURLs: [programsURL],
@@ -171,11 +176,15 @@ struct CatalogRepository {
     }
 
     func refreshCatalogPDF() async throws -> URL {
-        let source = URL(string: "https://www.jmu.edu/catalog/pdfs/2025-2026-jmu-undergraduate-catalog.pdf")!
-        let (temporaryURL, _) = try await URLSession.shared.download(from: source)
+        var request = URLRequest(url: JMUCatalogConfiguration.pdfURL)
+        request.setValue(JMUCatalogConfiguration.browserUserAgent, forHTTPHeaderField: "User-Agent")
+        let (temporaryURL, response) = try await URLSession.shared.download(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
         let directory = try supportDirectory().appending(path: "Catalog", directoryHint: .isDirectory)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let destination = directory.appending(path: "2025-2026-jmu-undergraduate-catalog.pdf")
+        let destination = directory.appending(path: JMUCatalogConfiguration.pdfFilename)
         if fileManager.fileExists(atPath: destination.path) {
             try fileManager.removeItem(at: destination)
         }
@@ -206,7 +215,13 @@ struct CatalogRepository {
         try encoder.encode(catalog).write(to: url)
     }
 
-    /// Bump this whenever cached catalog requirement shape changes. v10 widens
+    /// Bump this whenever cached catalog requirement shape changes. v13 treats
+    /// "choose N credit hours" as a credit cap rather than N required courses.
+    /// v12 flattens
+    /// nested concentration/track/subtrack hierarchies into selectable pathways.
+    /// v11 moves
+    /// to JMU's 2026-2027 path-based catalog and modern course-list markup.
+    /// v10 widens
     /// concentration splitting so umbrella sections with plain-named children
     /// (Music B.M.'s 15 concentrations, "Areas of Study" umbrellas) parse as
     /// selectable concentrations instead of vanishing.
@@ -225,7 +240,7 @@ struct CatalogRepository {
     /// could use them. v4 handled JMU pages that label their concentration
     /// section "Required Concentration", so older v3 caches may still have
     /// CIS concentrations flattened into the parent major requirements.
-    private static let cacheSchemaVersion = 10
+    private static let cacheSchemaVersion = 13
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())
@@ -279,7 +294,7 @@ struct CatalogRepository {
         return url
     }
 
-    /// JMU 2025-2026 Catalog: Gen Ed credit allocation per cluster tag, sourced
+    /// JMU 2026-2027 Catalog: Gen Ed credit allocation per cluster tag, sourced
     /// from the catalog narrative. Used as overrides because the cluster headings
     /// on the Gen Ed program page (e.g. "Critical Thinking [C1CT]") don't repeat
     /// the credit count, so we can't parse it.
@@ -287,7 +302,7 @@ struct CatalogRepository {
         "C1CT": 3, "C1HC": 3, "C1W": 3,
         "C2HQC": 3, "C2VPA": 3, "C2L": 3,
         "C3QR": 3, "C3PP": 4, "C3NS": 3, "C3L": 1,
-        "C4AE": 3, "C4GE": 3,
+        "C4AE": 4, "C4GE": 3,
         "C5SD": 3, "C5W": 3
     ]
 
@@ -354,17 +369,19 @@ struct CatalogRepository {
     }
 
     private func fetchGeneralEducation(coursesByID: inout [String: Course]) async throws -> [RequirementCategory] {
-        // JMU Gen Ed program page (poid=26976) lists every course in every cluster.
-        let url = URL(string: "https://catalog.jmu.edu/preview_program.php?catoid=62&poid=26976&returnto=3541&print")!
-        let html = try await Self.fetchHTML(from: url)
-        let parsed = htmlParser.parseProgramRequirements(html, kind: .major, sourceURL: url)
-        for course in parsed.courses {
-            coursesByID[course.id] = merge(existing: coursesByID[course.id], parsed: course)
+        var parsedCategories: [RequirementCategory] = []
+        for url in JMUCatalogConfiguration.generalEducationURLs {
+            let html = try await Self.fetchHTML(from: url)
+            let parsed = htmlParser.parseProgramRequirements(html, kind: .major, sourceURL: url)
+            parsedCategories.append(contentsOf: parsed.requirements)
+            for course in parsed.courses {
+                coursesByID[course.id] = merge(existing: coursesByID[course.id], parsed: course)
+            }
         }
 
         // Override the parser-inferred credit numbers using the official Gen Ed
         // cluster allocation. Match by bracketed code in the cluster heading.
-        return parsed.requirements.compactMap { category in
+        return parsedCategories.compactMap { category in
             guard let tag = extractClusterTag(from: category.name),
                   let credits = Self.genEdClusterCredits[tag]
             else {
@@ -377,11 +394,11 @@ struct CatalogRepository {
             let courseOptions: [[String]] = alternatives.isEmpty ? [] : [alternatives]
             return RequirementCategory(
                 id: "gened-\(tag.lowercased())",
-                name: "General Education — \(category.name)",
+                name: "General Education - \(category.name)",
                 requiredCredits: credits,
                 courseOptions: courseOptions,
                 verificationStatus: .partial,
-                note: "Choose one course from this Gen Ed cluster (\(alternatives.count) eligible options in the JMU 2025-2026 catalog)."
+                note: "Choose one course from this Gen Ed cluster (\(alternatives.count) eligible options in the JMU 2026-2027 catalog)."
             )
         }
     }
@@ -398,12 +415,13 @@ struct CatalogRepository {
 
     nonisolated private static func fetchHTML(from url: URL) async throws -> String {
         var request = URLRequest(url: url)
-        request.setValue("JMUCoursePlanner/1.0 (+https://catalog.jmu.edu/)", forHTTPHeaderField: "User-Agent")
+        request.setValue(JMUCatalogConfiguration.browserUserAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 30
         let (data, response) = try await URLSession.shared.data(for: request)
-        if let httpResponse = response as? HTTPURLResponse, !(200..<300).contains(httpResponse.statusCode) {
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
             throw URLError(.badServerResponse)
         }
+        guard !data.isEmpty else { throw URLError(.zeroByteResource) }
         guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
             throw CocoaError(.fileReadCorruptFile)
         }
@@ -528,7 +546,7 @@ private struct SeedCatalog: Decodable {
                 concentrationSelectionRequired: nil,
                 verificationStatus: seed.verificationStatus ?? (reqs.isEmpty ? .unverified : .partial),
                 requirementDataComplete: seed.requirementDataComplete ?? false,
-                sourceNote: seed.sourceNote ?? "Listed in the JMU 2025-2026 Undergraduate Catalog table of contents."
+                sourceNote: seed.sourceNote ?? "Listed in the JMU 2026-2027 Undergraduate Catalog."
             )
         }
 

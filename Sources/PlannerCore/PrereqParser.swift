@@ -116,15 +116,27 @@ public struct ParseResult: Sendable, Equatable {
 }
 
 public struct PrereqParser: Sendable {
+    struct CourseIndex: Sendable {
+        let codeToID: [String: String]
+
+        init(coursesByID: [String: Course]) {
+            var map: [String: String] = [:]
+            for (id, course) in coursesByID {
+                map[PrereqParser.normalizeCode(course.code)] = id
+            }
+            self.codeToID = map
+        }
+    }
+
     private let codeToID: [String: String]   // normalized "CS 159" → "cs-159"
     private let activeProgramTitle: String?
 
     public init(coursesByID: [String: Course], activeProgramTitle: String? = nil) {
-        var map: [String: String] = [:]
-        for (id, course) in coursesByID {
-            map[Self.normalizeCode(course.code)] = id
-        }
-        self.codeToID = map
+        self.init(index: CourseIndex(coursesByID: coursesByID), activeProgramTitle: activeProgramTitle)
+    }
+
+    init(index: CourseIndex, activeProgramTitle: String? = nil) {
+        self.codeToID = index.codeToID
         self.activeProgramTitle = activeProgramTitle
     }
 
@@ -292,6 +304,13 @@ public struct PrereqParser: Sendable {
         try! NSRegularExpression(pattern: #"(?i)\b[A-F][+-]?\s+or\s+better\s+in\s+"#)
     ]
 
+    private static let trailingEquivalentPattern: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(
+            pattern: #"(?i)\s+or\s+(?:(?:an?|the)\s+)?equivalent(?:\s+course)?\s*\.?\s*$"#
+        )
+    }()
+
     private static func stripGradeQualifier(from text: String) -> PreparedSegment {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if let range = firstRange(of: oneOfFollowingPattern, in: trimmed) {
@@ -307,7 +326,38 @@ public struct PrereqParser: Sendable {
                 withTemplate: ""
             )
         }
+        if let choiceList = equivalentChoiceList(in: cleaned) {
+            return PreparedSegment(text: choiceList, mode: .choiceList)
+        }
         return PreparedSegment(text: cleaned.trimmingCharacters(in: .whitespacesAndNewlines), mode: .normal)
+    }
+
+    /// JMU uses comma-only lists followed by "or equivalent" to mean any one
+    /// listed course is sufficient. Keep ordinary comma lists conjunctive and
+    /// only opt into choice-list parsing when the prefix contains course refs
+    /// separated solely by commas.
+    private static func equivalentChoiceList(in text: String) -> String? {
+        guard let match = trailingEquivalentPattern.firstMatch(
+            in: text,
+            range: NSRange(text.startIndex..., in: text)
+        ), let range = Range(match.range, in: text) else {
+            return nil
+        }
+
+        let prefix = String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let tokens = PrereqLexer.tokenize(prefix)
+        let courseCount = tokens.reduce(into: 0) { count, token in
+            if case .courseRef = token { count += 1 }
+        }
+        guard courseCount >= 2, tokens.contains(.comma) else { return nil }
+        guard tokens.allSatisfy({ token in
+            if case .courseRef = token { return true }
+            if case .comma = token { return true }
+            return false
+        }) else {
+            return nil
+        }
+        return prefix
     }
 
     private struct MajorClause {

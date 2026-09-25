@@ -6,6 +6,9 @@ import SwiftUI
 /// Summary of the latest schedule edit, shown in the board's undo toast.
 struct ScheduleChange: Identifiable, Equatable {
     let id = UUID()
+    /// The undo action name registered for this change, so the toast's Undo
+    /// only fires while this change is still on top of the undo stack.
+    var actionName: String
     var message: String
     var newWarningCount: Int
 }
@@ -48,6 +51,8 @@ final class PlanStore: ObservableObject {
     /// Bumped whenever background verdicts land in the cache, so views that
     /// read `cachedDropVerdicts(for:)` (the context menu) refresh.
     @Published private(set) var verdictCacheRevision = 0
+    /// In-flight prefetches, keyed by plan version and item, so an edit that
+    /// discards one prefetch does not block the next for the new plan.
     private var prefetchingVerdicts: Set<String> = []
 
     var activeProgram: Program? {
@@ -444,6 +449,7 @@ final class PlanStore: ObservableObject {
         guard after != before else { return }
         registerUndo(restoring: before, expected: after, planID: planID, actionName: actionName)
         lastScheduleChange = ScheduleChange(
+            actionName: actionName,
             message: message,
             newWarningCount: WarningDiff.added(before: warningsBefore, after: warnings).count
         )
@@ -502,9 +508,17 @@ final class PlanStore: ObservableObject {
         registerUndo(restoring: current, expected: restored, planID: planID, actionName: actionName)
     }
 
+    /// Undo button in the toast. Only undoes while the toast's change is
+    /// still the top undo step; something else done since (typing in a
+    /// search field, say) must not be undone in its place.
     func undoLastScheduleChange() {
-        undoManager?.undo()
-        lastScheduleChange = nil
+        defer { lastScheduleChange = nil }
+        guard let change = lastScheduleChange,
+              let undoManager,
+              undoManager.canUndo,
+              undoManager.undoActionName == change.actionName
+        else { return }
+        undoManager.undo()
     }
 
     private func clearScheduleHistory() {
@@ -577,11 +591,12 @@ final class PlanStore: ObservableObject {
     /// Starts computing verdicts in the background (on hover) so the context
     /// menu and a following drag can show them without waiting.
     func prefetchDropVerdicts(for itemID: String) {
-        guard verdictCache[itemID] == nil, !prefetchingVerdicts.contains(itemID) else { return }
-        prefetchingVerdicts.insert(itemID)
+        let key = "\(verdictRevision.uuidString)|\(itemID)"
+        guard verdictCache[itemID] == nil, !prefetchingVerdicts.contains(key) else { return }
+        prefetchingVerdicts.insert(key)
         Task { [weak self] in
             _ = await self?.loadDropVerdicts(for: itemID)
-            self?.prefetchingVerdicts.remove(itemID)
+            self?.prefetchingVerdicts.remove(key)
         }
     }
 

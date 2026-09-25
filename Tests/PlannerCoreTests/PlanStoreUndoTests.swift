@@ -300,4 +300,35 @@ struct PlanStoreUndoTests {
         }
         #expect(store.cachedDropVerdicts(for: "CS149")?[Self.spring27]?.level == .blocking)
     }
+
+    @Test("a prefetch interrupted by an edit can be restarted for the new plan")
+    func prefetchRestartsAfterEdit() async throws {
+        let (store, _) = makeStore()
+        store.prefetchDropVerdicts(for: "CS149")
+        store.moveCourse("CS159", to: Self.fall27)
+        store.prefetchDropVerdicts(for: "CS149")
+        for _ in 0..<200 where store.cachedDropVerdicts(for: "CS149") == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(store.cachedDropVerdicts(for: "CS149")?[Self.spring27]?.level == .clear)
+    }
+
+    @Test("the toast's Undo never undoes an unrelated action")
+    func toastUndoOnlyUndoesItsChange() {
+        let (store, undo) = makeStore()
+        store.moveCourse("ART200", to: Self.spring27)
+        let moved = store.plan.pathways[0]
+        var unrelatedUndone = false
+        undo.beginUndoGrouping()
+        undo.registerUndo(withTarget: store) { _ in unrelatedUndone = true }
+        undo.setActionName("Typing")
+        undo.endUndoGrouping()
+
+        store.undoLastScheduleChange()
+
+        #expect(!unrelatedUndone)
+        #expect(store.plan.pathways[0] == moved)
+        #expect(store.lastScheduleChange == nil)
+    }
 }
+

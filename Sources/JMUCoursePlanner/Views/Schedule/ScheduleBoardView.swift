@@ -53,7 +53,12 @@ struct ScheduleBoardView: View {
                 drag.applyVerdicts(verdicts, sessionID: session.id)
             }
         }
-        .onDisappear { drag.reset() }
+        .onDisappear {
+            drag.reset()
+            // A toast left over from another visit could offer Undo for a
+            // change that is no longer on top of the undo stack.
+            store.lastScheduleChange = nil
+        }
     }
 
     private var subToolbar: some View {
@@ -150,13 +155,13 @@ struct ScheduleBoardView: View {
                 .overlay(alignment: .topLeading) {
                     floatingItem(slots: slots)
                 }
-                .onChange(of: drag.session?.location) { _, location in
+                .onReceive(drag.pointer.$location) { location in
                     autoScroll(location: location, viewport: viewport.size, proxy: proxy)
                 }
                 .task(id: drag.isDragging) {
                     guard drag.isDragging else { return }
                     while !Task.isCancelled {
-                        autoScroll(location: drag.session?.location, viewport: viewport.size, proxy: proxy)
+                        autoScroll(location: drag.pointer.location, viewport: viewport.size, proxy: proxy)
                         do { try await Task.sleep(for: .milliseconds(350)) }
                         catch { return }
                     }
@@ -185,10 +190,7 @@ struct ScheduleBoardView: View {
                 }
             }
             .frame(width: session.itemSize.width)
-            .offset(
-                x: session.location.x - session.grabOffset.width,
-                y: session.location.y - session.grabOffset.height
-            )
+            .modifier(FollowPointer(pointer: drag.pointer, grabOffset: session.grabOffset))
             .allowsHitTesting(false)
             .accessibilityHidden(true)
             .transition(.opacity)
@@ -258,5 +260,20 @@ struct ScheduleBoardView: View {
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
             proxy.scrollTo(request.semester, anchor: UnitPoint(x: request.anchor.x, y: verticalAnchor))
         }
+    }
+}
+
+/// Offsets the floating chip to the cursor. The only view that observes
+/// pointer movement, so the board and columns re-render only when the drop
+/// target changes.
+private struct FollowPointer: ViewModifier {
+    @ObservedObject var pointer: DragPointer
+    var grabOffset: CGSize
+
+    func body(content: Content) -> some View {
+        content.offset(
+            x: pointer.location.x - grabOffset.width,
+            y: pointer.location.y - grabOffset.height
+        )
     }
 }

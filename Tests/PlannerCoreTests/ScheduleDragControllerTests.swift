@@ -27,7 +27,8 @@ struct ScheduleDragControllerTests {
         affectedCourseIDs: ["MATH232"]
     )
 
-    private func beginDrag(_ controller: ScheduleDragController, itemID: String = "A") {
+    @discardableResult
+    private func beginDrag(_ controller: ScheduleDragController, itemID: String = "A") -> UUID? {
         controller.begin(
             itemID: itemID,
             origin: Self.fall26,
@@ -114,9 +115,9 @@ struct ScheduleDragControllerTests {
     @Test("dropping on the origin slot returns home instead of committing")
     func originSlotReturnsHome() {
         let controller = ScheduleDragController()
-        beginDrag(controller)
+        let owner = beginDrag(controller)
         controller.update(location: CGPoint(x: 100, y: 10))
-        #expect(controller.end(itemID: "A") == .returnHome)
+        #expect(controller.end(owner: owner) == .returnHome)
         #expect(controller.isReturning)
         #expect(!controller.isDragging)
         #expect(controller.verdicts.isEmpty)
@@ -127,18 +128,18 @@ struct ScheduleDragControllerTests {
     @Test("dropping in another semester commits the move")
     func dropCommits() {
         let controller = ScheduleDragController()
-        beginDrag(controller)
+        let owner = beginDrag(controller)
         controller.update(location: CGPoint(x: 400, y: 200))
-        #expect(controller.end(itemID: "A") == .drop(ScheduleDrop(itemID: "A", target: DropTarget(semester: Self.spring27, index: 0))))
+        #expect(controller.end(owner: owner) == .drop(ScheduleDrop(itemID: "A", target: DropTarget(semester: Self.spring27, index: 0))))
         #expect(controller.session == nil)
     }
 
     @Test("releasing outside every column returns home")
     func outsideReturnsHome() {
         let controller = ScheduleDragController()
-        beginDrag(controller)
+        let owner = beginDrag(controller)
         controller.update(location: CGPoint(x: 286, y: 100))
-        #expect(controller.end(itemID: "A") == .returnHome)
+        #expect(controller.end(owner: owner) == .returnHome)
     }
 
     @Test("red rings follow the hovered column's verdict")
@@ -152,23 +153,60 @@ struct ScheduleDragControllerTests {
     }
 
     @Test("a cancelled drag ignores the rest of its gesture")
-    func cancelSuppressesGesture() {
+    func cancelIgnoresRestOfGesture() {
         let controller = ScheduleDragController()
-        beginDrag(controller)
+        let owner = beginDrag(controller)
         controller.cancel()
         #expect(controller.isReturning)
         #expect(controller.verdicts.isEmpty)
         controller.finishReturn()
 
-        // Mouse still held: movement and a fresh begin for the same item are ignored.
-        controller.update(location: CGPoint(x: 400, y: 200))
-        beginDrag(controller)
+        // Mouse still held: that gesture's movement and release do nothing.
+        controller.update(location: CGPoint(x: 400, y: 200), owner: owner)
         #expect(controller.session == nil)
+        #expect(controller.end(owner: owner) == .ignored)
 
-        // Releasing ends the suppressed gesture; the next drag works.
-        #expect(controller.end(itemID: "A") == .ignored)
-        beginDrag(controller)
+        // The next gesture starts a fresh drag.
+        #expect(beginDrag(controller) != nil)
         #expect(controller.isDragging)
+    }
+
+    @Test("an old gesture cannot move, end, or dispose a newer drag")
+    func staleGestureIsIgnored() throws {
+        let controller = ScheduleDragController()
+        let old = beginDrag(controller)
+        controller.cancel()
+        controller.finishReturn()
+        let current = try #require(beginDrag(controller))
+        controller.update(location: CGPoint(x: 400, y: 200), owner: current)
+
+        controller.update(location: CGPoint(x: 100, y: 10), owner: old)
+        controller.disposeGesture(owner: old)
+        controller.cancelGesture(owner: old)
+        #expect(controller.end(owner: old) == .ignored)
+
+        #expect(controller.isDragging)
+        #expect(controller.session?.target?.semester == Self.spring27)
+    }
+
+    @Test("a gesture that vanishes without ending springs its drag back")
+    func vanishedGestureReturnsHome() {
+        let controller = ScheduleDragController()
+        let owner = beginDrag(controller)
+        controller.cancelGesture(owner: owner)
+        #expect(controller.isReturning)
+        #expect(!controller.isDragging)
+    }
+
+    @Test("pointer movement within one slot does not republish the session")
+    func pointerMovesWithoutSessionChurn() {
+        let controller = ScheduleDragController()
+        beginDrag(controller)
+        controller.update(location: CGPoint(x: 400, y: 200))
+        let session = controller.session
+        controller.update(location: CGPoint(x: 410, y: 220))
+        #expect(controller.session == session)
+        #expect(controller.pointer.location == CGPoint(x: 410, y: 220))
     }
 
     @Test("a late finishReturn does not end a newer drag")
@@ -193,25 +231,22 @@ struct ScheduleDragControllerTests {
     @Test("late verdicts cannot update a newer drag of the same item")
     func staleVerdicts() throws {
         let controller = ScheduleDragController()
-        beginDrag(controller)
-        let oldID = try #require(controller.session?.id)
+        let oldID = try #require(beginDrag(controller))
         controller.cancel()
         controller.finishReturn()
-        _ = controller.end(itemID: "A")
-        beginDrag(controller)
+        let newID = try #require(beginDrag(controller))
         controller.applyVerdicts([:], sessionID: oldID)
         #expect(controller.verdicts[Self.spring27] == Self.blocking)
-        controller.applyVerdicts([Self.spring27: .neutral], sessionID: try #require(controller.session?.id))
+        controller.applyVerdicts([Self.spring27: .neutral], sessionID: newID)
         #expect(controller.verdicts[Self.spring27] == .neutral)
     }
 
-    @Test("removing a gesture's view releases cancellation suppression")
+    @Test("removing the owning gesture's view ends its drag")
     func removedGesture() {
         let controller = ScheduleDragController()
-        beginDrag(controller)
-        controller.cancel()
-        controller.finishReturn()
-        controller.disposeGesture(itemID: "A")
+        let owner = beginDrag(controller)
+        controller.disposeGesture(owner: owner)
+        #expect(controller.session == nil)
         beginDrag(controller)
         #expect(controller.isDragging)
         controller.reset()

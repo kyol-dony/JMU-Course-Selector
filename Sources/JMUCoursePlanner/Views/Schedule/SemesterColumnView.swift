@@ -251,7 +251,9 @@ struct SemesterColumnView: View {
                 .modifier(dragModifier(id: id, index: index) { openPlaceholderPicker(id: id, spec: spec) })
                 .contextMenu { MoveToMenu(itemID: id, currentSemester: semester.id) }
                 .accessibilityActions { moveActions(for: id) }
-                .onHover { if $0 { store.prefetchDropVerdicts(for: id) } }
+                .onContinuousHover { phase in
+                    if case .active = phase { store.prefetchDropVerdicts(for: id) }
+                }
         } else if let course = store.course(forID: id) {
             CourseChip(
                 course: course,
@@ -268,7 +270,9 @@ struct SemesterColumnView: View {
                 Button("Remove \(course.code)", role: .destructive) { store.removeCourse(id) }
             }
             .accessibilityActions { moveActions(for: id) }
-            .onHover { if $0 { store.prefetchDropVerdicts(for: id) } }
+            .onContinuousHover { phase in
+                    if case .active = phase { store.prefetchDropVerdicts(for: id) }
+                }
             ForEach(visibleWarnings.filter { $0.courseID == id && $0.semester == semester.id }) { warning in
                 warningStrip(warning)
             }

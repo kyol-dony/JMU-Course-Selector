@@ -84,7 +84,17 @@ enum ScheduleDragGeometry {
     }
 }
 
-/// State machine for dragging a schedule item across the board.
+/// Cursor position during a drag, split from the session so pointer
+/// movement only re-renders the views that follow the cursor.
+@MainActor
+final class DragPointer: ObservableObject {
+    @Published fileprivate(set) var location: CGPoint = .zero
+}
+
+/// State machine for dragging a schedule item across the board. Each drag
+/// is owned by one gesture, identified by the session ID `begin` returns;
+/// gesture callbacks pass that ID so a stale gesture can never drive,
+/// end, or dispose a newer drag.
 @MainActor
 final class ScheduleDragController: ObservableObject {
     struct Session: Equatable {
@@ -96,8 +106,6 @@ final class ScheduleDragController: ObservableObject {
         /// Cursor offset from the item's top-left corner.
         var grabOffset: CGSize
         var itemSize: CGSize
-        /// Cursor position in `ScheduleBoardSpace`.
-        var location: CGPoint
         var target: DropTarget?
     }
 
@@ -114,8 +122,9 @@ final class ScheduleDragController: ObservableObject {
     /// True while the floating item animates back to its slot.
     @Published private(set) var isReturning = false
 
+    /// Cursor position in `ScheduleBoardSpace`.
+    let pointer = DragPointer()
     private var columns: [ColumnGeometry] = []
-    private var suppressedItemID: String?
     private var escapeMonitor: Any?
 
     var isDragging: Bool { session != nil && !isReturning }
@@ -126,6 +135,9 @@ final class ScheduleDragController: ObservableObject {
         return verdicts[target.semester]?.affectedCourseIDs ?? []
     }
 
+    /// Starts a drag and returns its session ID, or nil when another drag
+    /// (or a spring-back) is still in progress.
+    @discardableResult
     func begin(
         itemID: String,
         origin: SemesterIdentity,
@@ -135,26 +147,38 @@ final class ScheduleDragController: ObservableObject {
         itemSize: CGSize,
         columns: [ColumnGeometry],
         verdicts: [SemesterIdentity: DropVerdict]
-    ) {
-        guard session == nil, suppressedItemID != itemID else { return }
+    ) -> UUID? {
+        guard session == nil else { return nil }
         self.columns = columns
         self.verdicts = verdicts
-        session = Session(
+        pointer.location = location
+        let session = Session(
             itemID: itemID,
             origin: origin,
             originIndex: originIndex,
             grabOffset: grabOffset,
             itemSize: itemSize,
-            location: location,
             target: ScheduleDragGeometry.target(for: location, columns: columns)
         )
+        self.session = session
+        return session.id
     }
 
+    /// Moves the live drag, whichever gesture owns it (column-frame updates, tests).
     func update(location: CGPoint) {
-        guard isDragging, var session else { return }
-        session.location = location
-        session.target = ScheduleDragGeometry.target(for: location, columns: columns)
-        self.session = session
+        guard isDragging, let session else { return }
+        pointer.location = location
+        let target = ScheduleDragGeometry.target(for: location, columns: columns)
+        // Publish the session only when the drop target changes.
+        if target != session.target {
+            self.session?.target = target
+        }
+    }
+
+    /// Moves the drag only if `owner` is the gesture that started it.
+    func update(location: CGPoint, owner: UUID?) {
+        guard let owner, session?.id == owner else { return }
+        update(location: location)
     }
 
     /// Async calculations belong to one gesture, never merely to an item ID.
@@ -163,18 +187,22 @@ final class ScheduleDragController: ObservableObject {
         self.verdicts = verdicts
     }
 
-    /// A removed chip cannot deliver onEnded. Dispose that gesture's latch.
-    func disposeGesture(itemID: String) {
-        if session?.itemID == itemID {
-            clear()
-            setEscapeMonitoring(false)
-        }
-        if suppressedItemID == itemID { suppressedItemID = nil }
+    /// The owning gesture's view went away (so it can never deliver
+    /// onEnded): drop its drag immediately.
+    func disposeGesture(owner: UUID?) {
+        guard let owner, session?.id == owner else { return }
+        clear()
+    }
+
+    /// The owning gesture was cancelled by the system without onEnded:
+    /// spring the item back rather than leave the drag live.
+    func cancelGesture(owner: UUID?) {
+        guard let owner, session?.id == owner, !isReturning else { return }
+        startReturn()
     }
 
     func reset() {
         clear()
-        suppressedItemID = nil
         setEscapeMonitoring(false)
     }
 
@@ -186,39 +214,36 @@ final class ScheduleDragController: ObservableObject {
                 columns[index].frame = frame
             }
         }
-        if let location = session?.location {
-            update(location: location)
+        if session != nil {
+            update(location: pointer.location)
         }
     }
 
-    func end(itemID: String) -> EndResult {
-        if suppressedItemID == itemID {
-            suppressedItemID = nil
-            return .ignored
-        }
-        guard let session, session.itemID == itemID, !isReturning else { return .ignored }
+    /// Release by the owning gesture: commit, or spring back when the drop
+    /// would land on the item's own slot or outside every column.
+    func end(owner: UUID?) -> EndResult {
+        guard let owner, let session, session.id == owner, !isReturning else { return .ignored }
         if let target = session.target,
            !(target.semester == session.origin && target.index == session.originIndex) {
             clear()
-            return .drop(ScheduleDrop(itemID: itemID, target: target))
+            return .drop(ScheduleDrop(itemID: session.itemID, target: target))
         }
         startReturn()
         return .returnHome
     }
 
     /// Stops a live drag without committing (Esc, or the plan changed
-    /// underneath). The rest of that item's gesture is ignored until it ends.
+    /// underneath). The still-held gesture's later callbacks find a
+    /// returning or cleared session and are ignored.
     func cancel() {
-        guard let session, !isReturning else { return }
-        suppressedItemID = session.itemID
+        guard session != nil, !isReturning else { return }
         startReturn()
     }
 
     /// Moves the floating item during the return animation.
     func moveReturningItem(to location: CGPoint) {
-        guard isReturning, var session else { return }
-        session.location = location
-        self.session = session
+        guard isReturning, session != nil else { return }
+        pointer.location = location
     }
 
     func finishReturn() {

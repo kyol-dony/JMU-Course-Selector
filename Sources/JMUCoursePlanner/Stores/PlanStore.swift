@@ -3,6 +3,13 @@ import Foundation
 import PlannerCore
 import SwiftUI
 
+/// Summary of the latest schedule edit, shown in the board's undo toast.
+struct ScheduleChange: Identifiable, Equatable {
+    let id = UUID()
+    var message: String
+    var newWarningCount: Int
+}
+
 @MainActor
 final class PlanStore: ObservableObject {
     @Published var catalog: Catalog? {
@@ -24,6 +31,11 @@ final class PlanStore: ObservableObject {
     /// Non-nil while pathway generation is running off-main. Drives the
     /// modal progress overlay and disables the Regenerate buttons.
     @Published var scheduleGenerationProgress: ScheduleGenerationProgress?
+    /// Latest schedule edit, for the undo toast. Cleared by undo, redo, and
+    /// anything that replaces the pathways.
+    @Published var lastScheduleChange: ScheduleChange?
+    /// The window's undo manager, injected by ScheduleBoardView.
+    var undoManager: UndoManager?
 
     private let catalogRepository = CatalogRepository()
     private let detailService = CourseDetailService()
@@ -31,6 +43,8 @@ final class PlanStore: ObservableObject {
     private var cachedWarnings: [ConflictWarning]?
     private var cachedProgress: GraduationProgress?
     private var progressCacheIsValid = false
+    private var verdictCache: [String: [SemesterIdentity: DropVerdict]] = [:]
+    private(set) var verdictRevision = UUID()
 
     var activeProgram: Program? {
         guard let catalog, let programID = plan.programID else { return nil }
@@ -107,6 +121,8 @@ final class PlanStore: ObservableObject {
         cachedWarnings = nil
         cachedProgress = nil
         progressCacheIsValid = false
+        verdictCache = [:]
+        verdictRevision = UUID()
     }
 
     /// Effective Program for each added minor (parent program + its selected
@@ -173,6 +189,14 @@ final class PlanStore: ObservableObject {
     /// while `resolvedPlaceholders` tracks the mapping for synthetic
     /// progress rows and reversal.
     func resolvePlaceholder(_ placeholderID: String, with chosenCourseID: String) {
+        let name = scheduleItemName(chosenCourseID)
+        let category = activePathway?.placeholders[placeholderID]?.categoryName ?? "this requirement"
+        recordScheduleChange(actionName: "Choose \(name)", message: "Chose \(name) for \(category)") {
+            applyResolvePlaceholder(placeholderID, with: chosenCourseID)
+        }
+    }
+
+    private func applyResolvePlaceholder(_ placeholderID: String, with chosenCourseID: String) {
         guard let pathwayIndex = activePathwayIndex else { return }
         var pathway = plan.pathways[pathwayIndex]
         for semesterIndex in pathway.semesters.indices {
@@ -228,6 +252,7 @@ final class PlanStore: ObservableObject {
         }
         plan.pathways = []
         plan.activePathwayID = nil
+        clearScheduleHistory()
         // Re-route any previously-entered AP credits through the optimizer now
         // that we know which major to optimize for.
         recomputeAPCredits()
@@ -243,6 +268,7 @@ final class PlanStore: ObservableObject {
         }
         plan.pathways = []
         plan.activePathwayID = nil
+        clearScheduleHistory()
         recomputeAPCredits()
         autosave()
     }
@@ -387,6 +413,7 @@ final class PlanStore: ObservableObject {
         case .success(let pathways):
             plan.pathways = pathways
             plan.activePathwayID = pathways.first?.id
+            clearScheduleHistory()
             errorMessage = nil
             autosave()
         case .failure(let error):
@@ -395,11 +422,166 @@ final class PlanStore: ObservableObject {
         scheduleGenerationProgress = nil
     }
 
+    private struct ScheduleSnapshot: Equatable, Sendable {
+        var pathway: Pathway
+        var overrides: [ConflictOverride]
+    }
+
+    private func recordScheduleChange(actionName: String, message: String, _ mutation: () -> Void) {
+        guard let pathwayIndex = activePathwayIndex else { return }
+        let planID = plan.id
+        let before = ScheduleSnapshot(pathway: plan.pathways[pathwayIndex], overrides: plan.overrides)
+        let warningsBefore = warnings
+        mutation()
+        guard plan.id == planID,
+              let index = plan.pathways.firstIndex(where: { $0.id == before.pathway.id })
+        else { return }
+        let after = ScheduleSnapshot(pathway: plan.pathways[index], overrides: plan.overrides)
+        guard after != before else { return }
+        registerUndo(restoring: before, expected: after, planID: planID, actionName: actionName)
+        lastScheduleChange = ScheduleChange(
+            message: message,
+            newWarningCount: WarningDiff.added(before: warningsBefore, after: warnings).count
+        )
+    }
+
+    private func registerUndo(
+        restoring snapshot: ScheduleSnapshot,
+        expected: ScheduleSnapshot,
+        planID: UUID,
+        actionName: String
+    ) {
+        guard let undoManager else { return }
+        let opensGroup = !undoManager.isUndoing && !undoManager.isRedoing
+        let groupsByEvent = undoManager.groupsByEvent
+        if opensGroup {
+            undoManager.groupsByEvent = false
+            undoManager.beginUndoGrouping()
+        }
+        undoManager.registerUndo(withTarget: self) { store in
+            MainActor.assumeIsolated {
+                store.restore(snapshot, expected: expected, planID: planID, actionName: actionName)
+            }
+        }
+        undoManager.setActionName(actionName)
+        if opensGroup {
+            undoManager.endUndoGrouping()
+            undoManager.groupsByEvent = groupsByEvent
+        }
+    }
+
+    private func restore(
+        _ snapshot: ScheduleSnapshot,
+        expected: ScheduleSnapshot,
+        planID: UUID,
+        actionName: String
+    ) {
+        guard plan.id == planID,
+              let index = plan.pathways.firstIndex(where: { $0.id == snapshot.pathway.id }),
+              plan.pathways[index] == expected.pathway
+        else { return }
+        let current = ScheduleSnapshot(pathway: plan.pathways[index], overrides: plan.overrides)
+        var updated = plan
+        updated.pathways[index] = snapshot.pathway
+        updated.overrides = snapshot.overrides
+        updated.activePathwayID = snapshot.pathway.id
+        plan = updated
+        lastScheduleChange = nil
+        autosave()
+        registerUndo(restoring: current, expected: snapshot, planID: planID, actionName: actionName)
+    }
+
+    func undoLastScheduleChange() {
+        undoManager?.undo()
+        lastScheduleChange = nil
+    }
+
+    private func clearScheduleHistory() {
+        undoManager?.removeAllActions(withTarget: self)
+        lastScheduleChange = nil
+    }
+
+    private func scheduleItemName(_ id: String) -> String {
+        if PathwayPlaceholder.isPlaceholder(id) {
+            return activePathway?.placeholders[id]?.categoryName ?? "Choose course"
+        }
+        return course(forID: id)?.code ?? id
+    }
+
+    func dropVerdicts(for itemID: String) -> [SemesterIdentity: DropVerdict] {
+        if let cached = verdictCache[itemID] { return cached }
+        guard let catalog, let activePathway else { return [:] }
+        #if DEBUG
+        let started = Date()
+        #endif
+        let result = DropVerdictCalculator(catalog: catalog).verdicts(
+            moving: itemID,
+            in: activePathway,
+            overrides: plan.overrides,
+            activeProgramTitle: effectiveActiveProgram?.title,
+            completedAtStart: Set(plan.transferCredits.flatMap(\.courseIDs))
+        )
+        #if DEBUG
+        let elapsed = Date().timeIntervalSince(started) * 1000
+        if elapsed > 30 {
+            print("[DropVerdict] \(itemID) took \(Int(elapsed)) ms")
+        }
+        #endif
+        verdictCache[itemID] = result
+        return result
+    }
+
+    /// Capture immutable inputs on the main actor, then compute without holding
+    /// up the pointer. A changed plan/catalog or cancelled view task discards
+    /// its result instead of publishing stale advice into a newer drag/menu.
+    func loadDropVerdicts(for itemID: String) async -> [SemesterIdentity: DropVerdict]? {
+        if let cached = verdictCache[itemID] { return cached }
+        guard let catalog, let pathway = activePathway else { return nil }
+        let revision = verdictRevision
+        let overrides = plan.overrides
+        let title = effectiveActiveProgram?.title
+        let completed = Set(plan.transferCredits.flatMap(\.courseIDs))
+        let worker = Task.detached(priority: .userInitiated) {
+            DropVerdictCalculator(catalog: catalog).verdicts(
+                moving: itemID, in: pathway, overrides: overrides,
+                activeProgramTitle: title, completedAtStart: completed
+            )
+        }
+        let result = await withTaskCancellationHandler {
+            await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+        guard !Task.isCancelled, revision == verdictRevision else { return nil }
+        verdictCache[itemID] = result
+        return result
+    }
+
     /// Moves (or adds) a course or placeholder into `semester`. `index` is the
     /// position within the target semester after the item has been removed
     /// from its current spot; nil appends. Dropping an item back onto its own
     /// slot leaves the plan untouched.
     func moveCourse(_ courseID: String, to semester: SemesterIdentity, at index: Int? = nil) {
+        let origin = activePathway?.semesters.first { $0.courseIDs.contains(courseID) }?.id
+        let name = scheduleItemName(courseID)
+        let actionName: String
+        let message: String
+        if origin == nil {
+            actionName = "Add \(name)"
+            message = "Added \(name) to \(semester.displayName)"
+        } else if origin == semester {
+            actionName = "Move \(name)"
+            message = "Reordered \(name) in \(semester.displayName)"
+        } else {
+            actionName = "Move \(name)"
+            message = "Moved \(name) to \(semester.displayName)"
+        }
+        recordScheduleChange(actionName: actionName, message: message) {
+            applyMove(courseID, to: semester, at: index)
+        }
+    }
+
+    private func applyMove(_ courseID: String, to semester: SemesterIdentity, at index: Int?) {
         guard let pathwayIndex = activePathwayIndex else { return }
         let original = plan.pathways[pathwayIndex]
         var pathway = original
@@ -420,6 +602,13 @@ final class PlanStore: ObservableObject {
     }
 
     func removeCourse(_ courseID: String) {
+        let name = scheduleItemName(courseID)
+        recordScheduleChange(actionName: "Remove \(name)", message: "Removed \(name)") {
+            applyRemove(courseID)
+        }
+    }
+
+    private func applyRemove(_ courseID: String) {
         guard let pathwayIndex = activePathwayIndex else { return }
         var pathway = plan.pathways[pathwayIndex]
         // If this course was previously resolved from a placeholder, swap
@@ -524,11 +713,13 @@ final class PlanStore: ObservableObject {
     }
 
     func startFresh() {
+        clearScheduleHistory()
         plan = SavedStudentPlan()
         autosave()
     }
 
     func resume(_ saved: SavedStudentPlan) {
+        clearScheduleHistory()
         plan = saved
         validateSelectedConcentration()
         statusMessage = "Resumed \(saved.name)."
@@ -555,6 +746,7 @@ final class PlanStore: ObservableObject {
     func resetAppData() {
         do {
             try catalogRepository.resetAppData()
+            clearScheduleHistory()
             plan = SavedStudentPlan()
             savedPlans = []
             statusMessage = "App data cleared. Loading the bundled catalog..."
@@ -606,6 +798,7 @@ final class PlanStore: ObservableObject {
             plan.concentrationID = nil
             plan.pathways = []
             plan.activePathwayID = nil
+            clearScheduleHistory()
             return
         }
     }

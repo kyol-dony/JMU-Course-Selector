@@ -30,7 +30,7 @@ struct ScheduleBoardView: View {
                 )
             } else {
                 VStack(spacing: 0) {
-                    subToolbar
+                    subToolbar(issues)
                     Divider().opacity(0.5)
                     board(issues)
                 }
@@ -69,7 +69,7 @@ struct ScheduleBoardView: View {
         }
     }
 
-    private var subToolbar: some View {
+    private func subToolbar(_ issues: ScheduleIssues) -> some View {
         HStack(spacing: DesignTokens.Spacing.m) {
             Picker("Pathway", selection: Binding(
                 get: { store.plan.activePathwayID ?? store.plan.pathways.first?.id ?? "" },
@@ -84,6 +84,10 @@ struct ScheduleBoardView: View {
             .frame(maxWidth: 360)
 
             Spacer()
+
+            IssuesButton(issues: issues, catalog: catalog) { warning in
+                focus(semester: warning.semester, openingTag: issues.tagID(for: warning))
+            }
 
             if let pathway = store.activePathway {
                 let total = pathway.semesters.flatMap(\.courseIDs)

@@ -250,6 +250,24 @@ struct PlanStoreUndoTests {
         #expect(refreshed?[Self.spring27]?.level == .clear)
     }
 
+    @Test("undo and redo preserve independently accepted warnings")
+    func acceptedWarningSurvivesUndo() {
+        let (store, undo) = makeStore()
+        let before = store.plan.pathways[0]
+        store.moveCourse("ART200", to: Self.spring27)
+        let moved = store.plan.pathways[0]
+        let warning = ConflictWarning(courseID: "CS159", semester: Self.fall27,
+            kind: .missingPrerequisite, message: "Needs CS 149.", isOverridden: false)
+        store.override(warning)
+        let accepted = store.plan.overrides
+        undo.undo()
+        #expect(store.plan.pathways[0] == before)
+        #expect(store.plan.overrides == accepted)
+        undo.redo()
+        #expect(store.plan.pathways[0] == moved)
+        #expect(store.plan.overrides == accepted)
+    }
+
     @Test("cancelled background requests do not publish verdicts")
     func cancelledVerdicts() async {
         let (store, _) = makeStore()

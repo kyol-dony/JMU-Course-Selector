@@ -483,12 +483,19 @@ final class PlanStore: ObservableObject {
         let current = ScheduleSnapshot(pathway: plan.pathways[index], overrides: plan.overrides)
         var updated = plan
         updated.pathways[index] = snapshot.pathway
-        updated.overrides = snapshot.overrides
+        // Reverse only this edit's override delta. A later "Keep" is a
+        // separate decision, potentially in another pathway, and must survive.
+        let addedByEdit = Set(expected.overrides).subtracting(snapshot.overrides)
+        updated.overrides.removeAll { addedByEdit.contains($0) }
+        for override in snapshot.overrides where !expected.overrides.contains(override) {
+            if !updated.overrides.contains(override) { updated.overrides.append(override) }
+        }
         updated.activePathwayID = snapshot.pathway.id
         plan = updated
         lastScheduleChange = nil
         autosave()
-        registerUndo(restoring: current, expected: snapshot, planID: planID, actionName: actionName)
+        let restored = ScheduleSnapshot(pathway: snapshot.pathway, overrides: updated.overrides)
+        registerUndo(restoring: current, expected: restored, planID: planID, actionName: actionName)
     }
 
     func undoLastScheduleChange() {

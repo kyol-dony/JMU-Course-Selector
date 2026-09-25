@@ -1466,11 +1466,21 @@ public struct ScheduleGenerator: Sendable {
     }
 }
 
+public enum ConflictSeverity: Int, Comparable, Sendable {
+    case hidden
+    case worthALook
+    case mustFix
+
+    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
 public enum ConflictKind: String, Codable, Hashable, Sendable {
     case missingPrerequisite
     case missingCorequisite
     case unavailableSemester
     case unknownAvailability
+    case heavyLoad
+    case lightLoad
 
     public var displayName: String {
         switch self {
@@ -1478,6 +1488,27 @@ public enum ConflictKind: String, Codable, Hashable, Sendable {
         case .missingCorequisite: "Corequisite warning"
         case .unavailableSemester: "Semester availability warning"
         case .unknownAvailability: "Availability unknown"
+        case .heavyLoad: "Heavy load warning"
+        case .lightLoad: "Light load warning"
+        }
+    }
+
+    public var severity: ConflictSeverity {
+        switch self {
+        case .missingPrerequisite, .unavailableSemester: .mustFix
+        case .missingCorequisite, .heavyLoad, .lightLoad: .worthALook
+        case .unknownAvailability: .hidden
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .missingPrerequisite: "Missing prerequisite"
+        case .missingCorequisite: "Missing corequisite"
+        case .unavailableSemester: "Not offered this term"
+        case .unknownAvailability: "Availability unknown"
+        case .heavyLoad: "Heavy load"
+        case .lightLoad: "Light load"
         }
     }
 }
@@ -1495,20 +1526,53 @@ public struct ConflictOverride: Codable, Hashable, Sendable {
 }
 
 public struct ConflictWarning: Codable, Hashable, Identifiable, Sendable {
+    public static let semesterSubjectID = "__semester__"
     public var id: String
     public var courseID: String
     public var semester: SemesterIdentity
     public var kind: ConflictKind
     public var message: String
     public var isOverridden: Bool
+    public var summary: String
+    public var detail: String
+    public var notes: [String]
+    public var missingCourseIDs: [String]
 
-    public init(courseID: String, semester: SemesterIdentity, kind: ConflictKind, message: String, isOverridden: Bool) {
+    public var isSemesterLevel: Bool { courseID == Self.semesterSubjectID }
+
+    public init(courseID: String, semester: SemesterIdentity, kind: ConflictKind, summary: String, detail: String, notes: [String] = [], missingCourseIDs: [String] = [], isOverridden: Bool) {
         self.id = "\(courseID)-\(semester.year)-\(semester.term.rawValue)-\(kind.rawValue)"
         self.courseID = courseID
         self.semester = semester
         self.kind = kind
-        self.message = message
+        self.summary = summary
+        self.detail = detail
+        self.notes = notes
+        self.missingCourseIDs = missingCourseIDs
+        self.message = ([detail] + notes).joined(separator: " ")
         self.isOverridden = isOverridden
+    }
+
+    public init(courseID: String, semester: SemesterIdentity, kind: ConflictKind, message: String, isOverridden: Bool) {
+        self.init(courseID: courseID, semester: semester, kind: kind, summary: message, detail: message, isOverridden: isOverridden)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, courseID, semester, kind, message, isOverridden, summary, detail, notes, missingCourseIDs
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        courseID = try c.decode(String.self, forKey: .courseID)
+        semester = try c.decode(SemesterIdentity.self, forKey: .semester)
+        kind = try c.decode(ConflictKind.self, forKey: .kind)
+        message = try c.decode(String.self, forKey: .message)
+        isOverridden = try c.decode(Bool.self, forKey: .isOverridden)
+        summary = try c.decodeIfPresent(String.self, forKey: .summary) ?? message
+        detail = try c.decodeIfPresent(String.self, forKey: .detail) ?? message
+        notes = try c.decodeIfPresent([String].self, forKey: .notes) ?? []
+        missingCourseIDs = try c.decodeIfPresent([String].self, forKey: .missingCourseIDs) ?? []
     }
 }
 
@@ -1604,7 +1668,8 @@ public struct ConflictDetector: Sendable {
                         courseID: courseID,
                         semester: semester.id,
                         kind: .unknownAvailability,
-                        message: "\(course.code) does not have verified semester availability in the local catalog cache.",
+                        summary: "Availability unknown",
+                        detail: "\(course.code) does not have verified semester availability in the local catalog cache.",
                         overrides: overrides
                     ))
                 } else if let availability = course.availability, !availability.contains(semester.term) {
@@ -1612,26 +1677,31 @@ public struct ConflictDetector: Sendable {
                         courseID: courseID,
                         semester: semester.id,
                         kind: .unavailableSemester,
-                        message: "\(course.code) is not marked as typically offered in \(semester.term.rawValue).",
+                        summary: "Not offered in \(semester.term.rawValue)",
+                        detail: "\(course.code) is not marked as typically offered in \(semester.term.rawValue).",
                         overrides: overrides
                     ))
                 }
 
                 let resolvedRule = resolver.rule(for: course, activeProgramTitle: activeProgramTitle)
                 if case .unmet(let missing, let original) = evaluator.evaluate(resolvedRule.prerequisiteExpr, mode: .prereq) {
+                    let text = Self.prereqText(
+                        original: original,
+                        missing: missing,
+                        hasUnknown: resolvedRule.hasUnknownTokens,
+                        confidence: resolvedRule.confidence,
+                        catalogNotes: resolvedRule.notes,
+                        coursesByID: coursesByID,
+                        satisfied: completedBefore
+                    )
                     warnings.append(warning(
                         courseID: courseID,
                         semester: semester.id,
                         kind: .missingPrerequisite,
-                        message: Self.prereqMessage(
-                            original: original,
-                            missing: missing,
-                            hasUnknown: resolvedRule.hasUnknownTokens,
-                            confidence: resolvedRule.confidence,
-                            notes: resolvedRule.notes,
-                            coursesByID: coursesByID,
-                            satisfied: completedBefore
-                        ),
+                        summary: text.summary,
+                        detail: text.detail,
+                        notes: text.notes,
+                        missingCourseIDs: Self.collectCourseLeaves(missing),
                         overrides: overrides
                     ))
                 }
@@ -1642,7 +1712,9 @@ public struct ConflictDetector: Sendable {
                         courseID: courseID,
                         semester: semester.id,
                         kind: .missingCorequisite,
-                        message: "Take alongside or before this course: \(rendered).",
+                        summary: "Take with \(rendered)",
+                        detail: "Take alongside or before this course: \(rendered).",
+                        missingCourseIDs: Self.collectCourseLeaves(missing),
                         overrides: overrides
                     ))
                 }
@@ -1653,34 +1725,35 @@ public struct ConflictDetector: Sendable {
         return warnings
     }
 
-    private static func prereqMessage(
+    private static func prereqText(
         original: PrereqExpr,
         missing: PrereqExpr,
         hasUnknown: Bool,
         confidence: PrereqRuleConfidence,
-        notes: String?,
+        catalogNotes: String?,
         coursesByID: [String: Course],
         satisfied: Set<String>
-    ) -> String {
+    ) -> (summary: String, detail: String, notes: [String]) {
         let originalText = original.displayString(coursesByID: coursesByID)
         let missingText = missing.displayString(coursesByID: coursesByID)
         let satisfiedLeaves = collectCourseLeaves(original).filter { satisfied.contains($0) }
         let satisfiedText = satisfiedLeaves.compactMap { coursesByID[$0]?.code ?? $0 }.joined(separator: ", ")
-        var message = "Needs \(originalText)."
+        var detail = "Needs \(originalText)."
         if !satisfiedText.isEmpty {
-            message += " You have \(satisfiedText);"
+            detail += " You have \(satisfiedText);"
         }
-        message += " still missing \(missingText)."
+        detail += " still missing \(missingText)."
+        var notes: [String] = []
         if hasUnknown {
-            message += " Some prereqs couldn't be parsed; verify with the catalog."
+            notes.append("Some prereqs couldn't be parsed; verify with the catalog.")
         }
         if confidence == .parsed {
-            message += " Parsed from catalog text; verify before registering."
+            notes.append("Parsed from catalog text; verify before registering.")
         }
-        if let notes = notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
-            message += " Catalog note: \(notes)"
+        if let note = catalogNotes?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
+            notes.append("Catalog note: \(note)")
         }
-        return message
+        return ("Needs \(missingText)", detail, notes)
     }
 
     private static func collectCourseLeaves(_ expr: PrereqExpr) -> [String] {
@@ -1694,9 +1767,9 @@ public struct ConflictDetector: Sendable {
         }
     }
 
-    private func warning(courseID: String, semester: SemesterIdentity, kind: ConflictKind, message: String, overrides: [ConflictOverride]) -> ConflictWarning {
+    private func warning(courseID: String, semester: SemesterIdentity, kind: ConflictKind, summary: String, detail: String, notes: [String] = [], missingCourseIDs: [String] = [], overrides: [ConflictOverride]) -> ConflictWarning {
         let isOverridden = overrides.contains { $0.courseID == courseID && $0.semester == semester && $0.kind == kind }
-        return ConflictWarning(courseID: courseID, semester: semester, kind: kind, message: message, isOverridden: isOverridden)
+        return ConflictWarning(courseID: courseID, semester: semester, kind: kind, summary: summary, detail: detail, notes: notes, missingCourseIDs: missingCourseIDs, isOverridden: isOverridden)
     }
 }
 

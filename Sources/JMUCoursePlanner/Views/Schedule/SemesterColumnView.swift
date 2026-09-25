@@ -340,7 +340,7 @@ struct SemesterColumnView: View {
         switch kind {
         case .missingCorequisite:
             return "arrow.left.arrow.right.circle.fill"
-        case .missingPrerequisite, .unavailableSemester, .unknownAvailability:
+        case .missingPrerequisite, .unavailableSemester, .unknownAvailability, .heavyLoad, .lightLoad:
             return "exclamationmark.triangle.fill"
         }
     }

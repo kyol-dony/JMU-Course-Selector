@@ -15,7 +15,7 @@ public struct WarningKey: Hashable, Sendable {
 /// Compares two warning lists the way the schedule board reports changes.
 public enum WarningDiff {
     public static func relevant(_ warnings: [ConflictWarning]) -> [ConflictWarning] {
-        warnings.filter { !$0.isOverridden && $0.kind != .unknownAvailability }
+        warnings.filter { !$0.isOverridden && $0.kind.severity != .hidden }
     }
 
     public static func added(before: [ConflictWarning], after: [ConflictWarning]) -> [ConflictWarning] {
@@ -170,10 +170,10 @@ public struct DropVerdictCalculator: Sendable {
     }
 
     static func level(for kind: ConflictKind) -> DropVerdict.Level {
-        switch kind {
-        case .missingPrerequisite, .unavailableSemester: .blocking
-        case .missingCorequisite: .caution
-        case .unknownAvailability: .clear
+        switch kind.severity {
+        case .mustFix: .blocking
+        case .worthALook: .caution
+        case .hidden: .clear
         }
     }
 
@@ -183,6 +183,8 @@ public struct DropVerdictCalculator: Sendable {
         case .missingCorequisite: "loses its coreq"
         case .unavailableSemester: "is not offered that term"
         case .unknownAvailability: "has unknown availability"
+        case .heavyLoad: "is overloaded"
+        case .lightLoad: "is underloaded"
         }
     }
 
@@ -192,17 +194,18 @@ public struct DropVerdictCalculator: Sendable {
         case .missingCorequisite: "Coreq not in place"
         case .unavailableSemester: "Not offered in \(warning.semester.term.rawValue)"
         case .unknownAvailability: "Availability unknown"
+        case .heavyLoad: "Heavy load"
+        case .lightLoad: "Light load"
         }
     }
 
     private static func ownReason(for warning: ConflictWarning) -> String? {
         switch warning.kind {
         case .missingPrerequisite:
-            return firstSentence(of: warning.message)
+            return firstSentence(of: warning.detail)
         case .missingCorequisite:
-            guard let range = warning.message.range(of: ": ") else { return warning.message }
-            return "Take with \(warning.message[range.upperBound...])"
-        case .unavailableSemester, .unknownAvailability:
+            return warning.summary
+        case .unavailableSemester, .unknownAvailability, .heavyLoad, .lightLoad:
             return nil
         }
     }

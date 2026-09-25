@@ -16,7 +16,6 @@ struct CourseChip: View {
     /// Would lose a prereq or coreq if the current drag dropped here.
     var isAffected: Bool = false
     var appearance: Appearance = .normal
-    var onTap: (() -> Void)?
     var onRemove: (() -> Void)?
 
     @State private var isHovering = false
@@ -72,7 +71,6 @@ struct CourseChip: View {
         .rotationEffect(.degrees(isLiftedMotion ? -1.5 : 0))
         .offset(y: isHoverActive && !reduceMotion ? -1 : 0)
         .contentShape(Rectangle())
-        .onTapGesture { onTap?() }
         .onHover { isHovering = $0 }
         .animation(DesignTokens.Motion.hover, value: isHovering)
         .animation(DesignTokens.Motion.hover, value: appearance)

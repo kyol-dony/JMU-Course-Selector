@@ -23,6 +23,8 @@ enum DesignTokens {
         static let warning = dynamic(light: 0xd97706, dark: 0xf59e0b)
         static let danger = dynamic(light: 0xdc2626, dark: 0xef4444)
 
+        static let dragShadow = Color.black.opacity(0.25)
+        static let targetShadow = Color.black.opacity(0.12)
         static let cardShadowLight = Color.black.opacity(0.06)
     }
 
@@ -39,6 +41,7 @@ enum DesignTokens {
     enum Radius {
         static let pill: CGFloat = 999
         static let card: CGFloat = 12
+        static let button: CGFloat = 8
         static let chip: CGFloat = 6
         static let rail: CGFloat = 3
     }
@@ -52,6 +55,13 @@ enum DesignTokens {
         static let label = Font.system(size: 13, weight: .medium)
         static let caption = Font.system(size: 12, weight: .regular)
         static let small = Font.system(size: 11, weight: .medium)
+    }
+
+    enum Motion {
+        /// Hover, press, and verdict changes.
+        static let hover = Animation.easeOut(duration: 0.15)
+        /// Items settling into a slot, insertion gaps opening, spring-back.
+        static let settle = Animation.spring(response: 0.25, dampingFraction: 0.85)
     }
 
     private static func dynamic(light: Int, dark: Int) -> Color {

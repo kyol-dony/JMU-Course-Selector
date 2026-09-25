@@ -131,6 +131,9 @@ struct SemesterColumnView: View {
                             warningTag(model)
                         }
                     }
+                    // Load tags are short; show them in full ("Heavy load (19 cr)")
+                    // and let the count pill give up the width instead.
+                    .fixedSize()
                 }
             }
             Spacer(minLength: DesignTokens.Spacing.s)

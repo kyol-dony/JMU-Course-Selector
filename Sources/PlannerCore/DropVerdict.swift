@@ -26,8 +26,12 @@ public enum WarningDiff {
     }
 
     public static func removedCount(before: [ConflictWarning], after: [ConflictWarning]) -> Int {
+        removed(before: before, after: after).count
+    }
+
+    public static func removed(before: [ConflictWarning], after: [ConflictWarning]) -> Set<WarningKey> {
         let afterKeys = Set(relevant(after).map(WarningKey.init))
-        return Set(relevant(before).map(WarningKey.init)).subtracting(afterKeys).count
+        return Set(relevant(before).map(WarningKey.init)).subtracting(afterKeys)
     }
 }
 
@@ -49,6 +53,7 @@ public struct DropVerdict: Equatable, Sendable {
     public var newWarnings: [ConflictWarning]
     public var fixedCount: Int
     public var affectedCourseIDs: Set<String>
+    public var resolvedKeys: Set<WarningKey>
 
     public init(
         level: Level,
@@ -56,7 +61,8 @@ public struct DropVerdict: Equatable, Sendable {
         reason: String?,
         newWarnings: [ConflictWarning],
         fixedCount: Int,
-        affectedCourseIDs: Set<String>
+        affectedCourseIDs: Set<String>,
+        resolvedKeys: Set<WarningKey> = []
     ) {
         self.level = level
         self.headline = headline
@@ -64,6 +70,7 @@ public struct DropVerdict: Equatable, Sendable {
         self.newWarnings = newWarnings
         self.fixedCount = fixedCount
         self.affectedCourseIDs = affectedCourseIDs
+        self.resolvedKeys = resolvedKeys
     }
 
     public static let neutral = DropVerdict(
@@ -125,17 +132,19 @@ public struct DropVerdictCalculator: Sendable {
                 }
             }
             let simulated = detect(candidate)
+            let resolved = WarningDiff.removed(before: baseline, after: simulated)
             result[semesterID] = verdict(
                 moving: itemID,
                 target: semesterID,
                 added: WarningDiff.added(before: baseline, after: simulated),
-                fixedCount: WarningDiff.removedCount(before: baseline, after: simulated)
+                fixedCount: resolved.count,
+                resolved: resolved
             )
         }
         return result
     }
 
-    private func verdict(moving itemID: String, target: SemesterIdentity, added: [ConflictWarning], fixedCount: Int) -> DropVerdict {
+    private func verdict(moving itemID: String, target: SemesterIdentity, added: [ConflictWarning], fixedCount: Int, resolved: Set<WarningKey>) -> DropVerdict {
         let level = added.map { Self.level(for: $0.kind) }.max() ?? .clear
         let courseLevel = added.filter { !$0.isSemesterLevel }
         let others = courseLevel
@@ -174,7 +183,8 @@ public struct DropVerdictCalculator: Sendable {
             reason: reason,
             newWarnings: added,
             fixedCount: fixedCount,
-            affectedCourseIDs: affected
+            affectedCourseIDs: affected,
+            resolvedKeys: resolved
         )
     }
 

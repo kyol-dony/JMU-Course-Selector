@@ -42,4 +42,32 @@ struct PlanStoreWarningsTests {
         store.plan.pathways[0].semesters[1].courseIDs.removeAll { $0 == "MATH231" }
         #expect(store.warnings.contains { $0.kind == .heavyLoad && $0.semester == Self.fall26 })
     }
+
+    @Test("stop keeping restores an active warning")
+    func removeOverrideRestores() throws {
+        let store = makeStore()
+        let warning = try #require(store.warnings.first { $0.kind == .missingPrerequisite })
+        store.override(warning)
+        #expect(store.warnings.first { $0.id == warning.id }?.isOverridden == true)
+        store.removeOverride(warning)
+        #expect(store.warnings.first { $0.id == warning.id }?.isOverridden == false)
+        #expect(store.plan.overrides.isEmpty)
+    }
+
+    @Test("fix suggestions move the course past its prerequisite")
+    func fixSuggestionsMove() async throws {
+        let store = makeStore()
+        let warning = try #require(store.warnings.first { $0.kind == .missingPrerequisite })
+        let suggestions = await store.fixSuggestions(for: warning)
+        #expect(suggestions == [.move(courseID: "MATH232", to: Self.fall27)])
+    }
+
+    @Test("no suggestions once the warning is gone")
+    func fixSuggestionsAfterPlanChange() async throws {
+        let store = makeStore()
+        let warning = try #require(store.warnings.first { $0.kind == .missingPrerequisite })
+        let request = Task { await store.fixSuggestions(for: warning) }
+        store.moveCourse("MATH232", to: Self.fall27)
+        #expect(await request.value.isEmpty)
+    }
 }

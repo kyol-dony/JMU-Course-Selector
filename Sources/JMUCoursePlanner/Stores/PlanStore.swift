@@ -705,6 +705,21 @@ final class PlanStore: ObservableObject {
         }
     }
 
+    func removeOverride(_ warning: ConflictWarning) {
+        guard plan.overrides.contains(where: { $0.courseID == warning.courseID && $0.semester == warning.semester && $0.kind == warning.kind }) else { return }
+        plan.overrides.removeAll { $0.courseID == warning.courseID && $0.semester == warning.semester && $0.kind == warning.kind }
+        autosave()
+    }
+
+    func fixSuggestions(for warning: ConflictWarning) async -> [FixSuggestion] {
+        guard !warning.isSemesterLevel, let catalog else { return [] }
+        guard let verdicts = await loadDropVerdicts(for: warning.courseID),
+              let pathway = activePathway,
+              warnings.contains(where: { $0.id == warning.id })
+        else { return [] }
+        return FixSuggester(catalog: catalog).suggestions(for: warning, verdicts: verdicts, in: pathway)
+    }
+
     func showCourse(_ courseID: String) {
         guard let course = catalog?.coursesByID[courseID] else { return }
         selectedCourse = course

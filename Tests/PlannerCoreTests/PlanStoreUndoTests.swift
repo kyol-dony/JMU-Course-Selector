@@ -275,4 +275,29 @@ struct PlanStoreUndoTests {
         request.cancel()
         #expect(await request.value == nil)
     }
+
+    @Test("background verdicts land in a readable cache and announce themselves")
+    func loadedVerdictsAreCachedAndPublished() async {
+        let (store, _) = makeStore()
+        #expect(store.cachedDropVerdicts(for: "CS149") == nil)
+        let revision = store.verdictCacheRevision
+
+        let loaded = await store.loadDropVerdicts(for: "CS149")
+
+        #expect(store.cachedDropVerdicts(for: "CS149") == loaded)
+        #expect(store.verdictCacheRevision == revision + 1)
+
+        store.moveCourse("ART200", to: Self.spring27)
+        #expect(store.cachedDropVerdicts(for: "CS149") == nil)
+    }
+
+    @Test("prefetching fills the cache without blocking the caller")
+    func prefetchFillsCache() async throws {
+        let (store, _) = makeStore()
+        store.prefetchDropVerdicts(for: "CS149")
+        for _ in 0..<200 where store.cachedDropVerdicts(for: "CS149") == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(store.cachedDropVerdicts(for: "CS149")?[Self.spring27]?.level == .blocking)
+    }
 }

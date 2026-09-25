@@ -4,6 +4,7 @@ import SwiftUI
 struct ScheduleBoardView: View {
     @EnvironmentObject private var store: PlanStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.undoManager) private var undoManager
     @StateObject private var drag = ScheduleDragController()
     @State private var itemFrames: [String: CGRect] = [:]
     @State private var columnFrames: [SemesterIdentity: CGRect] = [:]
@@ -28,6 +29,10 @@ struct ScheduleBoardView: View {
                 }
             }
         }
+        .overlay(alignment: .bottom) { ScheduleToast() }
+        .animation(DesignTokens.Motion.hover, value: store.lastScheduleChange)
+        .onAppear { store.undoManager = undoManager }
+        .onChange(of: undoManager) { _, newValue in store.undoManager = newValue }
         .onChange(of: store.verdictRevision) { _, _ in
             if drag.isDragging {
                 drag.cancel()

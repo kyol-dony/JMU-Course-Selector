@@ -249,6 +249,9 @@ struct SemesterColumnView: View {
             let spec = ScheduleItemLookup.placeholderSpec(for: id, in: store.activePathway)
             PlaceholderChip(spec: spec, appearance: appearance)
                 .modifier(dragModifier(id: id, index: index) { openPlaceholderPicker(id: id, spec: spec) })
+                .contextMenu { MoveToMenu(itemID: id, currentSemester: semester.id) }
+                .accessibilityActions { moveActions(for: id) }
+                .onHover { if $0 { store.prefetchDropVerdicts(for: id) } }
         } else if let course = store.course(forID: id) {
             CourseChip(
                 course: course,
@@ -259,8 +262,26 @@ struct SemesterColumnView: View {
                 onRemove: { store.removeCourse(id) }
             )
             .modifier(dragModifier(id: id, index: index) { store.showCourse(id) })
+            .contextMenu {
+                MoveToMenu(itemID: id, currentSemester: semester.id)
+                Divider()
+                Button("Remove \(course.code)", role: .destructive) { store.removeCourse(id) }
+            }
+            .accessibilityActions { moveActions(for: id) }
+            .onHover { if $0 { store.prefetchDropVerdicts(for: id) } }
             ForEach(visibleWarnings.filter { $0.courseID == id && $0.semester == semester.id }) { warning in
                 warningStrip(warning)
+            }
+        }
+    }
+
+    /// VoiceOver equivalents of dragging: one action per other semester.
+    @ViewBuilder
+    private func moveActions(for id: String) -> some View {
+        let targets = (store.activePathway?.semesters ?? []).filter { $0.id != semester.id }
+        ForEach(targets) { target in
+            Button("Move to \(target.id.displayName)") {
+                store.moveCourse(id, to: target.id)
             }
         }
     }

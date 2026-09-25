@@ -45,6 +45,10 @@ final class PlanStore: ObservableObject {
     private var progressCacheIsValid = false
     private var verdictCache: [String: [SemesterIdentity: DropVerdict]] = [:]
     private(set) var verdictRevision = UUID()
+    /// Bumped whenever background verdicts land in the cache, so views that
+    /// read `cachedDropVerdicts(for:)` (the context menu) refresh.
+    @Published private(set) var verdictCacheRevision = 0
+    private var prefetchingVerdicts: Set<String> = []
 
     var activeProgram: Program? {
         guard let catalog, let programID = plan.programID else { return nil }
@@ -561,7 +565,24 @@ final class PlanStore: ObservableObject {
         }
         guard !Task.isCancelled, revision == verdictRevision else { return nil }
         verdictCache[itemID] = result
+        verdictCacheRevision += 1
         return result
+    }
+
+    /// Verdicts already computed for the current plan, without computing.
+    func cachedDropVerdicts(for itemID: String) -> [SemesterIdentity: DropVerdict]? {
+        verdictCache[itemID]
+    }
+
+    /// Starts computing verdicts in the background (on hover) so the context
+    /// menu and a following drag can show them without waiting.
+    func prefetchDropVerdicts(for itemID: String) {
+        guard verdictCache[itemID] == nil, !prefetchingVerdicts.contains(itemID) else { return }
+        prefetchingVerdicts.insert(itemID)
+        Task { [weak self] in
+            _ = await self?.loadDropVerdicts(for: itemID)
+            self?.prefetchingVerdicts.remove(itemID)
+        }
     }
 
     /// Moves (or adds) a course or placeholder into `semester`. `index` is the

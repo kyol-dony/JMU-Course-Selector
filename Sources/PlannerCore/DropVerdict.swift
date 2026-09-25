@@ -5,10 +5,12 @@ import Foundation
 public struct WarningKey: Hashable, Sendable {
     public var courseID: String
     public var kind: ConflictKind
+    public var semester: SemesterIdentity?
 
     public init(_ warning: ConflictWarning) {
         courseID = warning.courseID
         kind = warning.kind
+        semester = warning.isSemesterLevel ? warning.semester : nil
     }
 }
 
@@ -88,7 +90,8 @@ public struct DropVerdictCalculator: Sendable {
         in pathway: Pathway,
         overrides: [ConflictOverride],
         activeProgramTitle: String? = nil,
-        completedAtStart: Set<String> = []
+        completedAtStart: Set<String> = [],
+        workload: WorkloadPreference? = nil
     ) -> [SemesterIdentity: DropVerdict] {
         let semesterIDs = pathway.semesters.map(\.id)
         guard !PathwayPlaceholder.isPlaceholder(itemID) else {
@@ -101,7 +104,8 @@ public struct DropVerdictCalculator: Sendable {
                 for: candidate,
                 overrides: overrides,
                 activeProgramTitle: activeProgramTitle,
-                completedAtStart: completedAtStart
+                completedAtStart: completedAtStart,
+                workload: workload
             )
         }
 
@@ -123,6 +127,7 @@ public struct DropVerdictCalculator: Sendable {
             let simulated = detect(candidate)
             result[semesterID] = verdict(
                 moving: itemID,
+                target: semesterID,
                 added: WarningDiff.added(before: baseline, after: simulated),
                 fixedCount: WarningDiff.removedCount(before: baseline, after: simulated)
             )
@@ -130,12 +135,13 @@ public struct DropVerdictCalculator: Sendable {
         return result
     }
 
-    private func verdict(moving itemID: String, added: [ConflictWarning], fixedCount: Int) -> DropVerdict {
+    private func verdict(moving itemID: String, target: SemesterIdentity, added: [ConflictWarning], fixedCount: Int) -> DropVerdict {
         let level = added.map { Self.level(for: $0.kind) }.max() ?? .clear
-        let others = added
+        let courseLevel = added.filter { !$0.isSemesterLevel }
+        let others = courseLevel
             .filter { $0.courseID != itemID }
             .sorted { ($0.semester, $0.courseID) < ($1.semester, $1.courseID) }
-        let own = added
+        let own = courseLevel
             .filter { $0.courseID == itemID }
             .sorted { Self.level(for: $0.kind) > Self.level(for: $1.kind) }
         let affected = Set(others.map(\.courseID))
@@ -151,6 +157,9 @@ public struct DropVerdictCalculator: Sendable {
         } else if let first = own.first {
             headline = Self.ownHeadline(for: first)
             reason = Self.ownReason(for: first)
+        } else if let load = Self.loadText(added.filter(\.isSemesterLevel), target: target) {
+            headline = load.headline
+            reason = load.reason
         } else if fixedCount > 0 {
             headline = "Fixes \(fixedCount)"
             reason = nil
@@ -167,6 +176,16 @@ public struct DropVerdictCalculator: Sendable {
             fixedCount: fixedCount,
             affectedCourseIDs: affected
         )
+    }
+
+    private static func loadText(_ load: [ConflictWarning], target: SemesterIdentity) -> (headline: String, reason: String)? {
+        if let heavy = load.first(where: { $0.kind == .heavyLoad && $0.semester == target }) {
+            return ("Heavy load", heavy.detail)
+        }
+        if let light = load.first(where: { $0.kind == .lightLoad && $0.semester != target }) {
+            return ("Leaves \(light.semester.displayName) light", light.detail)
+        }
+        return nil
     }
 
     static func level(for kind: ConflictKind) -> DropVerdict.Level {

@@ -1645,7 +1645,8 @@ public struct ConflictDetector: Sendable {
         for pathway: Pathway,
         overrides: [ConflictOverride],
         activeProgramTitle: String? = nil,
-        completedAtStart: Set<String> = []
+        completedAtStart: Set<String> = [],
+        workload: WorkloadPreference? = nil
     ) -> [ConflictWarning] {
         let coursesByID = catalog.coursesByID
         // Seed with courses already banked before the first semester — AP and
@@ -1722,7 +1723,48 @@ public struct ConflictDetector: Sendable {
             completedBefore.formUnion(realInThisTerm)
         }
 
+        if let workload {
+            warnings += loadWarnings(for: pathway, workload: workload, overrides: overrides)
+        }
         return warnings
+    }
+
+    public static let fullTimeCredits = 12
+
+    private func loadWarnings(for pathway: Pathway, workload: WorkloadPreference, overrides: [ConflictOverride]) -> [ConflictWarning] {
+        let semesters = pathway.semesters.sorted { $0.id < $1.id }
+        guard let lastFilled = semesters.lastIndex(where: { !$0.courseIDs.isEmpty }) else { return [] }
+        let coursesByID = catalog.coursesByID
+        let range = workload.creditRange
+        var result: [ConflictWarning] = []
+        for (index, semester) in semesters.enumerated() {
+            let credits = semester.courseIDs.reduce(0) { total, id in
+                if PathwayPlaceholder.isPlaceholder(id) {
+                    return total + (pathway.placeholders[id]?.credits ?? 0)
+                }
+                return total + (coursesByID[id]?.credits ?? 0)
+            }
+            if credits > range.upperBound + 2 {
+                result.append(warning(
+                    courseID: ConflictWarning.semesterSubjectID,
+                    semester: semester.id,
+                    kind: .heavyLoad,
+                    summary: "Heavy load (\(credits) cr)",
+                    detail: "\(credits) credits is above your \(workload.rawValue) load (\(range.lowerBound)–\(range.upperBound)).",
+                    overrides: overrides
+                ))
+            } else if credits < Self.fullTimeCredits, index < lastFilled {
+                result.append(warning(
+                    courseID: ConflictWarning.semesterSubjectID,
+                    semester: semester.id,
+                    kind: .lightLoad,
+                    summary: "Light load (\(credits) cr)",
+                    detail: "\(credits) credits is below full-time (\(Self.fullTimeCredits)).",
+                    overrides: overrides
+                ))
+            }
+        }
+        return result
     }
 
     private static func prereqText(

@@ -99,7 +99,8 @@ final class PlanStore: ObservableObject {
             // AP / dual-enrollment awards count as completed before the first
             // term so prereq/coreq checks see them the same way the schedule
             // generator does.
-            completedAtStart: Set(plan.transferCredits.flatMap(\.courseIDs))
+            completedAtStart: Set(plan.transferCredits.flatMap(\.courseIDs)),
+            workload: plan.workload
         )
         cachedWarnings = result
         return result
@@ -544,7 +545,8 @@ final class PlanStore: ObservableObject {
             in: activePathway,
             overrides: plan.overrides,
             activeProgramTitle: effectiveActiveProgram?.title,
-            completedAtStart: Set(plan.transferCredits.flatMap(\.courseIDs))
+            completedAtStart: Set(plan.transferCredits.flatMap(\.courseIDs)),
+            workload: plan.workload
         )
         #if DEBUG
         let elapsed = Date().timeIntervalSince(started) * 1000
@@ -566,10 +568,11 @@ final class PlanStore: ObservableObject {
         let overrides = plan.overrides
         let title = effectiveActiveProgram?.title
         let completed = Set(plan.transferCredits.flatMap(\.courseIDs))
+        let workload = plan.workload
         let worker = Task.detached(priority: .userInitiated) {
             DropVerdictCalculator(catalog: catalog).verdicts(
                 moving: itemID, in: pathway, overrides: overrides,
-                activeProgramTitle: title, completedAtStart: completed
+                activeProgramTitle: title, completedAtStart: completed, workload: workload
             )
         }
         let result = await withTaskCancellationHandler {

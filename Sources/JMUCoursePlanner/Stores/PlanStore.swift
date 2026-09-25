@@ -395,18 +395,26 @@ final class PlanStore: ObservableObject {
         scheduleGenerationProgress = nil
     }
 
-    func moveCourse(_ courseID: String, to semester: SemesterIdentity) {
+    /// Moves (or adds) a course or placeholder into `semester`. `index` is the
+    /// position within the target semester after the item has been removed
+    /// from its current spot; nil appends. Dropping an item back onto its own
+    /// slot leaves the plan untouched.
+    func moveCourse(_ courseID: String, to semester: SemesterIdentity, at index: Int? = nil) {
         guard let pathwayIndex = activePathwayIndex else { return }
-        var pathway = plan.pathways[pathwayIndex]
-        for index in pathway.semesters.indices {
-            pathway.semesters[index].courseIDs.removeAll { $0 == courseID }
+        let original = plan.pathways[pathwayIndex]
+        var pathway = original
+        for semesterIndex in pathway.semesters.indices {
+            pathway.semesters[semesterIndex].courseIDs.removeAll { $0 == courseID }
         }
         if let target = pathway.semesters.firstIndex(where: { $0.id == semester }) {
-            pathway.semesters[target].courseIDs.append(courseID)
+            let count = pathway.semesters[target].courseIDs.count
+            let position = min(max(index ?? count, 0), count)
+            pathway.semesters[target].courseIDs.insert(courseID, at: position)
         } else {
             pathway.semesters.append(SemesterPlan(id: semester, courseIDs: [courseID]))
             pathway.semesters.sort { $0.id < $1.id }
         }
+        guard pathway != original else { return }
         plan.pathways[pathwayIndex] = pathway
         autosave()
     }

@@ -29,14 +29,22 @@ struct SemesterColumnView: View {
     @State private var coursePickerRequest: CoursePickerRequest?
     var semester: SemesterPlan
     var catalog: Catalog
-    var visibleWarnings: [ConflictWarning]
+    var issues: ScheduleIssues
+    @Binding var presentedWarningID: String?
+    var isHighlighted: Bool
+    var onJumpToCourse: (String) -> Void
     var classificationSlots: [String: Int]
     var highlightedCategoryID: String?
     var onBeginDrag: (_ itemID: String, _ semester: SemesterIdentity, _ index: Int, _ start: CGPoint) -> Void
     var onEndDrag: (ScheduleDragController.EndResult) -> Void
 
     private var totalCredits: Int {
-        semester.courseIDs.compactMap { store.course(forID: $0)?.credits }.reduce(0, +)
+        semester.courseIDs.reduce(0) { total, id in
+            if PathwayPlaceholder.isPlaceholder(id) {
+                return total + (store.activePathway?.placeholders[id]?.credits ?? 0)
+            }
+            return total + (store.course(forID: id)?.credits ?? 0)
+        }
     }
 
     private var session: ScheduleDragController.Session? { drag.session }
@@ -83,6 +91,8 @@ struct SemesterColumnView: View {
         .animation(DesignTokens.Motion.hover, value: verdict)
         .animation(DesignTokens.Motion.hover, value: isTarget)
         .animation(DesignTokens.Motion.hover, value: drag.isDragging)
+        .animation(reduceMotion ? nil : DesignTokens.Motion.hover, value: issues.worstActive(in: semester.id))
+        .animation(reduceMotion ? nil : DesignTokens.Motion.hover, value: isHighlighted)
         .sheet(item: $coursePickerRequest) { request in
             CoursePickerSheet(title: request.title, courses: request.courses) { course in
                 switch request.action {
@@ -112,10 +122,15 @@ struct SemesterColumnView: View {
                         .truncationMode(.tail)
                         .help(reason)
                 } else {
-                    Text("\(totalCredits) credits")
-                        .font(DesignTokens.Typography.caption)
-                        .foregroundStyle(DesignTokens.Colors.textTertiary)
-                        .monospacedDigit()
+                    HStack(spacing: 6) {
+                        Text("\(totalCredits) credits")
+                            .font(DesignTokens.Typography.caption)
+                            .foregroundStyle(DesignTokens.Colors.textTertiary)
+                            .monospacedDigit()
+                        if let model = WarningTagModel(warnings: issues.semesterWarnings(in: semester.id)) {
+                            warningTag(model)
+                        }
+                    }
                 }
             }
             Spacer(minLength: DesignTokens.Spacing.s)
@@ -155,7 +170,14 @@ struct SemesterColumnView: View {
     }
 
     private var overlayStyle: (color: Color, stroke: Double, fill: Double)? {
-        guard drag.isDragging else { return nil }
+        guard drag.isDragging else {
+            if isHighlighted { return (DesignTokens.Colors.brandPurple, 0.6, 0) }
+            switch issues.worstActive(in: semester.id) {
+            case .mustFix: return (DesignTokens.Colors.danger, 0.4, 0)
+            case .worthALook: return (DesignTokens.Colors.warning, 0.45, 0)
+            case .hidden, nil: return nil
+            }
+        }
         if isOriginColumn {
             return isTarget ? (DesignTokens.Colors.brandPurple, 0.6, 0) : nil
         }
@@ -261,7 +283,8 @@ struct SemesterColumnView: View {
                 isHighlighted: isHighlighted(courseID: id),
                 isAffected: drag.affectedCourseIDs.contains(id),
                 appearance: appearance,
-                onRemove: { store.removeCourse(id) }
+                onRemove: { store.removeCourse(id) },
+                accessory: chipTag(for: id)
             )
             .modifier(dragModifier(id: id, index: index) { store.showCourse(id) })
             .contextMenu {
@@ -273,9 +296,6 @@ struct SemesterColumnView: View {
             .onContinuousHover { phase in
                     if case .active = phase { store.prefetchDropVerdicts(for: id) }
                 }
-            ForEach(visibleWarnings.filter { $0.courseID == id && $0.semester == semester.id }) { warning in
-                warningStrip(warning)
-            }
         }
     }
 
@@ -312,36 +332,25 @@ struct SemesterColumnView: View {
         )
     }
 
-    private func warningStrip(_ warning: ConflictWarning) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Image(systemName: iconName(for: warning.kind))
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(warning.isOverridden ? DesignTokens.Colors.textTertiary : DesignTokens.Colors.warning)
-            Text(warning.message)
-                .font(DesignTokens.Typography.caption)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-                .foregroundStyle(warning.isOverridden ? DesignTokens.Colors.textTertiary : DesignTokens.Colors.warning)
-            Spacer(minLength: 0)
-            if !warning.isOverridden {
-                Button("Keep") { store.override(warning) }
-                    .buttonStyle(.dtTertiary)
-            }
-        }
-        .padding(.horizontal, DesignTokens.Spacing.s)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(warning.isOverridden ? DesignTokens.Colors.surface : DesignTokens.Colors.warning.opacity(0.12))
-        )
+    private func chipTag(for courseID: String) -> AnyView? {
+        guard let model = WarningTagModel(warnings: issues.warnings(for: courseID, in: semester.id)) else { return nil }
+        return AnyView(warningTag(model))
     }
 
-    private func iconName(for kind: ConflictKind) -> String {
-        switch kind {
-        case .missingCorequisite:
-            return "arrow.left.arrow.right.circle.fill"
-        case .missingPrerequisite, .unavailableSemester, .unknownAvailability, .heavyLoad, .lightLoad:
-            return "exclamationmark.triangle.fill"
+    private func warningTag(_ model: WarningTagModel) -> some View {
+        WarningTag(
+            model: model,
+            isPresented: Binding(
+                get: { presentedWarningID == model.primary.id },
+                set: { presentedWarningID = $0 ? model.primary.id : nil }
+            )
+        ) {
+            WarningPopover(
+                warnings: model.warnings,
+                onClose: { presentedWarningID = nil },
+                onJumpToCourse: onJumpToCourse
+            )
+            .environmentObject(store)
         }
     }
 

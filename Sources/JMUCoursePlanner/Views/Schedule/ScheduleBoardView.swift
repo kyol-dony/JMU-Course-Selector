@@ -9,10 +9,18 @@ struct ScheduleBoardView: View {
     @State private var itemFrames: [String: CGRect] = [:]
     @State private var columnFrames: [SemesterIdentity: CGRect] = [:]
     @State private var lastAutoScroll = Date.distantPast
+    @State private var presentedWarningID: String?
+    @State private var highlightedSemester: SemesterIdentity?
+    @State private var scrollRequest: ScrollRequest?
+
+    private struct ScrollRequest: Equatable {
+        let id = UUID()
+        var semester: SemesterIdentity
+    }
     var catalog: Catalog
 
     var body: some View {
-        let visibleWarnings = store.warnings.filter { $0.kind != .unknownAvailability }
+        let issues = ScheduleIssues(store.warnings, catalog: catalog)
         Group {
             if store.plan.pathways.isEmpty {
                 EmptyState(
@@ -24,8 +32,7 @@ struct ScheduleBoardView: View {
                 VStack(spacing: 0) {
                     subToolbar
                     Divider().opacity(0.5)
-                    warningsBanner(visibleWarnings)
-                    board(visibleWarnings)
+                    board(issues)
                 }
             }
         }
@@ -41,6 +48,7 @@ struct ScheduleBoardView: View {
         }
         .onChange(of: drag.isDragging) { _, dragging in
             drag.setEscapeMonitoring(dragging)
+            if dragging { presentedWarningID = nil }
         }
         .task(id: drag.isReturning ? drag.session?.id : nil) {
             if drag.isReturning { await animateReturnHome() }
@@ -96,24 +104,6 @@ struct ScheduleBoardView: View {
         .padding(.vertical, DesignTokens.Spacing.m)
     }
 
-    @ViewBuilder
-    private func warningsBanner(_ visibleWarnings: [ConflictWarning]) -> some View {
-        let active = visibleWarnings.filter { !$0.isOverridden }
-        if !active.isEmpty {
-            HStack(spacing: DesignTokens.Spacing.s) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(DesignTokens.Colors.warning)
-                Text("\(active.count) warning\(active.count == 1 ? "" : "s") in this pathway")
-                    .font(DesignTokens.Typography.caption)
-                    .foregroundStyle(DesignTokens.Colors.textPrimary)
-                Spacer()
-            }
-            .padding(.horizontal, DesignTokens.Spacing.xl)
-            .padding(.vertical, DesignTokens.Spacing.s)
-            .background(DesignTokens.Colors.warning.opacity(0.1))
-        }
-    }
-
     private var classificationSlots: [String: Int] {
         let classifications = (store.activePathway?.semesters ?? [])
             .flatMap(\.courseIDs)
@@ -122,7 +112,7 @@ struct ScheduleBoardView: View {
         return CourseClassificationPalette.slotMap(for: classifications)
     }
 
-    private func board(_ visibleWarnings: [ConflictWarning]) -> some View {
+    private func board(_ issues: ScheduleIssues) -> some View {
         let slots = classificationSlots
         return GeometryReader { viewport in
             ScrollViewReader { proxy in
@@ -133,7 +123,10 @@ struct ScheduleBoardView: View {
                                 drag: drag,
                                 semester: semester,
                                 catalog: catalog,
-                                visibleWarnings: visibleWarnings,
+                                issues: issues,
+                                presentedWarningID: $presentedWarningID,
+                                isHighlighted: highlightedSemester == semester.id,
+                                onJumpToCourse: jumpToCourse,
                                 classificationSlots: slots,
                                 highlightedCategoryID: store.scheduleCategoryFilter,
                                 onBeginDrag: beginDrag,
@@ -158,6 +151,12 @@ struct ScheduleBoardView: View {
                 .onReceive(drag.pointer.$location) { location in
                     autoScroll(location: location, viewport: viewport.size, proxy: proxy)
                 }
+                .onChange(of: scrollRequest) { _, request in
+                    guard let request else { return }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                        proxy.scrollTo(request.semester, anchor: .center)
+                    }
+                }
                 .task(id: drag.isDragging) {
                     guard drag.isDragging else { return }
                     while !Task.isCancelled {
@@ -168,6 +167,26 @@ struct ScheduleBoardView: View {
                 }
             }
         }
+    }
+
+    /// Scrolls to a semester, pulses its outline, then opens a tag's popover.
+    func focus(semester: SemesterIdentity, openingTag tagID: String? = nil) {
+        presentedWarningID = nil
+        scrollRequest = ScrollRequest(semester: semester)
+        if !reduceMotion { highlightedSemester = semester }
+        Task { @MainActor in
+            if !reduceMotion { try? await Task.sleep(for: .milliseconds(250)) }
+            presentedWarningID = tagID
+            guard !reduceMotion else { return }
+            try? await Task.sleep(for: .milliseconds(750))
+            if highlightedSemester == semester { highlightedSemester = nil }
+        }
+    }
+
+    /// "Move <CODE> earlier": show where that course sits.
+    func jumpToCourse(_ courseID: String) {
+        guard let semester = store.activePathway?.semesters.first(where: { $0.courseIDs.contains(courseID) })?.id else { return }
+        focus(semester: semester)
     }
 
     /// The copy of the dragged item that follows the cursor.

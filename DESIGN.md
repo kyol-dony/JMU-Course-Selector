@@ -178,8 +178,8 @@ A neutral paper-toned canvas, two brand colors used sparingly, three semantic si
 
 ### Semantic
 - **Verified Green** (`#16a34a` light / `#22c55e` dark): The "Verified" status pill on programs with parsed requirements. The "Complete ✓" line beneath a finished progress rail.
-- **Advisor Amber** (`#d97706` light / `#f59e0b` dark): The "Partial" status pill for unverified data. The progress rail fill when a category needs advisor verification. The inline warning strip beneath an offending course chip.
-- **Hard Stop Red** (`#dc2626` light / `#ef4444` dark): The 3px left border on a course chip with an active prerequisite or semester conflict. Destructive button text. Reset App Data.
+- **Advisor Amber** (`#d97706` light / `#f59e0b` dark): The "Partial" status pill for unverified data. The progress rail fill when a category needs advisor verification. The warning tag and resting semester outline for worth-a-look issues (coreq gaps, heavy or light credit load).
+- **Hard Stop Red** (`#dc2626` light / `#ef4444` dark): The warning tag and resting semester outline for must-fix issues (missing prerequisite, course not offered that term). Destructive button text. Reset App Data.
 
 ### Named Rules
 
@@ -187,7 +187,7 @@ A neutral paper-toned canvas, two brand colors used sparingly, three semantic si
 
 **The Marginalia Rule.** Madison Gold is reserved for notation: the monogram, the gen-ed category accent, and nowhere else. It never carries text larger than 12px. It never tints a card background.
 
-**The Semantic Lane Rule.** Verified Green, Advisor Amber, and Hard Stop Red appear only on status pills, progress rails, and warning strips. They never become a default surface. They never carry decorative weight.
+**The Semantic Lane Rule.** Verified Green, Advisor Amber, and Hard Stop Red appear only on status pills, progress rails, warning tags, and semester outlines. They never become a default surface. They never carry decorative weight.
 
 ## 3. Typography
 
@@ -231,7 +231,7 @@ Flat with one whisper of shadow. Cards sit on the Paper canvas with a 1px Hairli
 - **Shape:** 8px corner radius (gently curved, not pill).
 - **Primary** (`button-primary`): Royal Purple fill, Card Paper text, padding 12px / 16px, Body Emphasized typography. Used for the single most important action on a screen: Generate Plan in the Setup sheet, Start Setup in the empty state, Retry on the loading view.
 - **Secondary** (`button-secondary`): Card Paper background, Ink text, 1px Hairline border, same padding and typography as primary. Used for "Edit setup" footers, "Back" in the Setup sheet, "Regenerate" in the Schedule sub-toolbar.
-- **Tertiary** (`button-tertiary`): No background, Royal Purple text, Label typography, padding 4px / 8px. Used for "Skip", "Keep" on warning strips, "Regenerate pathways".
+- **Tertiary** (`button-tertiary`): No background, Royal Purple text, Label typography, padding 4px / 8px. Used for "Skip", "Keep anyway" and fix actions in warning popovers, "Regenerate pathways".
 - **Destructive** (`button-destructive`): Card Paper background, Hard Stop Red text, Hard Stop Red 50%-alpha 1px border. Used only for Reset App Data and Start Over.
 - **Pressed state:** Primary darkens via 85% opacity; Secondary fills with the Royal Purple Soft tint; Destructive fills with Hard Stop Red 15%-alpha.
 
@@ -240,7 +240,7 @@ Flat with one whisper of shadow. Cards sit on the Paper canvas with a 1px Hairli
 - **PlaceholderChip:** transparent fill, 8px corner radius, 1px dashed Royal Purple border. Shares CourseChip's hover lift, ghost, and lifted states with a 6% Royal Purple wash.
 - **StatChip:** Card Paper or Royal Purple Soft (emphasized variant) pill, 1px Hairline border, padding 8px / 12px. Two text spans: an 11px uppercase eyebrow label in Quiet Gray, and a 14px tabular-numeric value in Ink (or Royal Purple when emphasized).
 - **StatusPill:** Filled 999px pill, padding 3px / 8px, 11px text. Tones: Verified Green (success), Advisor Amber (warning), Hard Stop Red (danger), Royal Purple (info), Hairline-50% (neutral). Optional 9px bold leading SF Symbol.
-- **Schedule drag:** while a block is dragged, every semester column shows what a drop there would do: a tinted border (Verified Green 40% fine, Advisor Amber 45% plus 4% fill for a coreq issue, Hard Stop Red 40% plus 4% fill for a broken prereq or unoffered term), a verdict StatusPill in place of the course count, and a one-line reason in place of the credit total. The origin column reads "Current spot". A 3px Royal Purple insertion line with a leading dot marks the drop point and the column's blocks open a gap (spring, response 0.25, damping 0.85). Reduce Motion drops the tilt, lift, and gap; the line and verdicts stay.
+- **Schedule drag:** while a block is dragged, every semester column shows what a drop there would do: a tinted border (Verified Green 40% fine, Advisor Amber 45% plus 4% fill for a coreq issue, Hard Stop Red 40% plus 4% fill for a broken prereq or unoffered term), a verdict StatusPill in place of the course count, and a one-line reason in place of the credit total. The origin column reads "Current spot". A 3px Royal Purple insertion line with a leading dot marks the drop point and the column's blocks open a gap (spring, response 0.25, damping 0.85). Reduce Motion drops the tilt, lift, and gap; the line and verdicts stay. At rest, a semester's border takes its worst active warning's color (same palette, 1pt, no fill); drag verdicts replace it while dragging. Warnings appear as a one-line tag under a course's title (or beside a semester's credit total for load) that opens a popover with the explanation, catalog caveats, a one-click fix, and Keep anyway.
 
 ### Cards
 - **Corner Style:** 12px (gently curved).

@@ -17,6 +17,8 @@ struct CourseChip: View {
     var isAffected: Bool = false
     var appearance: Appearance = .normal
     var onRemove: (() -> Void)?
+    /// Optional content under the title, such as a warning tag.
+    var accessory: AnyView? = nil
 
     @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -50,6 +52,9 @@ struct CourseChip: View {
                     .foregroundStyle(DesignTokens.Colors.textSecondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
+                if let accessory {
+                    accessory.padding(.top, 3)
+                }
             }
             .padding(.horizontal, DesignTokens.Spacing.m)
             .padding(.vertical, DesignTokens.Spacing.s)

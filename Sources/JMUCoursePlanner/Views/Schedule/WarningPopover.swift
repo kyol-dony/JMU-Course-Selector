@@ -100,7 +100,9 @@ struct WarningPopover: View {
                 return nil
             }
             if !moves.isEmpty {
-                HStack(spacing: DesignTokens.Spacing.s) {
+                // One fix per line: side by side, two "Move to <Term> <Year>"
+                // buttons do not fit the popover and truncate the year.
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Fits in:")
                         .font(DesignTokens.Typography.caption)
                         .foregroundStyle(DesignTokens.Colors.textSecondary)
@@ -110,6 +112,7 @@ struct WarningPopover: View {
                             store.moveCourse(courseID, to: semester)
                         }
                         .buttonStyle(.dtTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             } else if case .moveEarlier(let courseID)? = suggestions.first {
@@ -118,6 +121,7 @@ struct WarningPopover: View {
                     onJumpToCourse(courseID)
                 }
                 .buttonStyle(.dtTertiary)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

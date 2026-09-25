@@ -46,6 +46,13 @@ struct ScheduleBoardView: View {
                 drag.finishReturn()
             }
         }
+        .onChange(of: issues) { _, current in
+            // A tag that disappeared must not leave its popover armed to
+            // reopen when a later edit brings the same warnings back.
+            if let key = presentedWarningID, !current.containsTag(key) {
+                presentedWarningID = nil
+            }
+        }
         .onChange(of: drag.isDragging) { _, dragging in
             drag.setEscapeMonitoring(dragging)
             if dragging { presentedWarningID = nil }

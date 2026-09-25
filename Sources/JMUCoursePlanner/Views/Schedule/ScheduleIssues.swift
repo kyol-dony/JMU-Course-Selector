@@ -70,11 +70,13 @@ struct ScheduleIssues: Equatable {
             .max()
     }
 
-    /// The popover identity of the tag that shows `warning` (its group's primary).
+    /// The popover identity of the tag that shows `warning`.
     func tagID(for warning: ConflictWarning) -> String {
-        let group = warning.isSemesterLevel
-            ? semesterWarnings(in: warning.semester)
-            : warnings(for: warning.courseID, in: warning.semester)
-        return WarningTagModel(warnings: group)?.primary.id ?? warning.id
+        WarningTagModel.key(for: warning)
+    }
+
+    /// Whether any tag on the board has this popover identity.
+    func containsTag(_ key: String) -> Bool {
+        all.contains { WarningTagModel.key(for: $0) == key }
     }
 }

@@ -9,8 +9,11 @@ struct WarningTagModel: Equatable {
         case kept
     }
 
-    /// The warning the tag is named after; also the tag's popover identity.
+    /// The warning the tag is named after.
     let primary: ConflictWarning
+    /// Popover identity: the tag's subject (course or semester) in its
+    /// semester, so keeping the top warning does not close or re-key it.
+    let key: String
     /// All warnings behind the tag, most important first.
     let warnings: [ConflictWarning]
     let tone: Tone
@@ -20,6 +23,7 @@ struct WarningTagModel: Equatable {
         let ordered = Self.ordered(warnings)
         guard let first = ordered.first else { return nil }
         primary = first
+        key = Self.key(for: first)
         self.warnings = ordered
         if first.isOverridden {
             tone = .kept
@@ -29,6 +33,10 @@ struct WarningTagModel: Equatable {
         let text = first.isOverridden ? "Kept" : first.summary
         let extra = ordered.count - 1
         label = extra > 0 ? "\(text) +\(extra)" : text
+    }
+
+    static func key(for warning: ConflictWarning) -> String {
+        "\(warning.courseID)|\(warning.semester.year)-\(warning.semester.term.rawValue)"
     }
 
     /// Active before kept, then most severe first; stable otherwise.

@@ -103,4 +103,19 @@ struct FixSuggesterTests {
         #expect(verdict.resolvedKeys == [WarningKey(warning)])
         #expect(verdict.fixedCount == 1)
     }
+
+    @Test("moves that add no new warnings are offered before ones that do")
+    func cleanMovesFirst() {
+        let warning = ConflictWarning(courseID: "MATH232", semester: Self.s[0], kind: .missingPrerequisite, summary: "", detail: "", isOverridden: false)
+        let pathway = Pathway(id: "p", name: "P", semesters: Self.s.prefix(3).map { SemesterPlan(id: $0, courseIDs: []) })
+        let amber = ConflictWarning(courseID: ConflictWarning.semesterSubjectID, semester: Self.s[0], kind: .lightLoad, summary: "", detail: "", isOverridden: false)
+        let verdicts: [SemesterIdentity: DropVerdict] = [
+            Self.s[1]: DropVerdict(level: .caution, headline: nil, reason: nil, newWarnings: [amber], fixedCount: 1, affectedCourseIDs: [], resolvedKeys: [WarningKey(warning)]),
+            Self.s[2]: DropVerdict(level: .clear, headline: nil, reason: nil, newWarnings: [], fixedCount: 1, affectedCourseIDs: [], resolvedKeys: [WarningKey(warning)])
+        ]
+        #expect(FixSuggester(catalog: Self.catalog).suggestions(for: warning, verdicts: verdicts, in: pathway) == [
+            .move(courseID: "MATH232", to: Self.s[2]),
+            .move(courseID: "MATH232", to: Self.s[1])
+        ])
+    }
 }

@@ -70,4 +70,14 @@ struct PlanStoreWarningsTests {
         store.moveCourse("MATH232", to: Self.fall27)
         #expect(await request.value.isEmpty)
     }
+
+    @Test("a suggested move reports how many new warnings it would add")
+    func pendingWarningCount() async throws {
+        let store = makeStore()
+        let warning = try #require(store.warnings.first { $0.kind == .missingPrerequisite })
+        _ = await store.fixSuggestions(for: warning)
+        // Fall 2026 drops to 9 cr and Spring 2027 (10 cr) is no longer final.
+        #expect(store.newWarningCount(moving: "MATH232", to: Self.fall27) == 2)
+        #expect(store.newWarningCount(moving: "MATH231", to: Self.fall27) == nil)
+    }
 }

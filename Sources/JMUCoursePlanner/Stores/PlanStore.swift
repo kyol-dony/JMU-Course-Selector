@@ -711,6 +711,14 @@ final class PlanStore: ObservableObject {
         autosave()
     }
 
+    /// How many new warnings moving `courseID` to `semester` would add, from
+    /// the cached drop verdicts; nil when they have not been computed.
+    func newWarningCount(moving courseID: String, to semester: SemesterIdentity) -> Int? {
+        cachedDropVerdicts(for: courseID)?[semester]?.newWarnings
+            .filter { $0.kind.severity != .hidden && !$0.isOverridden }
+            .count
+    }
+
     func fixSuggestions(for warning: ConflictWarning) async -> [FixSuggestion] {
         guard !warning.isSemesterLevel, let catalog else { return [] }
         guard let verdicts = await loadDropVerdicts(for: warning.courseID),

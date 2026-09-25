@@ -27,14 +27,16 @@ public struct FixSuggester: Sendable {
         guard let currentIndex = ordered.firstIndex(of: warning.semester) else { return [] }
 
         let candidates = ordered.enumerated()
-            .compactMap { index, semester -> (distance: Int, index: Int, semester: SemesterIdentity)? in
+            .compactMap { index, semester -> (clean: Bool, distance: Int, index: Int, semester: SemesterIdentity)? in
                 guard semester != warning.semester, let verdict = verdicts[semester] else { return nil }
                 guard verdict.resolvedKeys.contains(key),
                       !verdict.newWarnings.contains(where: { $0.kind.severity == .mustFix })
                 else { return nil }
-                return (abs(index - currentIndex), index, semester)
+                let clean = !verdict.newWarnings.contains { $0.kind.severity != .hidden && !$0.isOverridden }
+                return (clean, abs(index - currentIndex), index, semester)
             }
-            .sorted { ($0.distance, $0.index) < ($1.distance, $1.index) }
+            // Moves that add nothing new come first, then nearest, then earlier.
+            .sorted { ($0.clean ? 0 : 1, $0.distance, $0.index) < ($1.clean ? 0 : 1, $1.distance, $1.index) }
         if !candidates.isEmpty {
             return candidates.prefix(2).map { FixSuggestion.move(courseID: warning.courseID, to: $0.semester) }
         }

@@ -105,7 +105,7 @@ struct WarningPopover: View {
                         .font(DesignTokens.Typography.caption)
                         .foregroundStyle(DesignTokens.Colors.textSecondary)
                     ForEach(moves, id: \.1) { courseID, semester in
-                        Button("Move to \(semester.displayName)") {
+                        Button(moveTitle(courseID, to: semester)) {
                             onClose()
                             store.moveCourse(courseID, to: semester)
                         }
@@ -120,6 +120,13 @@ struct WarningPopover: View {
                 .buttonStyle(.dtTertiary)
             }
         }
+    }
+
+    /// Says so when a fix trades this warning for others (e.g. a light load).
+    private func moveTitle(_ courseID: String, to semester: SemesterIdentity) -> String {
+        let added = store.newWarningCount(moving: courseID, to: semester) ?? 0
+        guard added > 0 else { return "Move to \(semester.displayName)" }
+        return "Move to \(semester.displayName) (\(added) new warning\(added == 1 ? "" : "s"))"
     }
 
     private func color(for warning: ConflictWarning) -> Color {

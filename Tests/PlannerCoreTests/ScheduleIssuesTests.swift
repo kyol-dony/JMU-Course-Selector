@@ -106,7 +106,25 @@ struct ScheduleIssuesTests {
 
     @Test("the list opens the popover of the tag that shows the warning")
     func tagID() {
-        #expect(Self.issues.tagID(for: Self.bCoreq) == Self.bPrereq.id)
-        #expect(Self.issues.tagID(for: Self.load) == Self.load.id)
+        #expect(Self.issues.tagID(for: Self.bCoreq) == WarningTagModel(warnings: [Self.bPrereq, Self.bCoreq])?.key)
+        #expect(Self.issues.tagID(for: Self.load) == WarningTagModel(warnings: [Self.load])?.key)
+    }
+
+    @Test("a tag keeps its popover identity when its top warning is kept")
+    func tagKeyIsStable() throws {
+        let active = try #require(WarningTagModel(warnings: [Self.bPrereq, Self.bCoreq]))
+        let keptPrereq = Self.w("B", Self.fall26, .missingPrerequisite, kept: true)
+        let afterKeep = try #require(WarningTagModel(warnings: [keptPrereq, Self.bCoreq]))
+        #expect(afterKeep.primary == Self.bCoreq)
+        #expect(afterKeep.key == active.key)
+        #expect(Self.issues.tagID(for: Self.bCoreq) == active.key)
+        #expect(Self.issues.tagID(for: Self.load) != active.key)
+    }
+
+    @Test("issues know which tags exist")
+    func containsTag() throws {
+        let key = try #require(WarningTagModel(warnings: [Self.bPrereq])).key
+        #expect(Self.issues.containsTag(key))
+        #expect(!ScheduleIssues.empty.containsTag(key))
     }
 }

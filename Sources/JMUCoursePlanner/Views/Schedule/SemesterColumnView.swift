@@ -341,8 +341,8 @@ struct SemesterColumnView: View {
         WarningTag(
             model: model,
             isPresented: Binding(
-                get: { presentedWarningID == model.primary.id },
-                set: { presentedWarningID = $0 ? model.primary.id : nil }
+                get: { presentedWarningID == model.key },
+                set: { presentedWarningID = $0 ? model.key : nil }
             )
         ) {
             WarningPopover(

@@ -78,17 +78,16 @@ struct ScheduleBoardView: View {
 
     private func subToolbar(_ issues: ScheduleIssues) -> some View {
         HStack(spacing: DesignTokens.Spacing.m) {
-            Picker("Pathway", selection: Binding(
-                get: { store.plan.activePathwayID ?? store.plan.pathways.first?.id ?? "" },
-                set: { store.plan.activePathwayID = $0 }
-            )) {
-                ForEach(store.plan.pathways) { pathway in
-                    Text(pathway.name).tag(pathway.id)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 360)
+            PathwaySelector(
+                pathways: store.plan.pathways,
+                selection: Binding(
+                    get: { store.plan.activePathwayID ?? store.plan.pathways.first?.id ?? "" },
+                    set: { store.plan.activePathwayID = $0 }
+                )
+            )
+            // Takes space before the spacer, so labels only shorten when the
+            // toolbar is genuinely tight.
+            .layoutPriority(1)
 
             Spacer()
 

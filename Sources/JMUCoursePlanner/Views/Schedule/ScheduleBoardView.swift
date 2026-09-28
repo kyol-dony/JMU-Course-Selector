@@ -157,9 +157,9 @@ struct ScheduleBoardView: View {
                         }
                     }
                     .padding(DesignTokens.Spacing.xl)
-                    // Centered when the semesters fit the window; scrolls
-                    // from the leading edge when they don't.
-                    .frame(minWidth: viewport.size.width, alignment: .center)
+                    // Centered both ways when the semesters fit the window;
+                    // scrolls from the top-leading edge when they don't.
+                    .frame(minWidth: viewport.size.width, minHeight: viewport.size.height, alignment: .center)
                     .animation(reduceMotion ? nil : DesignTokens.Motion.settle, value: store.activePathway?.semesters.map(\.id))
                 }
                 .coordinateSpace(name: ScheduleBoardSpace.name)

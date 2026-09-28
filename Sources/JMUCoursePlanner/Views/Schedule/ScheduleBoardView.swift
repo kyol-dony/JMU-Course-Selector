@@ -128,6 +128,10 @@ struct ScheduleBoardView: View {
         return GeometryReader { viewport in
             ScrollViewReader { proxy in
                 ScrollView([.horizontal, .vertical]) {
+                    let gaps = Dictionary(
+                        (store.activePathway?.semesterGaps ?? []).map { ($0.after, $0) },
+                        uniquingKeysWith: { first, _ in first }
+                    )
                     HStack(alignment: .top, spacing: DesignTokens.Spacing.m) {
                         ForEach(store.activePathway?.semesters ?? []) { semester in
                             SemesterColumnView(
@@ -144,9 +148,19 @@ struct ScheduleBoardView: View {
                                 onEndDrag: handleEnd
                             )
                             .id(semester.id)
+                            if let missing = gaps[semester.id]?.missing.first {
+                                addSlot(missing, style: .strip)
+                            }
+                        }
+                        if let pathway = store.activePathway {
+                            addSlot(pathway.nextSemester, style: .column)
                         }
                     }
                     .padding(DesignTokens.Spacing.xl)
+                    // Centered when the semesters fit the window; scrolls
+                    // from the leading edge when they don't.
+                    .frame(minWidth: viewport.size.width, alignment: .center)
+                    .animation(reduceMotion ? nil : DesignTokens.Motion.settle, value: store.activePathway?.semesters.map(\.id))
                 }
                 .coordinateSpace(name: ScheduleBoardSpace.name)
                 .onPreferenceChange(ScheduleItemFramesKey.self) { frames in
@@ -178,6 +192,21 @@ struct ScheduleBoardView: View {
                 }
             }
         }
+    }
+
+    /// Add controls stay in the layout while dragging (so columns never shift
+    /// under the cursor) but fade and ignore clicks.
+    private func addSlot(_ semester: SemesterIdentity, style: AddSemesterSlot.Style) -> some View {
+        AddSemesterSlot(semester: semester, style: style) {
+            store.addSemester(semester)
+            Task { @MainActor in
+                await Task.yield()
+                scrollRequest = ScrollRequest(semester: semester)
+            }
+        }
+        .opacity(drag.isDragging ? 0.35 : 1)
+        .allowsHitTesting(!drag.isDragging)
+        .transition(.opacity)
     }
 
     /// Scrolls to a semester, pulses its outline, then opens a tag's popover.

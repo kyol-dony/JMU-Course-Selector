@@ -152,9 +152,29 @@ struct SemesterColumnView: View {
             StatusPill(text: headline, tone: Self.tone(for: verdict), systemImage: Self.icon(for: verdict))
         } else if drag.isDragging && verdict == nil {
             StatusPill(text: "Checking…", tone: .neutral)
+        } else if !drag.isDragging && store.canDeleteSemester(semester.id) {
+            deleteSemesterButton
         } else {
             StatusPill(text: "\(semester.courseIDs.count)", tone: .neutral)
         }
+    }
+
+    /// Shown in place of the "0" count on an empty semester.
+    private var deleteSemesterButton: some View {
+        Button {
+            store.deleteSemester(semester.id)
+        } label: {
+            Image(systemName: "trash")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(DesignTokens.Colors.danger)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(DesignTokens.Colors.surfaceElevated))
+                .overlay(Circle().strokeBorder(DesignTokens.Colors.borderSubtle, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Delete \(semester.id.displayName)")
+        .accessibilityLabel("Delete \(semester.id.displayName)")
     }
 
     // MARK: Verdict styling

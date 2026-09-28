@@ -603,6 +603,44 @@ final class PlanStore: ObservableObject {
         }
     }
 
+    /// Adds an empty semester to the active pathway in calendar order. No-op
+    /// when the pathway already has it.
+    func addSemester(_ id: SemesterIdentity) {
+        recordScheduleChange(actionName: "Add \(id.displayName)", message: "Added \(id.displayName)") {
+            guard let pathwayIndex = activePathwayIndex,
+                  !plan.pathways[pathwayIndex].semesters.contains(where: { $0.id == id })
+            else { return }
+            var pathway = plan.pathways[pathwayIndex]
+            pathway.semesters.append(SemesterPlan(id: id, courseIDs: []))
+            pathway.semesters.sort { $0.id < $1.id }
+            plan.pathways[pathwayIndex] = pathway
+            autosave()
+        }
+    }
+
+    /// Only empty semesters can be deleted (a placeholder counts as content),
+    /// and a pathway always keeps at least one semester.
+    func canDeleteSemester(_ id: SemesterIdentity) -> Bool {
+        guard let semesters = activePathway?.semesters, semesters.count > 1,
+              let semester = semesters.first(where: { $0.id == id })
+        else { return false }
+        return semester.courseIDs.isEmpty
+    }
+
+    /// Deletes an empty semester and any kept load warnings for it, so a
+    /// semester added back later starts clean.
+    func deleteSemester(_ id: SemesterIdentity) {
+        guard canDeleteSemester(id) else { return }
+        recordScheduleChange(actionName: "Delete \(id.displayName)", message: "Deleted \(id.displayName)") {
+            guard let pathwayIndex = activePathwayIndex else { return }
+            var updated = plan
+            updated.pathways[pathwayIndex].semesters.removeAll { $0.id == id }
+            updated.overrides.removeAll { $0.courseID == ConflictWarning.semesterSubjectID && $0.semester == id }
+            plan = updated
+            autosave()
+        }
+    }
+
     /// Moves (or adds) a course or placeholder into `semester`. `index` is the
     /// position within the target semester after the item has been removed
     /// from its current spot; nil appends. Dropping an item back onto its own

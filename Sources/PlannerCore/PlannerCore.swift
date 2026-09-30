@@ -838,21 +838,25 @@ public struct ScheduleGenerator: Sendable {
             plannedCourseIDs: &plannedCourseIDs,
             placeholders: &placeholders
         )
-        // JMU degrees require 120 CRH total. If the primary major's declared
-        // requirements fall short, top up with Open Elective placeholders so
-        // the schedule reaches 120 on the major alone (before AP/transfer
-        // credits whittle it down). Secondary majors / minors are NOT topped
-        // up — those only contribute their own program-specific requirements.
-        primaryList.append(contentsOf: openElectivePlaceholders(for: program, placeholders: &placeholders))
-        perProgramLists.append(primaryList)
+        var extraLists: [[String]] = []
         for extra in additionalPrograms {
-            perProgramLists.append(requiredCourseIDs(
+            extraLists.append(requiredCourseIDs(
                 for: extra,
                 completed: completed,
                 plannedCourseIDs: &plannedCourseIDs,
                 placeholders: &placeholders
             ))
         }
+        // JMU degrees require 120 CRH total. If the primary major's declared
+        // requirements fall short, top up with Open Elective placeholders so
+        // the schedule reaches 120 (before AP/transfer credits whittle it
+        // down). Credits a minor / second major adds beyond the primary major
+        // fill that same gap, so they shrink the top-up instead of stacking
+        // on top of it. Secondary programs are never topped up themselves.
+        let gap = openElectiveGap(for: program, additionalPrograms: additionalPrograms)
+        primaryList.append(contentsOf: openElectivePlaceholders(gap: gap, placeholders: &placeholders))
+        perProgramLists.append(primaryList)
+        perProgramLists.append(contentsOf: extraLists)
         let required = Self.interleaveByProportion(perProgramLists)
         guard !required.isEmpty else {
             return (1...3).map { index in
@@ -1384,7 +1388,11 @@ public struct ScheduleGenerator: Sendable {
     /// options — e.g., "Additional Requirements: 22-24 CRH") are excluded
     /// from the declared-credit tally because their sub-rows already
     /// account for the same credits; counting both would zero the gap.
-    public static func openElectiveGap(for program: Program) -> Int {
+    ///
+    /// `additionalCredits` are degree credits contributed outside the
+    /// primary major's requirements (minor / second-major courses) and
+    /// reduce the gap one-for-one.
+    public static func openElectiveGap(for program: Program, additionalCredits: Int = 0) -> Int {
         guard program.kind == .major else { return 0 }
         let declared = program.requirements
             .filter { !$0.courseOptions.isEmpty }
@@ -1394,20 +1402,48 @@ public struct ScheduleGenerator: Sendable {
         // 60 once Gen Ed clusters and concentration requirements are
         // merged into the effective program.
         guard declared >= 60 else { return 0 }
-        return max(0, 120 - declared)
+        return max(0, 120 - declared - additionalCredits)
     }
 
-    /// Build Open Elective placeholders to cover the gap between the primary
-    /// major's declared requirement credits and JMU's degree credit minimum.
-    /// Each slot defaults to 3 credits with the last slot trimmed to whatever
-    /// remains. `alternates` lists every catalog course id so the schedule
-    /// board can offer a course picker on tap. Returns an empty array when
-    /// the program already declares ≥ target CRH of requirements.
+    /// Open Elective gap for `program` once `additionalPrograms` (minors,
+    /// second majors) claim their share of the 120 CRH. Only credits unique
+    /// to the additional programs count: a course that already fulfills a
+    /// primary-major requirement is scheduled once and adds nothing new.
+    ///
+    /// Deliberately ignores transfer credit so the schedule generator and
+    /// progress calculator always agree on the same gap — a minor course
+    /// satisfied by AP/transfer still counts toward the degree total.
+    public func openElectiveGap(for program: Program, additionalPrograms: [Program]) -> Int {
+        guard !additionalPrograms.isEmpty else { return Self.openElectiveGap(for: program) }
+        var plannedCourseIDs: Set<String> = []
+        var placeholders: [String: PlaceholderSpec] = [:]
+        _ = requiredCourseIDs(
+            for: program,
+            completed: [],
+            plannedCourseIDs: &plannedCourseIDs,
+            placeholders: &placeholders
+        )
+        var additionalCredits = 0
+        for extra in additionalPrograms {
+            let extraIDs = requiredCourseIDs(
+                for: extra,
+                completed: [],
+                plannedCourseIDs: &plannedCourseIDs,
+                placeholders: &placeholders
+            )
+            additionalCredits += extraIDs.reduce(0) { $0 + credits(for: $1, placeholders: placeholders) }
+        }
+        return Self.openElectiveGap(for: program, additionalCredits: additionalCredits)
+    }
+
+    /// Build Open Elective placeholders to cover `gap` CRH — the shortfall
+    /// between the plan's requirement credits and JMU's degree credit
+    /// minimum. Each slot defaults to 3 credits with the last slot trimmed
+    /// to whatever remains. Returns an empty array when `gap` is zero.
     private func openElectivePlaceholders(
-        for program: Program,
+        gap: Int,
         placeholders: inout [String: PlaceholderSpec]
     ) -> [String] {
-        let gap = Self.openElectiveGap(for: program)
         guard gap > 0 else { return [] }
         let slotCredits = 3
         let slotCount = Int(ceil(Double(gap) / Double(slotCredits)))
@@ -1911,11 +1947,13 @@ public struct ProgressCalculator: Sendable {
 
         // Mirror ScheduleGenerator's 120-CRH top-up: surface an "Open
         // Electives" row whose required credits cover the gap between the
-        // primary major's declared requirements and the JMU degree minimum.
+        // primary major's declared requirements (plus any minor / second-major
+        // credits) and the JMU degree minimum.
         // Completion ticks up as the user resolves each Open Elective
         // placeholder slot (the resolved credits stop appearing in
         // pathway.placeholders).
-        let openElectiveGap = ScheduleGenerator.openElectiveGap(for: effectiveProgram)
+        let openElectiveGap = ScheduleGenerator(catalog: catalog)
+            .openElectiveGap(for: effectiveProgram, additionalPrograms: additionalPrograms)
         if openElectiveGap > 0 {
             let resolvedIDs = Set(pathway.resolvedPlaceholders.keys)
             let unresolvedOpenElectiveCredits = pathway.placeholders

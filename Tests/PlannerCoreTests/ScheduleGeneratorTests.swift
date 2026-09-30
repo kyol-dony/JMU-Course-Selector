@@ -300,6 +300,87 @@ struct ScheduleGeneratorTests {
         #expect(names.contains { $0.hasPrefix("Minor (Robotics Minor)") })
     }
 
+    @Test("a minor's unique credits count toward the 120-CRH open elective top-up")
+    func minorCreditsReduceOpenElectiveGap() throws {
+        // Major declares 90 CRH → 30 CRH of Open Electives without a minor.
+        let major = Program.fixture(
+            id: "cis-bba",
+            title: "CIS, B.B.A.",
+            requirements: [
+                RequirementCategory(id: "core", name: "Core", requiredCredits: 90, courseOptions: [["CIS221"]])
+            ]
+        )
+        // Minor adds 9 CRH, but CIS221 is shared with the major, so only
+        // ROB200 + ROB300 (6 CRH) are new credits toward the degree.
+        let minor = Program(
+            id: "robotics-minor",
+            title: "Robotics Minor",
+            degreeType: nil,
+            kind: .minor,
+            college: "X",
+            department: "X",
+            catalogPage: nil,
+            totalCredits: nil,
+            requirements: [
+                RequirementCategory(id: "rob-core", name: "Robotics Core", requiredCredits: 9, courseOptions: [["CIS221"], ["ROB200"], ["ROB300"]])
+            ],
+            verificationStatus: .partial,
+            requirementDataComplete: true,
+            sourceNote: "Fixture"
+        )
+        let catalog = Catalog(
+            source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
+            programs: [major, minor],
+            courses: [
+                Course(id: "CIS221", code: "CIS 221", title: "Programming", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "ROB200", code: "ROB 200", title: "Intro Robotics", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "ROB300", code: "ROB 300", title: "Robot Design", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            apCreditRules: []
+        )
+        let generator = ScheduleGenerator(catalog: catalog)
+        func openElectiveCredits(_ pathway: Pathway) -> Int {
+            pathway.placeholders.values
+                .filter { $0.categoryID == ScheduleGenerator.openElectiveCategoryID }
+                .reduce(0) { $0 + $1.credits }
+        }
+
+        let withoutMinor = try #require(try generator.generatePathways(
+            for: major.id,
+            workload: .standard,
+            transferCredits: []
+        ).first)
+        #expect(openElectiveCredits(withoutMinor) == 30)
+
+        let withMinor = try #require(try generator.generatePathways(
+            for: major.id,
+            workload: .standard,
+            transferCredits: [],
+            additionalPrograms: [minor]
+        ).first)
+        #expect(openElectiveCredits(withMinor) == 24)
+
+        // Transfer credit on a minor course still counts toward 120, so it
+        // must not re-inflate the open elective top-up.
+        let withMinorTransfer = try #require(try generator.generatePathways(
+            for: major.id,
+            workload: .standard,
+            transferCredits: [TransferCredit(sourceDescription: "ROB 200 transfer", courseIDs: ["ROB200"], credits: 3)],
+            additionalPrograms: [minor]
+        ).first)
+        #expect(openElectiveCredits(withMinorTransfer) == 24)
+
+        let progress = try ProgressCalculator(catalog: catalog).progress(
+            programID: major.id,
+            pathway: withMinor,
+            transferCredits: [],
+            additionalPrograms: [minor]
+        )
+        let openElectives = try #require(progress.categories.first { $0.id == ScheduleGenerator.openElectiveCategoryID })
+        #expect(openElectives.requiredCredits == 24)
+        #expect(openElectives.completedCredits == 0)
+    }
+
     @Test("a shared course completes a second major's selective elective without being scheduled twice")
     func sharedCourseCompletesSecondMajorElective() throws {
         let mathematics = Program.fixture(

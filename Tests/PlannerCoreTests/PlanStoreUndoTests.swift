@@ -331,4 +331,3 @@ struct PlanStoreUndoTests {
         #expect(store.lastScheduleChange == nil)
     }
 }
-

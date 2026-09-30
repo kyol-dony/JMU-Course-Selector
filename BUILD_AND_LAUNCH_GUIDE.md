@@ -1,22 +1,14 @@
 # Build and Launch Guide
 
-## Open the app
+## Build and open the app
 
-1. Open this project folder in Finder.
-2. Open the `dist` folder.
-3. Double-click `JMU Course Planner.app`.
-
-If macOS says the app is from an unidentified developer, right-click the app, choose **Open**, then choose **Open** again. This local build is not notarized.
-
-## If the app has not been built yet
-
-Use the included helper:
+Building from source requires Apple's Swift/Xcode command line tools. Use the included helper:
 
 1. Double-click `Build App.command`.
 2. Wait for the window to say the app was built.
 3. Open `dist/JMU Course Planner.app`.
 
-Building from source requires Apple’s Swift/Xcode command line tools. Running the already-built app does not.
+The generated `dist` folder is ignored by Git. Release app bundles will be distributed separately. If macOS says a local build is from an unidentified developer, right-click the app, choose **Open**, then choose **Open** again. Local builds are not notarized.
 
 ## Run tests
 

@@ -16,15 +16,13 @@ The app lets students:
 
 ## Quick Start
 
-For normal use, open:
-
-`dist/JMU Course Planner.app`
-
-If that app is not present yet, read [BUILD_AND_LAUNCH_GUIDE.md](BUILD_AND_LAUNCH_GUIDE.md).
+Build the app with `Build App.command`, then open `dist/JMU Course Planner.app`.
+The generated app is kept out of Git; release builds will be distributed separately.
+See [BUILD_AND_LAUNCH_GUIDE.md](BUILD_AND_LAUNCH_GUIDE.md) for requirements and steps.
 
 ## Important Data Notice
 
-The project includes the official JMU 2026-2027 Undergraduate Catalog PDF and a structured seed file at [Data/catalog_seed.json](Data/catalog_seed.json). The app refreshes from JMU's current path-based `catalog.jmu.edu` pages, parses major and minor requirement sections, and caches the result locally for schedule generation.
+The project includes a structured seed file at [Data/catalog_seed.json](Data/catalog_seed.json). The app refreshes from JMU's current path-based `catalog.jmu.edu` pages, parses major and minor requirement sections, and caches the result locally for schedule generation. The catalog PDF is available from JMU when needed; it is not stored in this repository.
 
 The app does not invent missing catalog rules, course availability, course descriptions, or Rate My Professor ratings. Broad prose requirements, advisor-selected choices, and unknown data are shown as partial or unavailable.
 

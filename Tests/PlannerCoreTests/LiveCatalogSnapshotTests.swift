@@ -6,10 +6,10 @@ import Testing
 /// These guard against parser regressions on the actual catalog HTML shape.
 @Suite("Live catalog snapshots")
 struct LiveCatalogSnapshotTests {
-    private static let testDir = "/Users/Kyle/VSC/JMU-Course-Selector/Tests/PlannerCoreTests/"
+    private static let testDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 
     private func loadHTML(_ name: String) throws -> String {
-        try String(contentsOfFile: Self.testDir + name, encoding: .utf8)
+        try String(contentsOf: Self.testDir.appendingPathComponent(name), encoding: .utf8)
     }
 
     @Test("CS B.S. core courses parse out of an umbrella Major Requirements block")

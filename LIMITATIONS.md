@@ -55,5 +55,5 @@ After each rebuild, verify by hand:
 
 ## Packaging
 
-- `dist/JMU Course Planner.app` is a local unsigned development build. It runs on this Mac, but it is not notarized for public distribution.
+- `dist/JMU Course Planner.app` is a local unsigned development build generated from source and ignored by Git. Public release artifacts must be built and distributed separately.
 - Rebuilding and running tests require Apple’s Swift/Xcode command line tools.

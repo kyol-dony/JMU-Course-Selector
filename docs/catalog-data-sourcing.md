@@ -9,7 +9,7 @@ The project targets JMU's 2026-2027 Undergraduate Catalog:
 - General Education: `https://catalog.jmu.edu/general-education/`
 - Full PDF: `https://catalog.jmu.edu/pdf/JMU2026-2027UndergraduateCatalog.pdf`
 
-The bundled PDF is stored at `Data/Sources/JMU2026-2027UndergraduateCatalog.pdf`. The structured offline fallback is `Data/catalog_seed.json`.
+Catalog PDFs are not bundled or tracked. The current PDF is available from JMU at the URL above. The app's structured offline fallback is `Data/catalog_seed.json`.
 
 JMU replaced the previous Acalog PHP URLs with path-based pages for this edition. Program pages now use paths such as `/programs/computer-science-bs/`, and course pages use `/search/?P=CS%20149`. The old `content.php`, `preview_program.php`, and `preview_course.php` routes are not current catalog endpoints.
 

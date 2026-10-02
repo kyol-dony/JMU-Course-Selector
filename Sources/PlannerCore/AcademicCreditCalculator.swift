@@ -8,10 +8,21 @@ public enum AcademicCreditCalculator {
     public static func generalHours(credits: [TransferCredit], current: SemesterPlan?, programs: [Program], catalog: Catalog) -> Double {
         let requirements = programs.flatMap(\.requirements)
         let requiredIDs = Set(requirements.flatMap { $0.courseOptions.flatMap { $0 } })
-        let allIDs = Set(credits.flatMap(\.courseIDs)).union(current?.courseIDs ?? [])
-        let knownRequired = allIDs.intersection(requiredIDs).reduce(0.0) { $0 + (current?.creditOverrides[$1] ?? Double(catalog.coursesByID[$1]?.credits ?? 0)) }
+        var allocatedIDs: Set<String> = []
+        let knownRequired = credits.reduce(0.0) { sum, credit in
+            let required = Set(credit.courseIDs).intersection(requiredIDs).subtracting(allocatedIDs)
+            allocatedIDs.formUnion(required)
+            let nominal = required.reduce(0.0) { $0 + Double(catalog.coursesByID[$1]?.credits ?? 0) }
+            // A single reviewed course uses its actual award, including corrections.
+            let allocated = credit.courseIDs.count == 1 && !required.isEmpty ? credit.credits : min(credit.credits, nominal)
+            return sum + allocated
+        } + (current.map { semester in
+            Set(semester.courseIDs).intersection(requiredIDs).subtracting(allocatedIDs).reduce(0.0) {
+                $0 + (semester.creditOverrides[$1] ?? Double(catalog.coursesByID[$1]?.credits ?? 0))
+            }
+        } ?? 0)
         let aliasHours = credits.filter { credit in
-            credit.courseIDs.contains { code in
+            Set(credit.courseIDs).isDisjoint(with: requiredIDs) && credit.courseIDs.contains { code in
                 guard let tag = TransferCreditMapper.genEdCreditClusterTag(for: code) else { return false }
                 return requirements.contains { $0.name.contains(tag) }
             }

@@ -26,6 +26,13 @@ public enum ClassStanding: Int, Codable, Hashable, Comparable, CaseIterable, Sen
     ///   early (≤ 6 sophomore, ≤ 4 junior, ≤ 2 senior).
     /// Pass a nil total when the plan length isn't known yet (the schedule
     /// generator); only the position rule applies then.
+    public static func forEarnedCredits(_ hours: Double) -> ClassStanding {
+        if hours < 28 { return .firstYear }
+        if hours < 60 { return .sophomore }
+        if hours < 90 { return .junior }
+        return .senior
+    }
+
     public static func forSemester(position: Int, totalSemesters: Int?) -> ClassStanding {
         let byPosition = ClassStanding(rawValue: min(max(position - 1, 0) / 2, ClassStanding.senior.rawValue)) ?? .senior
         guard let totalSemesters else { return byPosition }

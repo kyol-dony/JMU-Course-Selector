@@ -3,7 +3,7 @@ import PlannerCore
 
 struct ProgressRail: View {
     var title: String?
-    var completedCredits: Int
+    var completedCredits: Double
     var requiredCredits: Int
     var remainingCourseCodes: [String]
     var hasCourseOptions: Bool
@@ -65,12 +65,12 @@ struct ProgressRail: View {
                 .font(DesignTokens.Typography.caption)
                 .foregroundStyle(DesignTokens.Colors.success)
         } else if !hasCourseOptions {
-            Text("\(max(requiredCredits - completedCredits, 0)) credits to plan")
+            Text("\(max(Double(requiredCredits) - completedCredits, 0)) credits to plan")
                 .font(DesignTokens.Typography.caption)
                 .foregroundStyle(DesignTokens.Colors.textSecondary)
                 .monospacedDigit()
         } else if remainingCourseCodes.isEmpty {
-            Text("\(max(requiredCredits - completedCredits, 0)) credits remaining")
+            Text("\(max(Double(requiredCredits) - completedCredits, 0)) credits remaining")
                 .font(DesignTokens.Typography.caption)
                 .foregroundStyle(DesignTokens.Colors.textSecondary)
                 .monospacedDigit()
@@ -120,7 +120,7 @@ extension ProgressRail {
         let pct = Int((min(max(fraction, 0), 1)) * 100)
         self.init(
             title: label,
-            completedCredits: pct,
+            completedCredits: Double(pct),
             requiredCredits: 100,
             remainingCourseCodes: [],
             hasCourseOptions: false,

@@ -107,7 +107,7 @@ struct MyPlanView: View {
     private func completionTile(progress: GraduationProgress) -> some View {
         let pct = Int(progress.overallFraction * 100)
         let fraction = min(max(progress.overallFraction, 0), 1)
-        let remaining = max(progress.overallRequiredCredits - progress.overallCompletedCredits, 0)
+        let remaining = max(Double(progress.overallRequiredCredits) - progress.overallCompletedCredits, 0)
         return Card {
             HStack(alignment: .center, spacing: DesignTokens.Spacing.m) {
                 ZStack {

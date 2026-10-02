@@ -339,7 +339,7 @@ struct ScheduleGeneratorTests {
             apCreditRules: []
         )
         let generator = ScheduleGenerator(catalog: catalog)
-        func openElectiveCredits(_ pathway: Pathway) -> Int {
+        func openElectiveCredits(_ pathway: Pathway) -> Double {
             pathway.placeholders.values
                 .filter { $0.categoryID == ScheduleGenerator.openElectiveCategoryID }
                 .reduce(0) { $0 + $1.credits }
@@ -438,7 +438,7 @@ struct ScheduleGeneratorTests {
             additionalPrograms: [statistics]
         )
         let statsElective = try #require(progress.categories.first { $0.id == "statistics-bs::statistics-electives" })
-        #expect(statsElective.completedCredits == statsElective.requiredCredits)
+        #expect(statsElective.completedCredits == Double(statsElective.requiredCredits))
     }
 }
 

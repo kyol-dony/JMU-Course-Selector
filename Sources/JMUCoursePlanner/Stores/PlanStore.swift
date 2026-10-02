@@ -183,7 +183,7 @@ final class PlanStore: ObservableObject {
                 id: id,
                 code: "Choose course",
                 title: spec.categoryName,
-                credits: spec.credits,
+                credits: Int(ceil(spec.credits)),
                 availability: nil,
                 prerequisites: [],
                 verificationStatus: .partial,

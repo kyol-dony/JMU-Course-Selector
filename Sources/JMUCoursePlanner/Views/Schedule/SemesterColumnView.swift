@@ -38,12 +38,12 @@ struct SemesterColumnView: View {
     var onBeginDrag: (_ itemID: String, _ semester: SemesterIdentity, _ index: Int, _ start: CGPoint) -> Void
     var onEndDrag: (ScheduleDragController.EndResult) -> Void
 
-    private var totalCredits: Int {
-        semester.courseIDs.reduce(0) { total, id in
+    private var totalCredits: Double {
+        semester.courseIDs.reduce(0.0) { total, id in
             if PathwayPlaceholder.isPlaceholder(id) {
                 return total + (store.activePathway?.placeholders[id]?.credits ?? 0)
             }
-            return total + (store.course(forID: id)?.credits ?? 0)
+            return total + (semester.creditOverrides[id] ?? Double(store.course(forID: id)?.credits ?? 0))
         }
     }
 

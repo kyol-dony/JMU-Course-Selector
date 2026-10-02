@@ -98,7 +98,8 @@ public struct DropVerdictCalculator: Sendable {
         overrides: [ConflictOverride],
         activeProgramTitle: String? = nil,
         completedAtStart: Set<String> = [],
-        workload: WorkloadPreference? = nil
+        workload: WorkloadPreference? = nil,
+        earnedHoursAtStart: Double? = nil
     ) -> [SemesterIdentity: DropVerdict] {
         let semesterIDs = pathway.semesters.map(\.id)
         guard !PathwayPlaceholder.isPlaceholder(itemID) else {
@@ -112,7 +113,8 @@ public struct DropVerdictCalculator: Sendable {
                 overrides: overrides,
                 activeProgramTitle: activeProgramTitle,
                 completedAtStart: completedAtStart,
-                workload: workload
+                workload: workload,
+                earnedHoursAtStart: earnedHoursAtStart
             )
         }
 

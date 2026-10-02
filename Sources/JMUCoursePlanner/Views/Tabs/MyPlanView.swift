@@ -137,12 +137,12 @@ struct MyPlanView: View {
                         .font(DesignTokens.Typography.small)
                         .foregroundStyle(DesignTokens.Colors.textTertiary)
                         .textCase(.uppercase)
-                    Text("\(progress.overallCompletedCredits) of \(progress.overallRequiredCredits) credits")
+                    Text("\(CreditHoursFormatter.string(progress.overallCompletedCredits)) of \(progress.overallRequiredCredits) credits")
                         .font(DesignTokens.Typography.body)
                         .foregroundStyle(DesignTokens.Colors.textPrimary)
                         .monospacedDigit()
                     if remaining > 0 {
-                        Text("\(remaining) credits to go")
+                        Text("\(CreditHoursFormatter.string(remaining)) credits to go")
                             .font(DesignTokens.Typography.caption)
                             .foregroundStyle(DesignTokens.Colors.textSecondary)
                             .monospacedDigit()
@@ -385,7 +385,7 @@ private struct RequirementProgressRow: View {
                         StatusPill(text: "Partial", tone: .warning)
                     }
                     Spacer(minLength: DesignTokens.Spacing.s)
-                    Text("\(category.completedCredits)/\(category.requiredCredits)")
+                    Text("\(CreditHoursFormatter.string(category.completedCredits))/\(category.requiredCredits)")
                         .font(DesignTokens.Typography.caption)
                         .monospacedDigit()
                         .foregroundStyle(DesignTokens.Colors.textTertiary)

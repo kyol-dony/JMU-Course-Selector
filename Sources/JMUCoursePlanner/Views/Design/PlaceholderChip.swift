@@ -31,7 +31,7 @@ struct PlaceholderChip: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
-            Text("\(spec.credits) cr")
+            Text("\(CreditHoursFormatter.string(spec.credits)) cr")
                 .font(DesignTokens.Typography.caption)
                 .foregroundStyle(DesignTokens.Colors.textTertiary)
                 .monospacedDigit()

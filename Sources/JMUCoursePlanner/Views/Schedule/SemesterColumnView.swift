@@ -123,7 +123,7 @@ struct SemesterColumnView: View {
                         .help(reason)
                 } else {
                     HStack(spacing: 6) {
-                        Text("\(totalCredits) credits")
+                        Text("\(CreditHoursFormatter.string(totalCredits)) credits")
                             .font(DesignTokens.Typography.caption)
                             .foregroundStyle(DesignTokens.Colors.textTertiary)
                             .monospacedDigit()
@@ -302,6 +302,7 @@ struct SemesterColumnView: View {
         } else if let course = store.course(forID: id) {
             CourseChip(
                 course: course,
+                creditOverride: semester.creditOverrides[id],
                 accentColor: ScheduleItemLookup.accent(for: course, slots: classificationSlots),
                 isHighlighted: isHighlighted(courseID: id),
                 isAffected: drag.affectedCourseIDs.contains(id),

@@ -49,6 +49,21 @@ public struct TranscriptReviewDraft: Sendable {
     public var extractionIssues: [TranscriptIssue]
     public var dismissedIssueIDs: Set<UUID> = []
     public var issues: [TranscriptIssue] { extractionIssues.filter { !dismissedIssueIDs.contains($0.id) } }
+    public mutating func replace(recordID: UUID, with course: Course) {
+        guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
+        records[index].code = course.id; records[index].title = course.title
+        records[index].courseIDs = [course.id]; records[index].matchConfirmed = true
+    }
+    public mutating func addAPScore(examName: String, score: Int, catalog: Catalog, program: Program?) {
+        let prior = EffectiveCreditBuilder.build(records: records, legacyCredits: [])
+        let credits = TransferCreditMapper(catalog: catalog).credits(forAPScores: [.init(examName: examName, score: score)], program: program, completedCourseIDs: prior.completedCourseIDs)
+        for credit in credits {
+            var row = EffectiveCreditBuilder.record(from: credit)
+            // Reviewed manual awards are fixed equivalents, like transcript test credit.
+            row.source = .manual
+            records.append(row)
+        }
+    }
     public mutating func remove(recordID: UUID) { records.removeAll { $0.id == recordID } }
     public mutating func update(record: AcademicCourseRecord) { if let i = records.firstIndex(where: { $0.id == record.id }) { records[i] = record } }
     public mutating func add(course: Course, status: AcademicCourseStatus) {

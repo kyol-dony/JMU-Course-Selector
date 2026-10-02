@@ -6,6 +6,7 @@ struct SetupSheet: View {
     @Environment(\.dismiss) private var dismiss
     var catalog: Catalog?
     @State private var flow = SetupFlow()
+    @StateObject private var importController = TranscriptImportController()
 
     private var stepCount: Int { flow.route.count }
 
@@ -17,11 +18,14 @@ struct SetupSheet: View {
                 .padding(DesignTokens.Spacing.xl)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             Divider().opacity(0.5)
+            if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal) }
             footer
         }
         .frame(minWidth: 640, minHeight: 560)
         .background(DesignTokens.Colors.surface)
         .onAppear { if let year = store.plan.studentYear { flow.selectYear(year) } }
+        .onDisappear { importController.cancel() }
+        .onChange(of: importController.state) { _, state in if state == .reviewing { flow.importReady() } }
         // The sheet sits above the dashboard, so the dashboard's overlay is
         // hidden while setup is up. Repeat it here so setup-triggered
         // generation shows the same progress modal.
@@ -73,8 +77,16 @@ struct SetupSheet: View {
                     case .major: SetupStepMajor(catalog: catalog)
                     case .minor: SetupStepMinor(catalog: catalog)
                     case .transfer: SetupStepTransfer(catalog: catalog)
-                    case .transcript: Text("Upload your JMU unofficial transcript or enter courses manually.")
-                    case .review: Text("Review completed credit and current enrollment.")
+                    case .transcript:
+                        SetupStepTranscript(controller: importController) {
+                            importController.beginManual(catalog: catalog, existingRecords: store.plan.academicRecords, existingCredits: store.plan.transferCredits, defaultSemester: store.plan.currentSemester?.id ?? store.plan.planningStart ?? .current())
+                            flow.skipUpload()
+                        }
+                    case .review:
+                        SetupStepCourseReview(controller: importController, catalog: catalog) { history in
+                            do { try store.confirmAcademicHistory(history); flow.reviewConfirmed() }
+                            catch { store.errorMessage = error.localizedDescription }
+                        }
                     case .workload: SetupStepWorkload()
                     case .year: EmptyView()
                     }
@@ -107,7 +119,9 @@ struct SetupSheet: View {
                 .buttonStyle(.dtTertiary)
             }
 
-            if flow.step != .workload {
+            if flow.step == .transcript || flow.step == .review {
+                EmptyView()
+            } else if flow.step != .workload {
                 Button("Next") {
                     advance()
                 }

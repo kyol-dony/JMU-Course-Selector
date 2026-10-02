@@ -21,7 +21,9 @@ struct CatalogRepository {
                     apCreditRules: bundled.apCreditRules
                 )
             }
-            return attachCurrentPrereqOverlay(to: cached)
+            // Gen Ed cluster credits come from a hand-kept table, not the
+            // scraped pages; re-apply it so corrections reach cached catalogs.
+            return attachCurrentPrereqOverlay(to: Self.applyingCurrentGenEdCredits(to: cached))
         }
         return try loadBundledCatalog()
     }
@@ -298,13 +300,40 @@ struct CatalogRepository {
     /// from the catalog narrative. Used as overrides because the cluster headings
     /// on the Gen Ed program page (e.g. "Critical Thinking [C1CT]") don't repeat
     /// the credit count, so we can't parse it.
-    private static let genEdClusterCredits: [String: Int] = [
+    static let genEdClusterCredits: [String: Int] = [
         "C1CT": 3, "C1HC": 3, "C1W": 3,
         "C2HQC": 3, "C2VPA": 3, "C2L": 3,
-        "C3QR": 3, "C3PP": 4, "C3NS": 3, "C3L": 1,
+        "C3QR": 3, "C3PP": 3, "C3NS": 3, "C3L": 1,
         "C4AE": 4, "C4GE": 3,
         "C5SD": 3, "C5W": 3
     ]
+
+    /// Re-applies `genEdClusterCredits` to the `gened-<tag>` categories of a
+    /// catalog built with an older table.
+    static func applyingCurrentGenEdCredits(to catalog: Catalog) -> Catalog {
+        func updated(_ requirements: [RequirementCategory]) -> [RequirementCategory] {
+            requirements.map { category in
+                guard category.id.hasPrefix("gened-"),
+                      let credits = genEdClusterCredits[String(category.id.dropFirst("gened-".count)).uppercased()]
+                else { return category }
+                var category = category
+                category.requiredCredits = credits
+                return category
+            }
+        }
+        var catalog = catalog
+        catalog.programs = catalog.programs.map { program in
+            var program = program
+            program.requirements = updated(program.requirements)
+            program.concentrations = program.concentrations.map { concentration in
+                var concentration = concentration
+                concentration.requirements = updated(concentration.requirements)
+                return concentration
+            }
+            return program
+        }
+        return catalog
+    }
 
     private func fetchCourseDetailEnrichments(for courses: [Course]) async throws -> [String: CourseDetailEnrichment] {
         let candidates = courses

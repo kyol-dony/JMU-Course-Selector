@@ -55,6 +55,7 @@ public enum JMUTranscriptParser {
         var result = ParsedTranscript(records: [], latestPrintedTerm: nil, printedEarnedTotal: nil, issues: [])
         var term: String?
         var source = AcademicCreditSource.transcriptResident
+        var pendingHeading: String?
         var pending: String?
         let courseStart = #"^([A-Z]{2,8})\s*([0-9]{2,4}[A-Z]*|OOO|000)\s+(.+)$"#
         let row = #"^([A-Z]{2,8})\s*([0-9]{2,4}[A-Z]*|OOO|000)\s+(.+?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(?:([A-Z][A-Z+\-]*)\s+)?(\d+(?:\.\d+)?)$"#
@@ -63,8 +64,21 @@ public enum JMUTranscriptParser {
             pending = nil
         }
         for raw in document.components(separatedBy: .newlines) {
-            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            var line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { continue }
+            // A term heading may continue on the next page after repeated headers.
+            if line.hasPrefix("Page ") || line.hasPrefix("Course ") || line.contains("Unofficial Transcript") || line.contains("James Madison University") || line.hasPrefix("Print Date:") { continue }
+            if let heading = pendingHeading {
+                pendingHeading = nil
+                if groups(#"^\d{4}$"#, line) != nil { line = heading + " " + line }
+                else {
+                    term = nil
+                    result.issues.append(.init(kind: .termMismatch, message: "A semester heading was incomplete. Confirm the current semester before continuing.", isBlocking: false))
+                }
+            }
+            if groups(#"^(Fall|Spring|Summer|Winter) Semester$"#, line) != nil {
+                flushPending(); pendingHeading = line; continue
+            }
             if groups(#"^(Fall|Spring|Summer|Winter) Semester \d{4}$"#, line) != nil {
                 flushPending(); term = line; source = .transcriptResident
                 func termKey(_ text: String) -> Int {
@@ -101,6 +115,7 @@ public enum JMUTranscriptParser {
             pending = nil
         }
         flushPending()
+        if pendingHeading != nil { result.issues.append(.init(kind: .termMismatch, message: "A semester heading was incomplete. Confirm the current semester before continuing.", isBlocking: false)) }
         guard !result.records.isEmpty else { throw TranscriptParserError.noCourseRows }
         if let total = result.printedEarnedTotal {
             let sum = result.records.filter { $0.status == .earned }.reduce(0) { $0 + $1.earnedCredits }

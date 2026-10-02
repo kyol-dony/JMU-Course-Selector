@@ -19,12 +19,12 @@ struct SetupStepTranscript: View {
                         Image(systemName: "doc.text.magnifyingglass").font(.system(size: 32)).foregroundStyle(DesignTokens.Colors.brandPurple)
                         Text("Completed classes, awarded AP/transfer credit, and current enrollment")
                         Text("Scans and screenshots aren't supported. Your original PDF is not saved.").font(DesignTokens.Typography.caption)
-                        Button(controller.state == .failed ? "Choose another PDF" : "Choose transcript PDF") { choosingFile = true }.buttonStyle(.dtPrimary)
+                        Button(controller.draft != nil ? "Replace draft with another PDF" : (controller.state == .failed ? "Choose another PDF" : "Choose transcript PDF")) { choosingFile = true }.buttonStyle(.dtPrimary)
                     }
                     if let error = controller.errorMessage { Text(error).foregroundStyle(.red) }
                 }
             }
-            Button("Skip upload / enter manually", action: onSkip).buttonStyle(.dtSecondary)
+            Button(controller.draft == nil ? "Skip upload / enter manually" : "Resume course review", action: onSkip).buttonStyle(.dtSecondary)
         }
         .fileImporter(isPresented: $choosingFile, allowedContentTypes: [.pdf]) { result in
             switch result {

@@ -7,8 +7,13 @@ public struct EffectiveCreditResult: Sendable {
     public var issues: [TranscriptIssue]
 }
 public enum EffectiveCreditBuilder {
+    public static func migrateLegacySource(_ row: AcademicCourseRecord) -> AcademicCourseRecord {
+        var result = row
+        if row.source == .legacy, row.title.range(of: #"^AP .+ score [1-5]$"#, options: .regularExpression) != nil { result.source = .apMapped }
+        return result
+    }
     public static func record(from credit: TransferCredit) -> AcademicCourseRecord {
-        .init(id: credit.id, code: credit.courseIDs.joined(separator: "/"), title: credit.sourceDescription, courseIDs: credit.courseIDs, earnedCredits: credit.credits, status: .earned, source: credit.source, matchConfirmed: true)
+        migrateLegacySource(.init(id: credit.id, code: credit.courseIDs.joined(separator: "/"), title: credit.sourceDescription, courseIDs: credit.courseIDs, earnedCredits: credit.credits, status: .earned, source: credit.source, matchConfirmed: true))
     }
     public static func build(records: [AcademicCourseRecord], legacyCredits: [TransferCredit]) -> EffectiveCreditResult {
         var result = EffectiveCreditResult(credits: [], issues: [])
@@ -29,7 +34,7 @@ public enum EffectiveCreditBuilder {
                 let sameCredits = first.earnedCredits == row.earnedCredits
                 if !sameIDs {
                     result.issues.append(.init(recordID: row.id, kind: .overlappingAward, message: "This bundled award overlaps another course. Exclude it or correct its course IDs and total credit; its credit cannot be split automatically."))
-                } else if first.status != row.status || first.source == row.source || !sameCredits {
+                } else if row.status == .inProgress || first.status != row.status || first.source == row.source || !sameCredits {
                     result.issues.append(.init(recordID: row.id, kind: .repeatedCourse, message: "This course appears more than once. Keep one award, or review a repeatable course's aggregate credit."))
                 }
                 continue
@@ -89,6 +94,7 @@ public enum TranscriptReconciler {
         let existingIDs = Set(existingRecords.map(\.id))
         rows += existingCredits.filter { !existingIDs.contains($0.id) && (parsed == nil || !$0.source.isTranscript) }.map(EffectiveCreditBuilder.record(from:))
         rows += parsed?.records ?? []
+        rows = rows.map(EffectiveCreditBuilder.migrateLegacySource)
         for i in rows.indices where !rows[i].matchConfirmed {
             let code = JMUTranscriptParser.normalizedCode(rows[i].code)
             rows[i].code = code
@@ -97,7 +103,7 @@ public enum TranscriptReconciler {
             }
         }
         let term = parsed?.latestPrintedTerm.flatMap(JMUTranscriptParser.supportedTerm)
-        let hasTermMismatch = rows.contains { $0.status == .inProgress && $0.printedTerm != nil && JMUTranscriptParser.supportedTerm($0.printedTerm!) != term }
+        let hasTermMismatch = (parsed?.issues.contains { $0.kind == .termMismatch } ?? false) || rows.contains { $0.status == .inProgress && $0.printedTerm != nil && JMUTranscriptParser.supportedTerm($0.printedTerm!) != term }
         return .init(records: rows, currentSemester: term ?? defaultSemester, semesterConfirmed: parsed == nil || (term != nil && !hasTermMismatch), extractionIssues: parsed?.issues.filter { $0.recordID == nil } ?? [])
     }
     public static func validate(_ draft: TranscriptReviewDraft, catalog: Catalog) -> [TranscriptIssue] {

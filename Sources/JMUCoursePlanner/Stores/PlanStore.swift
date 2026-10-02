@@ -402,12 +402,8 @@ final class PlanStore: ObservableObject {
     /// or the active program changes.
     private func recomputeAPCredits() {
         guard let catalog else { return }
-        let previousAPDescriptions = plan.apScores.map { "AP \($0.examName)" }
-        func isAP(_ credit: TransferCredit) -> Bool {
-            credit.source == .apMapped || (credit.source == .legacy && previousAPDescriptions.contains { credit.sourceDescription.contains($0) })
-        }
-        let independent = plan.transferCredits.filter { !isAP($0) }
-        let records = plan.academicRecords.filter { $0.source != .apMapped }
+        let independent = plan.transferCredits.filter { EffectiveCreditBuilder.record(from: $0).source != .apMapped }
+        let records = plan.academicRecords.map(EffectiveCreditBuilder.migrateLegacySource).filter { $0.source != .apMapped }
         let prior = EffectiveCreditBuilder.build(records: records, legacyCredits: independent)
         let apCredits = TransferCreditMapper(catalog: catalog).credits(forAPScores: plan.apScores, program: effectiveActiveProgram, completedCourseIDs: prior.completedCourseIDs)
         plan.transferCredits = independent + apCredits

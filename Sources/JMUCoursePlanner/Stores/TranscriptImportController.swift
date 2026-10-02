@@ -16,6 +16,7 @@ enum TranscriptImportState: Equatable { case idle, processing, reviewing, failed
         draft = nil; errorMessage = nil; state = .idle
     }
     func beginManual(catalog: Catalog, existingRecords: [AcademicCourseRecord], existingCredits: [TransferCredit], defaultSemester: SemesterIdentity) {
+        if state == .reviewing, draft != nil { return }
         cancel()
         draft = TranscriptReconciler.makeDraft(parsed: nil, catalog: catalog, existingRecords: existingRecords, existingCredits: existingCredits, defaultSemester: defaultSemester)
         state = .reviewing

@@ -199,3 +199,5 @@ This is one connected feature: review UI depends on parser/credit contracts, and
 ## Verification record
 
 All eight tasks are implemented. Native isolated-app checks verified year → major → minor → upload/manual → review, credit editing controls, catalog addition, and Back. The supplied PDF extracted 24 rows (49 earned and 16 current hours) locally. Persistence, cancellation, reimport, image-only errors, term confirmation, and all three generated pathways are covered by automated tests; the full relaunch and image-only flows were not repeated interactively.
+
+Final independent review identified six Important issues. Regression tests reproduced and verified fixes for split term headings, fractional graduation top-up, duplicate current enrollment, Back/resume draft retention, move preview credits, and legacy AP migration. Final validation: 287 tests in 41 suites pass; Swift build, whitespace check, and AST graph update succeed. No deferred minor findings.

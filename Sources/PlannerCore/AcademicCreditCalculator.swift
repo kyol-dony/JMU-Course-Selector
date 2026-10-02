@@ -13,12 +13,12 @@ public enum AcademicCreditCalculator {
             let required = Set(credit.courseIDs).intersection(requiredIDs).subtracting(allocatedIDs)
             allocatedIDs.formUnion(required)
             let nominal = required.reduce(0.0) { $0 + Double(catalog.coursesByID[$1]?.credits ?? 0) }
-            // A single reviewed course uses its actual award, including corrections.
-            let allocated = credit.courseIDs.count == 1 && !required.isEmpty ? credit.credits : min(credit.credits, nominal)
+            // Allocate actual hours up to the catalog requirement; excess is general credit.
+            let allocated = min(credit.credits, nominal)
             return sum + allocated
         } + (current.map { semester in
             Set(semester.courseIDs).intersection(requiredIDs).subtracting(allocatedIDs).reduce(0.0) {
-                $0 + (semester.creditOverrides[$1] ?? Double(catalog.coursesByID[$1]?.credits ?? 0))
+                $0 + min(semester.creditOverrides[$1] ?? Double(catalog.coursesByID[$1]?.credits ?? 0), Double(catalog.coursesByID[$1]?.credits ?? 0))
             }
         } ?? 0)
         let aliasHours = credits.filter { credit in
@@ -29,6 +29,25 @@ public enum AcademicCreditCalculator {
         }.reduce(0.0) { $0 + $1.credits }
         let total = credits.reduce(0.0) { $0 + $1.credits } + (current.map { hours(in: $0, catalog: catalog) } ?? 0)
         return max(0, total - knownRequired - aliasHours)
+    }
+    /// Corrections below a catalog course's nominal hours still leave graduation hours to earn.
+    public static func requirementCreditShortfall(credits: [TransferCredit], current: SemesterPlan?, programs: [Program], catalog: Catalog) -> Double {
+        let requiredIDs = Set(programs.flatMap(\.requirements).flatMap { $0.courseOptions.flatMap { $0 } })
+        var seen: Set<String> = []
+        var shortfall = 0.0
+        for credit in credits {
+            let ids = Set(credit.courseIDs).intersection(requiredIDs).subtracting(seen)
+            seen.formUnion(ids)
+            let nominal = ids.reduce(0.0) { $0 + Double(catalog.coursesByID[$1]?.credits ?? 0) }
+            shortfall += max(0, nominal - credit.credits)
+        }
+        if let current {
+            for code in Set(current.courseIDs).intersection(requiredIDs).subtracting(seen) {
+                let nominal = Double(catalog.coursesByID[code]?.credits ?? 0)
+                shortfall += max(0, nominal - (current.creditOverrides[code] ?? nominal))
+            }
+        }
+        return shortfall
     }
     public static func hours(in semester: SemesterPlan, catalog: Catalog) -> Double {
         Set(semester.courseIDs).reduce(0) { $0 + (semester.creditOverrides[$1] ?? Double(catalog.coursesByID[$1]?.credits ?? 0)) }

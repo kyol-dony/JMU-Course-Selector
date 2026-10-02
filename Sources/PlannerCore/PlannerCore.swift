@@ -877,7 +877,8 @@ public struct ScheduleGenerator: Sendable {
         // on top of it. Secondary programs are never topped up themselves.
         let originalGap = openElectiveGap(for: program, additionalPrograms: additionalPrograms)
         let general = AcademicCreditCalculator.generalHours(credits: transferCredits, current: preservedSemester, programs: [program] + additionalPrograms, catalog: catalog)
-        let gap = max(0, Double(originalGap) - general)
+        let shortfall = AcademicCreditCalculator.requirementCreditShortfall(credits: transferCredits, current: preservedSemester, programs: [program] + additionalPrograms, catalog: catalog)
+        let gap = max(0, Double(originalGap) - general + shortfall)
         primaryList.append(contentsOf: openElectivePlaceholders(gap: gap, placeholders: &placeholders))
         perProgramLists.append(primaryList)
         perProgramLists.append(contentsOf: extraLists)

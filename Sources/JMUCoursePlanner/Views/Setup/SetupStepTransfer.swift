@@ -4,6 +4,10 @@ import PlannerCore
 struct SetupStepTransfer: View {
     @EnvironmentObject private var store: PlanStore
     var catalog: Catalog
+    var onAddAP: ((String, Int) -> Void)? = nil
+    var onAddDual: ((String, String, Double) -> Void)? = nil
+    var reviewCredits: [TransferCredit]? = nil
+    private var addedCredits: [TransferCredit] { reviewCredits ?? store.effectiveAcademicHistory.effectiveCredits }
     @State private var selectedExam: String = ""
     @State private var selectedScore: Int = 5
     @State private var dualLabel: String = ""
@@ -40,7 +44,8 @@ struct SetupStepTransfer: View {
                             .frame(width: 130)
                         Button("Add") {
                             guard !selectedExam.isEmpty else { return }
-                            store.addAPScore(examName: selectedExam, score: selectedScore)
+                            if let onAddAP { onAddAP(selectedExam, selectedScore) }
+                            else { store.addAPScore(examName: selectedExam, score: selectedScore) }
                         }
                         .buttonStyle(.dtSecondary)
                         .disabled(selectedExam.isEmpty)
@@ -60,11 +65,10 @@ struct SetupStepTransfer: View {
                         GridRow {
                             Stepper("\(dualCredits) credits", value: $dualCredits, in: 1...8)
                             Button("Add") {
-                                store.addDualEnrollment(
-                                    label: dualLabel.isEmpty ? "Dual Enrollment" : dualLabel,
-                                    courseID: dualCourse.replacingOccurrences(of: " ", with: "").uppercased(),
-                                    credits: dualCredits
-                                )
+                                let label = dualLabel.isEmpty ? "Dual Enrollment" : dualLabel
+                                let code = JMUTranscriptParser.normalizedCode(dualCourse)
+                                if let onAddDual { onAddDual(label, code, Double(dualCredits)) }
+                                else { store.addDualEnrollment(label: label, courseID: code, credits: dualCredits) }
                                 dualLabel = ""
                                 dualCourse = ""
                             }
@@ -75,14 +79,14 @@ struct SetupStepTransfer: View {
                 }
             }
 
-            if !store.plan.transferCredits.isEmpty {
+            if !addedCredits.isEmpty {
                 Card {
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
                         Text("Added so far")
                             .font(DesignTokens.Typography.small)
                             .foregroundStyle(DesignTokens.Colors.textTertiary)
                             .textCase(.uppercase)
-                        ForEach(store.plan.transferCredits) { credit in
+                        ForEach(addedCredits) { credit in
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(credit.sourceDescription)
@@ -92,7 +96,7 @@ struct SetupStepTransfer: View {
                                         .foregroundStyle(DesignTokens.Colors.textSecondary)
                                 }
                                 Spacer()
-                                StatusPill(text: "\(credit.credits) cr", tone: .neutral)
+                                StatusPill(text: "\(CreditHoursFormatter.string(credit.credits)) cr", tone: .neutral)
                             }
                             .padding(.vertical, 2)
                         }

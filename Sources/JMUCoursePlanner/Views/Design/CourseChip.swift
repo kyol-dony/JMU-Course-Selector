@@ -11,6 +11,7 @@ struct CourseChip: View {
     }
 
     var course: Course
+    var creditOverride: Double? = nil
     var accentColor: Color
     var isHighlighted: Bool = false
     /// Would lose a prereq or coreq if the current drag dropped here.
@@ -42,7 +43,7 @@ struct CourseChip: View {
                         .foregroundStyle(DesignTokens.Colors.textPrimary)
                         .monospacedDigit()
                     Spacer(minLength: 0)
-                    Text("\(course.credits) cr")
+                    Text("\(CreditHoursFormatter.string(creditOverride ?? Double(course.credits))) cr")
                         .font(DesignTokens.Typography.small)
                         .foregroundStyle(DesignTokens.Colors.textTertiary)
                         .monospacedDigit()

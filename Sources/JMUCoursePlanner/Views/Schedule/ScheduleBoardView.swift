@@ -96,10 +96,10 @@ struct ScheduleBoardView: View {
             }
 
             if let pathway = store.activePathway {
-                let total = pathway.semesters.flatMap(\.courseIDs)
-                    .compactMap { catalog.coursesByID[$0]?.credits }
-                    .reduce(0, +)
-                StatChip(label: "Pathway", value: "\(total) cr")
+                let total = pathway.semesters.reduce(0.0) { total, semester in
+                    total + AcademicCreditCalculator.hours(in: semester, catalog: catalog)
+                }
+                StatChip(label: "Pathway", value: "\(CreditHoursFormatter.string(total)) cr")
             }
 
             Button("Regenerate") {
@@ -242,6 +242,7 @@ struct ScheduleBoardView: View {
                 } else if let course = store.course(forID: session.itemID) {
                     CourseChip(
                         course: course,
+                        creditOverride: store.activePathway?.semesters.first { $0.courseIDs.contains(session.itemID) }?.creditOverrides[session.itemID],
                         accentColor: ScheduleItemLookup.accent(for: course, slots: slots),
                         appearance: appearance
                     )

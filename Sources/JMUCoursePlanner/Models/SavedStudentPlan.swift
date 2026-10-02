@@ -28,6 +28,11 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
     var pathways: [Pathway]
     var activePathwayID: String?
     var overrides: [ConflictOverride]
+    var studentYear: StudentYear? = nil
+    var academicRecords: [AcademicCourseRecord] = []
+    var currentSemester: SemesterPlan? = nil
+    var setupCompleted: Bool = false
+    var planningStart: SemesterIdentity? = nil
     var updatedAt: Date
 
     init(
@@ -59,12 +64,18 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case studentYear, academicRecords, currentSemester, setupCompleted, planningStart
         case id, name, programID, concentrationID, minors, minorProgramIDs
         case workload, apScores, transferCredits, pathways, activePathwayID, overrides, updatedAt
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        studentYear = try container.decodeIfPresent(StudentYear.self, forKey: .studentYear)
+        academicRecords = try container.decodeIfPresent([AcademicCourseRecord].self, forKey: .academicRecords) ?? []
+        currentSemester = try container.decodeIfPresent(SemesterPlan.self, forKey: .currentSemester)
+        setupCompleted = try container.decodeIfPresent(Bool.self, forKey: .setupCompleted) ?? false
+        planningStart = try container.decodeIfPresent(SemesterIdentity.self, forKey: .planningStart)
         self.id = try container.decode(UUID.self, forKey: .id)
         self.name = try container.decode(String.self, forKey: .name)
         self.programID = try container.decodeIfPresent(String.self, forKey: .programID)
@@ -94,6 +105,11 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(studentYear, forKey: .studentYear)
+        try container.encode(academicRecords, forKey: .academicRecords)
+        try container.encodeIfPresent(currentSemester, forKey: .currentSemester)
+        try container.encode(setupCompleted, forKey: .setupCompleted)
+        try container.encodeIfPresent(planningStart, forKey: .planningStart)
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encodeIfPresent(programID, forKey: .programID)

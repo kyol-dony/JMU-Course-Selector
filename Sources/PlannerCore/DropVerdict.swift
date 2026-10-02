@@ -98,7 +98,8 @@ public struct DropVerdictCalculator: Sendable {
         overrides: [ConflictOverride],
         activeProgramTitle: String? = nil,
         completedAtStart: Set<String> = [],
-        workload: WorkloadPreference? = nil
+        workload: WorkloadPreference? = nil,
+        earnedHoursAtStart: Double? = nil
     ) -> [SemesterIdentity: DropVerdict] {
         let semesterIDs = pathway.semesters.map(\.id)
         guard !PathwayPlaceholder.isPlaceholder(itemID) else {
@@ -112,11 +113,15 @@ public struct DropVerdictCalculator: Sendable {
                 overrides: overrides,
                 activeProgramTitle: activeProgramTitle,
                 completedAtStart: completedAtStart,
-                workload: workload
+                workload: workload,
+                earnedHoursAtStart: earnedHoursAtStart
             )
         }
 
-        let origin = pathway.semesters.first { $0.courseIDs.contains(itemID) }?.id
+        let originSemester = pathway.semesters.first { $0.courseIDs.contains(itemID) }
+        let origin = originSemester?.id
+        let creditOverride = originSemester?.creditOverrides[itemID]
+        let courseTitle = originSemester?.courseTitles[itemID]
         let baseline = detect(pathway)
         var result: [SemesterIdentity: DropVerdict] = [:]
         for semesterID in semesterIDs {
@@ -127,8 +132,12 @@ public struct DropVerdictCalculator: Sendable {
             var candidate = pathway
             for index in candidate.semesters.indices {
                 candidate.semesters[index].courseIDs.removeAll { $0 == itemID }
+                candidate.semesters[index].creditOverrides.removeValue(forKey: itemID)
+                candidate.semesters[index].courseTitles.removeValue(forKey: itemID)
                 if candidate.semesters[index].id == semesterID {
                     candidate.semesters[index].courseIDs.append(itemID)
+                    candidate.semesters[index].creditOverrides[itemID] = creditOverride
+                    candidate.semesters[index].courseTitles[itemID] = courseTitle
                 }
             }
             let simulated = detect(candidate)

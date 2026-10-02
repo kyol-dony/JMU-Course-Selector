@@ -15,7 +15,9 @@ struct ProgressContributionBuilder {
         let rows = requirement.courseOptions.compactMap { option in
             if let transferID = option.first(where: transferIDs.contains),
                let course = coursesByID[transferID] {
-                return CourseContribution(code: course.code, source: "Transfer", isTransfer: true)
+                let credit = transferCredits.first { $0.courseIDs.contains(transferID) }
+                let resident = credit?.source == .transcriptResident
+                return CourseContribution(code: course.code, source: resident ? "Earned at JMU" : "Transfer", isTransfer: !resident)
             }
             if let scheduledID = option.first(where: { scheduled[$0] != nil }),
                let course = coursesByID[scheduledID],

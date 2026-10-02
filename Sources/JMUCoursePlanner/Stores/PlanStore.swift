@@ -40,6 +40,8 @@ final class PlanStore: ObservableObject {
     /// The window's undo manager, injected by ScheduleBoardView.
     var undoManager: UndoManager?
 
+    private let storageDirectory: URL?
+    init(storageDirectory: URL? = nil) { self.storageDirectory = storageDirectory }
     private let catalogRepository = CatalogRepository()
     private let detailService = CourseDetailService()
     private var courseDetailCache: [String: CourseDetail] = [:]
@@ -54,6 +56,50 @@ final class PlanStore: ObservableObject {
     /// In-flight prefetches, keyed by plan version and item, so an edit that
     /// discards one prefetch does not block the next for the new plan.
     private var prefetchingVerdicts: Set<String> = []
+
+    var effectiveAcademicHistory: AcademicHistory {
+        let result = EffectiveCreditBuilder.build(records: plan.academicRecords, legacyCredits: plan.transferCredits)
+        return .init(records: plan.academicRecords, currentSemester: plan.currentSemester, effectiveCredits: result.credits, earnedHours: result.earnedHours)
+    }
+    private var earnedHoursContext: Double? {
+        plan.studentYear == nil && plan.academicRecords.isEmpty ? nil : effectiveAcademicHistory.earnedHours
+    }
+    func confirmAcademicHistory(_ history: AcademicHistory) throws {
+        guard let catalog else { throw TranscriptReviewError.unresolved([]) }
+        var draft = TranscriptReconciler.makeDraft(parsed: nil, catalog: catalog, existingRecords: history.records, existingCredits: [], defaultSemester: history.currentSemester?.id ?? .current())
+        draft.setCurrentSemester(history.currentSemester?.id ?? .current())
+        let validated = try TranscriptReconciler.confirm(draft, catalog: catalog)
+        var updated = plan
+        updated.academicRecords = validated.records
+        updated.transferCredits = validated.effectiveCredits
+        updated.currentSemester = validated.currentSemester
+        updated.planningStart = validated.currentSemester?.id
+        updated.pathways = []; updated.activePathwayID = nil
+        updated.setupCompleted = false
+        updated.name = "Autosave"; updated.updatedAt = Date()
+        try save(updated)
+        plan = updated
+        clearScheduleHistory()
+        errorMessage = nil
+    }
+    func syncCurrentEnrollmentFromActivePathway() {
+        guard let preserved = plan.currentSemester, let semester = activePathway?.semesters.first(where: { $0.id == preserved.id }) else { return }
+        let existing = plan.academicRecords.filter { $0.status == .inProgress }
+        plan.academicRecords.removeAll { $0.status == .inProgress }
+        for code in semester.courseIDs where !PathwayPlaceholder.isPlaceholder(code) {
+            if var row = existing.first(where: { ($0.courseIDs.first ?? $0.code) == code }) {
+                row.attemptedCredits = semester.creditOverrides[code] ?? row.attemptedCredits
+                plan.academicRecords.append(row)
+            } else {
+                plan.academicRecords.append(.init(code: code, title: semester.courseTitles[code] ?? catalog?.coursesByID[code]?.title ?? code, courseIDs: catalog?.coursesByID[code] == nil ? [] : [code], attemptedCredits: semester.creditOverrides[code] ?? Double(catalog?.coursesByID[code]?.credits ?? 0), status: .inProgress, source: .manual, matchConfirmed: true))
+            }
+        }
+        var normalized = semester
+        let ids = Set(semester.courseIDs)
+        normalized.creditOverrides = normalized.creditOverrides.filter { ids.contains($0.key) }
+        normalized.courseTitles = normalized.courseTitles.filter { ids.contains($0.key) }
+        plan.currentSemester = normalized
+    }
 
     var activeProgram: Program? {
         guard let catalog, let programID = plan.programID else { return nil }
@@ -99,8 +145,9 @@ final class PlanStore: ObservableObject {
             // AP / dual-enrollment awards count as completed before the first
             // term so prereq/coreq checks see them the same way the schedule
             // generator does.
-            completedAtStart: Set(plan.transferCredits.flatMap(\.courseIDs)),
-            workload: plan.workload
+            completedAtStart: effectiveAcademicHistory.completedCourseIDs,
+            workload: plan.workload,
+            earnedHoursAtStart: earnedHoursContext
         )
         cachedWarnings = result
         return result
@@ -116,7 +163,7 @@ final class PlanStore: ObservableObject {
                 programID: programID,
                 concentrationID: plan.concentrationID,
                 pathway: activePathway,
-                transferCredits: plan.transferCredits,
+                transferCredits: effectiveAcademicHistory.effectiveCredits,
                 additionalPrograms: selectedMinorPrograms()
             )
         } else {
@@ -144,7 +191,7 @@ final class PlanStore: ObservableObject {
 
     /// Set of course IDs the student has completed (transfer credit + scheduled in active pathway).
     var completedCourseIDs: Set<String> {
-        var ids = Set(plan.transferCredits.flatMap(\.courseIDs))
+        var ids = effectiveAcademicHistory.completedCourseIDs
         if let activePathway {
             ids.formUnion(activePathway.semesters.flatMap(\.courseIDs))
         }
@@ -183,14 +230,18 @@ final class PlanStore: ObservableObject {
                 id: id,
                 code: "Choose course",
                 title: spec.categoryName,
-                credits: spec.credits,
+                credits: Int(ceil(spec.credits)),
                 availability: nil,
                 prerequisites: [],
                 verificationStatus: .partial,
                 registrarURL: nil
             )
         }
-        return catalog?.coursesByID[id]
+        if let course = catalog?.coursesByID[id] { return course }
+        if let semester = activePathway?.semesters.first(where: { $0.courseIDs.contains(id) }), let title = semester.courseTitles[id] {
+            return Course(id: id, code: id, title: title, credits: Int(ceil(semester.creditOverrides[id] ?? 0)), availability: nil, prerequisites: [], verificationStatus: .partial)
+        }
+        return nil
     }
 
     /// Replace a placeholder course in the active pathway with the chosen real
@@ -221,12 +272,14 @@ final class PlanStore: ObservableObject {
 
     func load() async {
         do {
-            catalog = try catalogRepository.loadCatalog()
             savedPlans = try loadPlans()
             if let autosave = savedPlans.first(where: { $0.name == "Autosave" }) {
                 plan = autosave
-                validateSelectedConcentration()
             }
+            setupSheetPresented = SetupFlow.needsInitialSetup(plan: plan)
+            await Task.yield()
+            catalog = try catalogRepository.loadCatalog()
+            validateSelectedConcentration()
             let catalogYear = catalog?.source.catalogYear ?? JMUCatalogConfiguration.catalogYear
             statusMessage = "Catalog loaded from the \(catalogYear) JMU undergraduate catalog cache."
         } catch {
@@ -349,26 +402,16 @@ final class PlanStore: ObservableObject {
     /// or the active program changes.
     private func recomputeAPCredits() {
         guard let catalog else { return }
-        // Don't double-count an AP-awarded course against a dual-enrollment
-        // entry for the same course: treat dual-enrollment course IDs as
-        // already-completed when scoring AP variants.
-        let dualEnrollmentCourses = Set(plan.transferCredits
-            .filter { credit in !plan.apScores.contains(where: { credit.sourceDescription.contains("AP \($0.examName)") }) }
-            .flatMap(\.courseIDs))
-        let apCredits = TransferCreditMapper(catalog: catalog).credits(
-            forAPScores: plan.apScores,
-            program: effectiveActiveProgram,
-            completedCourseIDs: dualEnrollmentCourses
-        )
-        // Replace only the AP-sourced credits; preserve any dual enrollment entries.
-        let dualOnly = plan.transferCredits.filter { credit in
-            !plan.apScores.contains(where: { credit.sourceDescription.contains("AP \($0.examName)") })
-        }
-        plan.transferCredits = apCredits + dualOnly
+        let independent = plan.transferCredits.filter { EffectiveCreditBuilder.record(from: $0).source != .apMapped }
+        let records = plan.academicRecords.map(EffectiveCreditBuilder.migrateLegacySource).filter { $0.source != .apMapped }
+        let prior = EffectiveCreditBuilder.build(records: records, legacyCredits: independent)
+        let apCredits = TransferCreditMapper(catalog: catalog).credits(forAPScores: plan.apScores, program: effectiveActiveProgram, completedCourseIDs: prior.completedCourseIDs)
+        plan.transferCredits = independent + apCredits
+        if !plan.academicRecords.isEmpty { plan.academicRecords = records + apCredits.map(EffectiveCreditBuilder.record(from:)) }
     }
 
     func addDualEnrollment(label: String, courseID: String, credits: Int) {
-        plan.transferCredits.append(TransferCredit(sourceDescription: label, courseIDs: [courseID], credits: credits))
+        plan.transferCredits.append(TransferCredit(sourceDescription: label, courseIDs: [courseID], credits: Double(credits), source: .manual))
         autosave()
     }
 
@@ -391,7 +434,16 @@ final class PlanStore: ObservableObject {
         // the main-actor store. Progress hops back via MainActor.run.
         let concentrationID = plan.concentrationID
         let workload = plan.workload
-        let transferCredits = plan.transferCredits
+        let creditResult = EffectiveCreditBuilder.build(records: plan.academicRecords, legacyCredits: plan.transferCredits)
+        guard creditResult.issues.isEmpty else {
+            errorMessage = "Review overlapping or invalid prior credit in setup before generating."
+            scheduleGenerationProgress = nil
+            return
+        }
+        let transferCredits = creditResult.credits
+        let preservedSemester = plan.currentSemester
+        let earnedHours = earnedHoursContext
+        let planningStart = plan.planningStart ?? SemesterIdentity.current()
         let additionalPrograms = selectedMinorPrograms()
 
         let result: Result<[Pathway], Error> = await Task.detached(priority: .userInitiated) {
@@ -401,8 +453,10 @@ final class PlanStore: ObservableObject {
                     concentrationID: concentrationID,
                     workload: workload,
                     transferCredits: transferCredits,
-                    starting: SemesterIdentity(year: 2026, term: .fall),
+                    starting: planningStart,
                     additionalPrograms: additionalPrograms,
+                    preservedSemester: preservedSemester,
+                    earnedHoursAtStart: earnedHours,
                     progress: { [weak self] current, total, name in
                         Task { @MainActor in
                             self?.scheduleGenerationProgress = ScheduleGenerationProgress(
@@ -421,6 +475,7 @@ final class PlanStore: ObservableObject {
 
         switch result {
         case .success(let pathways):
+            plan.setupCompleted = true
             plan.pathways = pathways
             plan.activePathwayID = pathways.first?.id
             clearScheduleHistory()
@@ -435,18 +490,22 @@ final class PlanStore: ObservableObject {
     private struct ScheduleSnapshot: Equatable, Sendable {
         var pathway: Pathway
         var overrides: [ConflictOverride]
+        var currentSemester: SemesterPlan?
+        var academicRecords: [AcademicCourseRecord]
     }
 
     private func recordScheduleChange(actionName: String, message: String, _ mutation: () -> Void) {
         guard let pathwayIndex = activePathwayIndex else { return }
         let planID = plan.id
-        let before = ScheduleSnapshot(pathway: plan.pathways[pathwayIndex], overrides: plan.overrides)
+        let before = ScheduleSnapshot(pathway: plan.pathways[pathwayIndex], overrides: plan.overrides, currentSemester: plan.currentSemester, academicRecords: plan.academicRecords)
         let warningsBefore = warnings
         mutation()
+        syncCurrentEnrollmentFromActivePathway()
+        autosave()
         guard plan.id == planID,
               let index = plan.pathways.firstIndex(where: { $0.id == before.pathway.id })
         else { return }
-        let after = ScheduleSnapshot(pathway: plan.pathways[index], overrides: plan.overrides)
+        let after = ScheduleSnapshot(pathway: plan.pathways[index], overrides: plan.overrides, currentSemester: plan.currentSemester, academicRecords: plan.academicRecords)
         guard after != before else { return }
         registerUndo(restoring: before, expected: after, planID: planID, actionName: actionName)
         lastScheduleChange = ScheduleChange(
@@ -491,9 +550,11 @@ final class PlanStore: ObservableObject {
               let index = plan.pathways.firstIndex(where: { $0.id == snapshot.pathway.id }),
               plan.pathways[index] == expected.pathway
         else { return }
-        let current = ScheduleSnapshot(pathway: plan.pathways[index], overrides: plan.overrides)
+        let current = ScheduleSnapshot(pathway: plan.pathways[index], overrides: plan.overrides, currentSemester: plan.currentSemester, academicRecords: plan.academicRecords)
         var updated = plan
         updated.pathways[index] = snapshot.pathway
+        updated.currentSemester = snapshot.currentSemester
+        updated.academicRecords = snapshot.academicRecords
         // Reverse only this edit's override delta. A later "Keep" is a
         // separate decision, potentially in another pathway, and must survive.
         let addedByEdit = Set(expected.overrides).subtracting(snapshot.overrides)
@@ -505,7 +566,7 @@ final class PlanStore: ObservableObject {
         plan = updated
         lastScheduleChange = nil
         autosave()
-        let restored = ScheduleSnapshot(pathway: snapshot.pathway, overrides: updated.overrides)
+        let restored = ScheduleSnapshot(pathway: snapshot.pathway, overrides: updated.overrides, currentSemester: updated.currentSemester, academicRecords: updated.academicRecords)
         registerUndo(restoring: current, expected: restored, planID: planID, actionName: actionName)
     }
 
@@ -545,8 +606,9 @@ final class PlanStore: ObservableObject {
             in: activePathway,
             overrides: plan.overrides,
             activeProgramTitle: effectiveActiveProgram?.title,
-            completedAtStart: Set(plan.transferCredits.flatMap(\.courseIDs)),
-            workload: plan.workload
+            completedAtStart: effectiveAcademicHistory.completedCourseIDs,
+            workload: plan.workload,
+            earnedHoursAtStart: earnedHoursContext
         )
         #if DEBUG
         let elapsed = Date().timeIntervalSince(started) * 1000
@@ -567,12 +629,13 @@ final class PlanStore: ObservableObject {
         let revision = verdictRevision
         let overrides = plan.overrides
         let title = effectiveActiveProgram?.title
-        let completed = Set(plan.transferCredits.flatMap(\.courseIDs))
+        let completed = effectiveAcademicHistory.completedCourseIDs
+        let earnedHours = earnedHoursContext
         let workload = plan.workload
         let worker = Task.detached(priority: .userInitiated) {
             DropVerdictCalculator(catalog: catalog).verdicts(
                 moving: itemID, in: pathway, overrides: overrides,
-                activeProgramTitle: title, completedAtStart: completed, workload: workload
+                activeProgramTitle: title, completedAtStart: completed, workload: workload, earnedHoursAtStart: earnedHours
             )
         }
         let result = await withTaskCancellationHandler {
@@ -669,8 +732,13 @@ final class PlanStore: ObservableObject {
         guard let pathwayIndex = activePathwayIndex else { return }
         let original = plan.pathways[pathwayIndex]
         var pathway = original
+        let origin = original.semesters.first { $0.courseIDs.contains(courseID) }
+        let creditOverride = origin?.creditOverrides[courseID]
+        let titleOverride = origin?.courseTitles[courseID]
         for semesterIndex in pathway.semesters.indices {
             pathway.semesters[semesterIndex].courseIDs.removeAll { $0 == courseID }
+            pathway.semesters[semesterIndex].creditOverrides.removeValue(forKey: courseID)
+            pathway.semesters[semesterIndex].courseTitles.removeValue(forKey: courseID)
         }
         if let target = pathway.semesters.firstIndex(where: { $0.id == semester }) {
             let count = pathway.semesters[target].courseIDs.count
@@ -679,6 +747,10 @@ final class PlanStore: ObservableObject {
         } else {
             pathway.semesters.append(SemesterPlan(id: semester, courseIDs: [courseID]))
             pathway.semesters.sort { $0.id < $1.id }
+        }
+        if let target = pathway.semesters.firstIndex(where: { $0.id == semester }) {
+            pathway.semesters[target].creditOverrides[courseID] = creditOverride
+            pathway.semesters[target].courseTitles[courseID] = titleOverride
         }
         guard pathway != original else { return }
         plan.pathways[pathwayIndex] = pathway
@@ -822,6 +894,7 @@ final class PlanStore: ObservableObject {
     func startFresh() {
         clearScheduleHistory()
         plan = SavedStudentPlan()
+        setupSheetPresented = true
         autosave()
     }
 
@@ -835,7 +908,7 @@ final class PlanStore: ObservableObject {
     func exportPDF() {
         guard let catalog, let activePathway else { return }
         do {
-            try ExportService().exportPDF(planName: plan.name, pathway: activePathway, catalog: catalog)
+            try ExportService().exportPDF(planName: plan.name, pathway: activePathway, catalog: catalog, history: effectiveAcademicHistory)
         } catch {
             errorMessage = "PDF export failed: \(error.localizedDescription)"
         }
@@ -919,7 +992,7 @@ final class PlanStore: ObservableObject {
     }
 
     private func plansDirectory() throws -> URL {
-        let directory = try catalogRepository.supportDirectory().appending(path: "Plans", directoryHint: .isDirectory)
+        let directory = try storageDirectory ?? catalogRepository.supportDirectory().appending(path: "Plans", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
@@ -929,7 +1002,7 @@ final class PlanStore: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let url = try plansDirectory().appending(path: "\(savedPlan.id.uuidString).jmuplan.json")
-        try encoder.encode(savedPlan).write(to: url)
+        try encoder.encode(savedPlan).write(to: url, options: .atomic)
     }
 
     private func loadPlans() throws -> [SavedStudentPlan] {

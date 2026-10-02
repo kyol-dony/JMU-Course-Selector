@@ -75,6 +75,36 @@ final class PrereqRuleOverlayTests: XCTestCase {
         XCTAssertEqual(resolved.sourceText, "Prerequisite: CS 149.")
     }
 
+    func testBundledOverlayMakesSCOM240AChoiceOfIntroCourses() throws {
+        let overlayURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Data/prereq_coreq_overrides.json")
+        let overlay = try JSONDecoder().decode(PrereqRuleOverlay.self, from: Data(contentsOf: overlayURL))
+        var scom240 = Course(id: "SCOM240", code: "SCOM 240", title: "Intro", credits: 3, availability: nil, prerequisites: [])
+        // The parser reads this as SCOM 121 and (SCOM 122 or SCOM 123).
+        scom240.rawPrerequisiteText = "Prerequisites: Declared SCOM majors or declared SCOM minors only, and SCOM 121 , SCOM 122 or SCOM 123 , and sophomore standing or above. Corequisites: SCOM 240L ."
+        let catalog = Catalog.fixture(
+            courses: ["SCOM121", "SCOM122", "SCOM123", "SCOM240L"].map {
+                Course(id: $0, code: $0, title: $0, credits: 3, availability: nil, prerequisites: [])
+            } + [scom240],
+            program: Program.fixture(id: "scom-ba", title: "Communication Studies, B.A.", requirements: []),
+            prereqRuleOverlay: overlay
+        )
+
+        let resolved = PrereqRuleResolver(catalog: catalog).rule(for: scom240, activeProgramTitle: nil)
+
+        XCTAssertEqual(resolved.confidence, .curated)
+        XCTAssertEqual(resolved.basis, .inferred)
+        XCTAssertEqual(resolved.prerequisiteExpr, .all([
+            .any([.course("SCOM121"), .course("SCOM122"), .course("SCOM123")]),
+            .standing(StandingRequirement(minimum: .sophomore))
+        ]))
+        XCTAssertEqual(resolved.corequisiteExpr, .course("SCOM240L"))
+        // The declared-major restriction stays unenforced and flagged.
+        XCTAssertTrue(resolved.hasUnknownTokens)
+        XCTAssertEqual(overlay.rule(for: "SCOM240L")?.corequisiteExpr, .course("SCOM240"))
+    }
+
     func testResolverFallsBackToRawCatalogParser() throws {
         var cs240 = Course(id: "CS240", code: "CS 240", title: "Data", credits: 3, availability: nil, prerequisites: [])
         cs240.rawPrerequisiteText = "Prerequisite: CS 159."

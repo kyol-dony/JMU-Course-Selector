@@ -42,10 +42,35 @@ func exprKind(_ expr: Any?) -> String {
     return kind
 }
 
+/// The newest live catalog the app has cached, if any. The overlay applies
+/// to the live catalog, which holds far more courses than the bundled seed.
+func newestCachedCatalogURL() -> URL? {
+    let directory = FileManager.default.homeDirectoryForCurrentUser
+        .appending(path: "Library/Application Support/JMUCoursePlanner/Catalog")
+    let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+    return files
+        .compactMap { url -> (Int, URL)? in
+            let name = url.lastPathComponent
+            guard name.hasPrefix("catalog_html_cache_v"), name.hasSuffix(".json"),
+                  let version = Int(name.dropFirst("catalog_html_cache_v".count).dropLast(".json".count))
+            else { return nil }
+            return (version, url)
+        }
+        .max { $0.0 < $1.0 }?
+        .1
+}
+
 let seed = try readObject(seedURL)
 let overlay = try readObject(overlayURL)
 let courses = seed["courses"] as? [[String: Any]] ?? []
-let courseIDs = Set(courses.compactMap { string($0, "id") })
+var courseIDs = Set(courses.compactMap { string($0, "id") })
+if let cachedURL = newestCachedCatalogURL() {
+    let cachedCourses = try readObject(cachedURL)["courses"] as? [[String: Any]] ?? []
+    courseIDs.formUnion(cachedCourses.compactMap { string($0, "id") })
+    print("Course IDs: seed + \(cachedURL.lastPathComponent)")
+} else {
+    print("Course IDs: seed only (no cached live catalog found)")
+}
 let courseByID = Dictionary(uniqueKeysWithValues: courses.compactMap { course -> (String, [String: Any])? in
     guard let id = string(course, "id") else { return nil }
     return (id, course)

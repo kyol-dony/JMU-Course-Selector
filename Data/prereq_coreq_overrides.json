@@ -1,4 +1,95 @@
 {
   "schemaVersion": 1,
-  "rules": []
+  "rules": [
+    {
+      "courseID": "SCOM240",
+      "prerequisiteExpr": {
+        "kind": "all",
+        "children": [
+          {
+            "kind": "unknown",
+            "value": "Declared SCOM majors or minors only"
+          },
+          {
+            "kind": "any",
+            "children": [
+              {
+                "kind": "course",
+                "value": "SCOM121"
+              },
+              {
+                "kind": "course",
+                "value": "SCOM122"
+              },
+              {
+                "kind": "course",
+                "value": "SCOM123"
+              }
+            ]
+          },
+          {
+            "kind": "standing",
+            "standing": {
+              "minimum": 1,
+              "maximum": 3
+            }
+          }
+        ]
+      },
+      "corequisiteExpr": {
+        "kind": "course",
+        "value": "SCOM240L"
+      },
+      "confidence": "curated",
+      "basis": "inferred",
+      "sourceURL": "https://catalog.jmu.edu/search/?P=SCOM%20240",
+      "sourceText": "Prerequisites: Declared SCOM majors or declared SCOM minors only, and SCOM 121 , SCOM 122 or SCOM 123 , and sophomore standing or above. Corequisites: SCOM 240L .",
+      "notes": "SCOM 121, SCOM 122, and SCOM 123 are alternate versions of the General Education Fundamental Human Communication course; the catalog's \"SCOM 121 , SCOM 122 or SCOM 123\" means any one of them. The parser cannot tell this list from same-shaped lists such as MATH 470's \"MATH 245 , MATH 238 or MATH 300 , and ...\", where the first course is required. The declared-major/minor restriction is kept as an unenforced condition."
+    },
+    {
+      "courseID": "SCOM240L",
+      "prerequisiteExpr": {
+        "kind": "all",
+        "children": [
+          {
+            "kind": "unknown",
+            "value": "Declared SCOM majors or minors only"
+          },
+          {
+            "kind": "any",
+            "children": [
+              {
+                "kind": "course",
+                "value": "SCOM121"
+              },
+              {
+                "kind": "course",
+                "value": "SCOM122"
+              },
+              {
+                "kind": "course",
+                "value": "SCOM123"
+              }
+            ]
+          },
+          {
+            "kind": "standing",
+            "standing": {
+              "minimum": 1,
+              "maximum": 3
+            }
+          }
+        ]
+      },
+      "corequisiteExpr": {
+        "kind": "course",
+        "value": "SCOM240"
+      },
+      "confidence": "curated",
+      "basis": "inferred",
+      "sourceURL": "https://catalog.jmu.edu/search/?P=SCOM%20240L",
+      "sourceText": "Prerequisites: Declared SCOM majors or SCOM minors only, and SCOM 121 , SCOM 122 or SCOM 123 , and sophomore standing or above. Corequisites: SCOM 240 .",
+      "notes": "SCOM 121, SCOM 122, and SCOM 123 are alternate versions of the General Education Fundamental Human Communication course; the catalog's \"SCOM 121 , SCOM 122 or SCOM 123\" means any one of them. The parser cannot tell this list from same-shaped lists such as MATH 470's \"MATH 245 , MATH 238 or MATH 300 , and ...\", where the first course is required. The declared-major/minor restriction is kept as an unenforced condition."
+    }
+  ]
 }

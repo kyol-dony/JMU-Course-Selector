@@ -9,6 +9,12 @@ enum PrereqToken: Equatable {
     case rparen
     case comma
     case semicolon
+    /// "/" between two course codes: a cross-listing ("CS 227 / MATH 227")
+    /// or a lecture/lab pair ("BIO 240 / BIO 240L").
+    case slash
+    /// "either A or B": opens a choice group that binds tighter than the
+    /// surrounding "and".
+    case either
 }
 
 enum PrereqLexer {
@@ -50,6 +56,13 @@ enum PrereqLexer {
             if ch == ";" {
                 flushUnknown(); tokens.append(.semicolon); i = input.index(after: i); continue
             }
+            if ch == "/", unknownBuffer.isEmpty, case .courseRef? = tokens.last {
+                let next = input[input.index(after: i)...].drop(while: \.isWhitespace)
+                let rest = String(next)
+                if coursePattern.firstMatch(in: rest, range: NSRange(rest.startIndex..., in: rest)) != nil {
+                    tokens.append(.slash); i = input.index(after: i); continue
+                }
+            }
             if ch == "." {
                 // sentence-ending or abbreviation: treat as a token separator
                 flushUnknown()
@@ -76,6 +89,8 @@ enum PrereqLexer {
                     flushUnknown(); tokens.append(.and)
                 } else if lower == "or" {
                     flushUnknown(); tokens.append(.or)
+                } else if lower == "either" {
+                    flushUnknown(); tokens.append(.either)
                 } else {
                     if !unknownBuffer.isEmpty, !unknownBuffer.hasSuffix(" ") {
                         unknownBuffer.append(" ")
@@ -91,6 +106,13 @@ enum PrereqLexer {
         }
         flushUnknown()
         return tokens
+    }
+
+    static func isCourseCode(_ text: String) -> Bool {
+        guard let match = coursePattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else {
+            return false
+        }
+        return match.range.length == (text as NSString).length
     }
 
     private static func readWord(from s: String, at start: String.Index) -> (word: String, end: String.Index)? {
@@ -171,6 +193,9 @@ public struct PrereqParser: Sendable {
         case .normal:
             var index = 0
             expr = parseExpr(resolved, &index)
+            // The grammar stops at a term it can't connect ("CS 240 . You may
+            // only attempt ..."); what follows is unparsed, not absent.
+            if index < resolved.count { hasUnknown = true }
         case .choiceList:
             expr = parseChoiceList(resolved)
         }
@@ -208,7 +233,7 @@ public struct PrereqParser: Sendable {
     /// permission of the instructor") is an alternative to everything
     /// before it.
     private func parseExpr(_ tokens: [PrereqToken], _ i: inout Int) -> PrereqExpr {
-        var result = parseOr(tokens, &i)
+        var result = parseClause(tokens, &i)
         while i < tokens.count, case .semicolon = tokens[i] {
             i += 1
             var isAlternative = false
@@ -218,25 +243,175 @@ public struct PrereqParser: Sendable {
                 i += 1
                 isAlternative = true
             }
-            let next = parseOr(tokens, &i)
+            let next = parseClause(tokens, &i)
             result = isAlternative ? .any([result, next]) : .all([result, next])
         }
         return result
     }
 
-    private func parseOr(_ tokens: [PrereqToken], _ i: inout Int) -> PrereqExpr {
-        var children = [parseAnd(tokens, &i)]
-        while i < tokens.count, case .or = tokens[i] {
+    /// A comma list closed by "and" separates its items more loosely than
+    /// "or": "A or B , and C" is (A or B) and C, "A , B or C , and D" is A
+    /// and (B or C) and D, and "A or B , C and D" is (A or B) and C and D.
+    /// Lists closed by "or" keep commas binding tighter than "or", since
+    /// "A , B or C" usually means one choice. Inside such a list, ", or X"
+    /// makes X an alternative to the items since the last ", and" ("A , B ,
+    /// or C , and D"). A plain list closed by ", or" ("A , B , or C") is a
+    /// choice among all its items, as is a list of courses closed by a bare
+    /// "or" ("A , B or C").
+    private func parseClause(_ tokens: [PrereqToken], _ i: inout Int) -> PrereqExpr {
+        if Self.clauseIsOrList(tokens, from: i) {
+            var choices = [parseTerm(tokens, &i)]
+            while i + 1 < tokens.count {
+                if case .comma = tokens[i] {
+                    i += 1
+                    if case .or = tokens[i] { i += 1 }
+                } else if case .or = tokens[i] {
+                    i += 1
+                } else {
+                    break
+                }
+                choices.append(parseTerm(tokens, &i))
+            }
+            return .any(choices)
+        }
+        guard Self.clauseIsAndList(tokens, from: i) else { return parseOr(tokens, &i) }
+        var items = [parseOr(tokens, &i, commasSeparate: true)]
+        var runStart = 0
+        while i < tokens.count, case .comma = tokens[i] {
             i += 1
-            children.append(parseAnd(tokens, &i))
+            if i < tokens.count, case .and = tokens[i] {
+                i += 1
+                runStart = items.count
+                items.append(parseOr(tokens, &i, commasSeparate: true))
+            } else if i < tokens.count, case .or = tokens[i] {
+                i += 1
+                let alternatives = Array(items[runStart...]) + [parseOr(tokens, &i, commasSeparate: true)]
+                items.replaceSubrange(runStart..., with: [.any(alternatives)])
+            } else {
+                items.append(parseOr(tokens, &i, commasSeparate: true))
+            }
+        }
+        return items.count == 1 ? items[0] : .all(items)
+    }
+
+    /// Whether the clause starting at `start` — up to the next semicolon or
+    /// unmatched ")" — is a comma list closed by "and": it has a top-level
+    /// ", and", or its last top-level comma is followed by "and" with no
+    /// "or" ("A or B , C and D", but not "A , B or C and D", nor "A and B ,
+    /// or C , D and E", whose ", or" splits two groups).
+    private static func clauseIsAndList(_ tokens: [PrereqToken], from start: Int) -> Bool {
+        var depth = 0
+        var index = start
+        var sawComma = false
+        var sawCommaOr = false
+        var andAfterLastComma = false
+        var orAfterLastComma = false
+        scan: while index < tokens.count {
+            switch tokens[index] {
+            case .lparen:
+                depth += 1
+            case .rparen:
+                if depth == 0 { break scan }
+                depth -= 1
+            case .semicolon where depth == 0:
+                break scan
+            case .comma where depth == 0:
+                if index + 1 < tokens.count, case .and = tokens[index + 1] { return true }
+                if isCommaOr(tokens, at: index) { sawCommaOr = true }
+                sawComma = true
+                andAfterLastComma = false
+                orAfterLastComma = false
+            case .and where depth == 0:
+                andAfterLastComma = true
+            case .or where depth == 0, .either where depth == 0:
+                orAfterLastComma = true
+            default:
+                break
+            }
+            index += 1
+        }
+        return sawComma && !sawCommaOr && andAfterLastComma && !orAfterLastComma
+    }
+
+    /// Whether the clause starting at `start` is a plain list of terms
+    /// closed by ", or" ("A , B , or C", "A / B , C , or D"), or a list of
+    /// course codes closed by a bare "or" ("A , B or C"), with no other
+    /// connectors before it ends. The bare form needs every item to be a
+    /// course so "junior standing , A or B" keeps its standing required.
+    private static func clauseIsOrList(_ tokens: [PrereqToken], from start: Int) -> Bool {
+        enum Closer { case commaOr, bareOr }
+        var index = start
+        var sawComma = false
+        var closer: Closer?
+        var allCourses = true
+        var expectTerm = true
+        func isOrList() -> Bool {
+            guard !expectTerm, let closer else { return false }
+            return closer == .commaOr || (sawComma && allCourses)
+        }
+        while index < tokens.count {
+            switch tokens[index] {
+            case .courseRef, .unknown:
+                // An unconnected term starts trailing text ("... or D .
+                // Courses not on the list ..."); the clause ends before it.
+                guard expectTerm else { return isOrList() }
+                if case .unknown(let text) = tokens[index], !PrereqLexer.isCourseCode(text) { allCourses = false }
+                expectTerm = false
+            case .slash:
+                guard !expectTerm else { return false }
+                expectTerm = true
+            case .comma:
+                guard !expectTerm, closer == nil else { return false }
+                if isCommaOr(tokens, at: index) {
+                    closer = .commaOr
+                    index += 1
+                } else {
+                    sawComma = true
+                }
+                expectTerm = true
+            case .or:
+                guard !expectTerm, closer == nil else { return false }
+                closer = .bareOr
+                expectTerm = true
+            case .semicolon, .rparen:
+                return isOrList()
+            default:
+                return false
+            }
+            index += 1
+        }
+        return isOrList()
+    }
+
+    /// ", or" separates alternatives like "or" ("A and B , or C"), except
+    /// in a comma-separated list, where `parseClause` places it.
+    private func parseOr(_ tokens: [PrereqToken], _ i: inout Int, commasSeparate: Bool = false) -> PrereqExpr {
+        var children = [parseAnd(tokens, &i, commasSeparate: commasSeparate)]
+        while i < tokens.count {
+            if case .or = tokens[i] {
+                i += 1
+            } else if !commasSeparate, Self.isCommaOr(tokens, at: i) {
+                i += 2
+            } else {
+                break
+            }
+            children.append(parseAnd(tokens, &i, commasSeparate: commasSeparate))
         }
         return children.count == 1 ? children[0] : .any(children)
     }
 
-    private func parseAnd(_ tokens: [PrereqToken], _ i: inout Int) -> PrereqExpr {
+    private static func isCommaOr(_ tokens: [PrereqToken], at index: Int) -> Bool {
+        guard index + 1 < tokens.count, case .comma = tokens[index], case .or = tokens[index + 1] else { return false }
+        return true
+    }
+
+    /// `commasSeparate` leaves commas to `parseClause`, which splits on them.
+    private func parseAnd(_ tokens: [PrereqToken], _ i: inout Int, commasSeparate: Bool = false) -> PrereqExpr {
         var children = [parseTerm(tokens, &i)]
         loop: while i < tokens.count {
             switch tokens[i] {
+            case .comma where commasSeparate || Self.isCommaOr(tokens, at: i):
+                break loop
             case .and, .comma:
                 i += 1
                 // Oxford comma: ", and X" is one separator, not an empty term.
@@ -257,16 +432,76 @@ public struct PrereqParser: Sendable {
             let inner = parseExpr(tokens, &i)
             if i < tokens.count, case .rparen = tokens[i] { i += 1 }
             return inner
+        case .either:
+            i += 1
+            return parseEither(tokens, &i)
         case .courseRef(let id):
             i += 1
-            return .course(id)
+            return parseSlashed(.course(id), tokens, &i)
         case .unknown(let text):
             i += 1
-            return .unknown(text)
+            return parseSlashed(.unknown(text), tokens, &i)
         default:
             i += 1
             return .empty
         }
+    }
+
+    /// "A / B": a lecture and its lab ("BIO 240 / BIO 240L") are both
+    /// required; any other pair is a cross-listing, where either counts.
+    /// Both sides name one offering, so a side missing from the catalog
+    /// (often the lab) drops out rather than flagging the rule.
+    private func parseSlashed(_ first: PrereqExpr, _ tokens: [PrereqToken], _ i: inout Int) -> PrereqExpr {
+        var result = first
+        while i + 1 < tokens.count, case .slash = tokens[i] {
+            i += 1
+            let next = parseTerm(tokens, &i)
+            switch (result, next) {
+            case (.unknown, .course):
+                result = next
+            case (_, .unknown) where !result.containsUnknown:
+                continue
+            default:
+                let isLabPair = Self.slashKey(result).map { $0 + "L" } == Self.slashKey(next)
+                    || Self.slashKey(next).map { $0 + "L" } == Self.slashKey(result)
+                result = isLabPair ? .all([result, next]) : .any([result, next])
+            }
+        }
+        return result
+    }
+
+    /// A course leaf's code with spacing removed — "BIO240L" for both the
+    /// resolved id and an unresolved "BIO 240L" — for lab-pair matching.
+    private static func slashKey(_ expr: PrereqExpr) -> String? {
+        switch expr {
+        case .course(let text), .unknown(let text):
+            return text.uppercased().filter { $0.isLetter || $0.isNumber }
+        default:
+            return nil
+        }
+    }
+
+    /// "either A or B", "either A , B , or C": alternatives separated by
+    /// commas and "or", ending at the first comma after an "or" or at any
+    /// other connector, so "either A or B , and C" leaves ", and C" to the
+    /// caller.
+    private func parseEither(_ tokens: [PrereqToken], _ i: inout Int) -> PrereqExpr {
+        var choices = [parseTerm(tokens, &i)]
+        var sawOr = false
+        while i + 1 < tokens.count {
+            if case .or = tokens[i] {
+                i += 1
+                sawOr = true
+            } else if !sawOr, case .comma = tokens[i] {
+                if case .and = tokens[i + 1] { break }
+                i += 1
+                if case .or = tokens[i] { i += 1; sawOr = true }
+            } else {
+                break
+            }
+            choices.append(parseTerm(tokens, &i))
+        }
+        return choices.count == 1 ? choices[0] : .any(choices)
     }
 
     private func parseChoiceList(_ tokens: [PrereqToken]) -> PrereqExpr {
@@ -333,9 +568,16 @@ public struct PrereqParser: Sendable {
 
     private static let gradeQualifierPatterns: [NSRegularExpression] = [
         // swiftlint:disable:next force_try
-        try! NSRegularExpression(pattern: #"(?i)\b(?:with\s+)?(?:a\s+)?(?:minimum\s+)?grade\s+of\s+["“”']?[A-F][+-]?["“”']?\s+or\s+better\s+in\s+"#),
+        // 'a minimum grade of "C" in', 'minimum grades of "C-" or better in both',
+        // 'A grade of "C" or higher in the following courses:'.
+        try! NSRegularExpression(pattern: #"(?i)\b(?:with\s+)?(?:an?\s+)?(?:minimum\s+)?grades?\s+of\s+["“”']?\s*[A-F][+-]?\s*["“”']?\s*(?:or\s+(?:better|higher)\s+)?in\b\s*(?:(?:both|each\s+of)\b\s*)?(?:the\s+following(?:\s+courses?)?\b)?\s*:?\s*"#),
         // swiftlint:disable:next force_try
-        try! NSRegularExpression(pattern: #"(?i)\b[A-F][+-]?\s+or\s+better\s+in\s+"#)
+        try! NSRegularExpression(pattern: #"(?i)\b[A-F][+-]?\s+or\s+better\s+in\s+"#),
+        // Trailing: 'SCOM 280 with a minimum grade of "C-"', 'GEOG 210 with a
+        // "C" or better'. The grade letter stays case-sensitive so "with a"
+        // alone never reads as a grade.
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"\s*\b(?i:with\s+(?:an?\s+)?(?:minimum\s+)?(?:grades?\s+of\s+)?)["“”']?\s*[A-F][+-]?\s*\.?\s*["“”']?(?![A-Za-z])(?i:\s*or\s+(?:better|higher))?"#)
     ]
 
     private static let trailingEquivalentPattern: NSRegularExpression = {

@@ -4,7 +4,7 @@ import PlannerCore
 
 @MainActor
 struct ExportService {
-    func exportPDF(planName: String, pathway: Pathway, catalog: Catalog) throws {
+    func exportPDF(planName: String, pathway: Pathway, catalog: Catalog, history: AcademicHistory? = nil) throws {
         guard let destination = savePanel(defaultName: "\(planName).pdf", allowedTypes: ["pdf"]) else { return }
 
         // Build a text view sized to its content height. The previous
@@ -20,7 +20,7 @@ struct ExportService {
         let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
         textView.textContainerInset = NSSize(width: margin, height: margin)
         textView.font = NSFont.systemFont(ofSize: 12)
-        textView.string = printableSummary(planName: planName, pathway: pathway, catalog: catalog)
+        textView.string = printableSummary(planName: planName, pathway: pathway, catalog: catalog, history: history)
         textView.isEditable = false
 
         // Force layout so we can size the view to fit all the content
@@ -66,12 +66,13 @@ struct ExportService {
         for semester in pathway.semesters {
             let date = semester.id.term == .fall ? "\(semester.id.year)0820" : "\(semester.id.year)0110"
             for courseID in semester.courseIDs {
-                guard let course = courses[courseID] else { continue }
+                let code = courses[courseID]?.code ?? courseID
+                let title = semester.courseTitles[courseID] ?? courses[courseID]?.title ?? courseID
                 lines.append("BEGIN:VEVENT")
                 lines.append("UID:\(UUID().uuidString)@jmu-course-planner")
                 lines.append("DTSTAMP:\(Self.icsDate(Date()))")
                 lines.append("DTSTART;VALUE=DATE:\(date)")
-                lines.append("SUMMARY:\(course.code) \(course.title)")
+                lines.append("SUMMARY:\(code) \(title)")
                 lines.append("DESCRIPTION:\(semester.id.displayName) placeholder course block. Confirm actual meeting times in MyMadison.")
                 lines.append("END:VEVENT")
             }
@@ -81,16 +82,24 @@ struct ExportService {
         try lines.joined(separator: "\r\n").data(using: .utf8)?.write(to: destination)
     }
 
-    private func printableSummary(planName: String, pathway: Pathway, catalog: Catalog) -> String {
+    func printableSummary(planName: String, pathway: Pathway, catalog: Catalog, history: AcademicHistory? = nil) -> String {
         let courses = catalog.coursesByID
         var text = "\(planName)\nJMU Course Planner\n\n"
+        if let history {
+            text += "Earned credit: \(CreditHoursFormatter.string(history.earnedHours)) hours\n"
+            for credit in history.effectiveCredits {
+                text += "  \(credit.source.label): \(credit.courseIDs.joined(separator: ", ")) \(credit.sourceDescription) (\(CreditHoursFormatter.string(credit.credits)) credits)\n"
+            }
+            text += "\nProjected coursework\n"
+        }
         for semester in pathway.semesters {
-            let total = semester.courseIDs.compactMap { courses[$0]?.credits }.reduce(0, +)
-            text += "\(semester.id.displayName) - \(total) credits\n"
+            let total = AcademicCreditCalculator.hours(in: semester, catalog: catalog)
+            text += "\(semester.id.displayName) - \(CreditHoursFormatter.string(total)) credits\n"
             for courseID in semester.courseIDs {
-                if let course = courses[courseID] {
-                    text += "  \(course.code): \(course.title) (\(course.credits) credits)\n"
-                }
+                let code = courses[courseID]?.code ?? courseID
+                let title = semester.courseTitles[courseID] ?? courses[courseID]?.title ?? courseID
+                let hours = semester.creditOverrides[courseID] ?? Double(courses[courseID]?.credits ?? 0)
+                text += "  \(code): \(title) (\(CreditHoursFormatter.string(hours)) credits)\n"
             }
             text += "\n"
         }

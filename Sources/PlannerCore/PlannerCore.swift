@@ -1138,9 +1138,15 @@ public struct ScheduleGenerator: Sendable {
                 } else {
                     return nil
                 }
+                // Plan length isn't known while building, so standing uses the
+                // four-year position rule alone; the conflict detector, which
+                // also credits shorter plans, has the final say. Terms skipped
+                // because nothing fit still advance the offset so a lone
+                // standing-gated course can't stall generation.
                 guard case .satisfied = PrereqEvaluator(
                     completedBefore: completed,
-                    scheduledThisTerm: []
+                    scheduledThisTerm: [],
+                    standing: ClassStanding.forSemester(position: semesterOffset + 1, totalSemesters: nil)
                 ).evaluate(prerequisiteExpr, mode: .prereq) else { return nil }
                 if let availability = courseAvailability, !availability.contains(semester.term) { return nil }
                 return ScheduleCandidate(courseID: courseID, credits: courseCredits, variantOrder: order)
@@ -1615,7 +1621,8 @@ public struct ConflictWarning: Codable, Hashable, Identifiable, Sendable {
 /// Evaluates whether a `PrereqExpr` is satisfied given the set of courses
 /// the student has completed before this term (`completedBefore`) and the
 /// set scheduled in the same term (`scheduledThisTerm`). Prereq mode only
-/// honors `completedBefore`; coreq mode honors their union.
+/// honors `completedBefore`; coreq mode honors their union. `standing` is the
+/// term's class standing; when nil, standing requirements are not enforced.
 public struct PrereqEvaluator: Sendable {
     public enum Mode: Sendable { case prereq, coreq }
     public enum Outcome: Sendable, Equatable {
@@ -1625,10 +1632,12 @@ public struct PrereqEvaluator: Sendable {
 
     public let completedBefore: Set<String>
     public let scheduledThisTerm: Set<String>
+    public let standing: ClassStanding?
 
-    public init(completedBefore: Set<String>, scheduledThisTerm: Set<String>) {
+    public init(completedBefore: Set<String>, scheduledThisTerm: Set<String>, standing: ClassStanding? = nil) {
         self.completedBefore = completedBefore
         self.scheduledThisTerm = scheduledThisTerm
+        self.standing = standing
     }
 
     public func evaluate(_ expr: PrereqExpr, mode: Mode) -> Outcome {
@@ -1648,6 +1657,9 @@ public struct PrereqEvaluator: Sendable {
             return pool.contains(id) ? .empty : .course(id)
         case .unknown:
             return expr  // unknowns are never satisfied
+        case .standing(let requirement):
+            guard let standing else { return .empty }
+            return requirement.isSatisfied(by: standing) ? .empty : expr
         case .all(let xs):
             let trimmed = xs.compactMap { child -> PrereqExpr? in
                 let pruned = prune(child, pool: pool)
@@ -1693,9 +1705,15 @@ public struct ConflictDetector: Sendable {
         var warnings: [ConflictWarning] = []
         let resolver = PrereqRuleResolver(catalog: catalog)
 
-        for semester in pathway.semesters.sorted(by: { $0.id < $1.id }) {
+        let orderedSemesters = pathway.semesters.sorted(by: { $0.id < $1.id })
+        // Class standing counts semesters by their place in the plan, so a
+        // deleted semester is one the student doesn't attend. Trailing empty
+        // semesters aren't part of the plan yet and don't lengthen it.
+        let planLength = (orderedSemesters.lastIndex { !$0.courseIDs.isEmpty } ?? -1) + 1
+        for (index, semester) in orderedSemesters.enumerated() {
             let realInThisTerm = Set(semester.courseIDs.filter { !PathwayPlaceholder.isPlaceholder($0) })
-            let evaluator = PrereqEvaluator(completedBefore: completedBefore, scheduledThisTerm: realInThisTerm)
+            let standing = ClassStanding.forSemester(position: index + 1, totalSemesters: planLength)
+            let evaluator = PrereqEvaluator(completedBefore: completedBefore, scheduledThisTerm: realInThisTerm, standing: standing)
 
             for courseID in semester.courseIDs where !PathwayPlaceholder.isPlaceholder(courseID) {
                 guard let course = coursesByID[courseID] else { continue }
@@ -1729,7 +1747,8 @@ public struct ConflictDetector: Sendable {
                         confidence: resolvedRule.confidence,
                         catalogNotes: resolvedRule.notes,
                         coursesByID: coursesByID,
-                        satisfied: completedBefore
+                        satisfied: completedBefore,
+                        standingNote: "\(semester.id.displayName) counts as \(standing.displayName) standing (semester \(index + 1) of \(planLength))."
                     )
                     warnings.append(warning(
                         courseID: courseID,
@@ -1810,7 +1829,8 @@ public struct ConflictDetector: Sendable {
         confidence: PrereqRuleConfidence,
         catalogNotes: String?,
         coursesByID: [String: Course],
-        satisfied: Set<String>
+        satisfied: Set<String>,
+        standingNote: String
     ) -> (summary: String, detail: String, notes: [String]) {
         let originalText = original.displayString(coursesByID: coursesByID)
         let missingText = missing.displayString(coursesByID: coursesByID)
@@ -1822,6 +1842,9 @@ public struct ConflictDetector: Sendable {
         }
         detail += " still missing \(missingText)."
         var notes: [String] = []
+        if missing.containsStanding {
+            notes.append(standingNote)
+        }
         if hasUnknown {
             notes.append("Some prereqs couldn't be parsed; verify with the catalog.")
         }

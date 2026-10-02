@@ -174,8 +174,18 @@ public struct PrereqParser: Sendable {
         case .choiceList:
             expr = parseChoiceList(resolved)
         }
-        let normalized = Self.normalize(expr)
-        if Self.containsUnknown(normalized) { hasUnknown = true }
+        var standingResidue = false
+        var normalized = Self.normalize(Self.extractStanding(from: expr, residue: &standingResidue))
+        // The grammar stops at text it can't connect ("majors only. Junior
+        // standing"), dropping what follows. A standing named anywhere in
+        // the segment is still a requirement, so AND it on and flag the
+        // segment as only partly understood.
+        if !normalized.containsStanding,
+           let requirement = Self.standingRequirement(in: prepared.clauseText) {
+            normalized = Self.normalize(.all([normalized, .standing(requirement)]))
+            standingResidue = true
+        }
+        if standingResidue || Self.containsUnknown(normalized) { hasUnknown = true }
         return normalized
     }
 
@@ -187,10 +197,31 @@ public struct PrereqParser: Sendable {
     private struct PreparedSegment {
         var text: String
         var mode: SegmentMode
+        /// The applicable clause before choice-list / grade trimming, which
+        /// can cut away a standing phrase ("Senior standing and one of the
+        /// following ...").
+        var clauseText: String = ""
     }
 
+    /// Semicolons separate clauses and bind loosest: "A or B; and C or D"
+    /// is (A or B) and (C or D). A clause opening with "or" ("; or
+    /// permission of the instructor") is an alternative to everything
+    /// before it.
     private func parseExpr(_ tokens: [PrereqToken], _ i: inout Int) -> PrereqExpr {
-        return parseOr(tokens, &i)
+        var result = parseOr(tokens, &i)
+        while i < tokens.count, case .semicolon = tokens[i] {
+            i += 1
+            var isAlternative = false
+            if i < tokens.count, case .and = tokens[i] {
+                i += 1
+            } else if i < tokens.count, case .or = tokens[i] {
+                i += 1
+                isAlternative = true
+            }
+            let next = parseOr(tokens, &i)
+            result = isAlternative ? .any([result, next]) : .all([result, next])
+        }
+        return result
     }
 
     private func parseOr(_ tokens: [PrereqToken], _ i: inout Int) -> PrereqExpr {
@@ -206,8 +237,10 @@ public struct PrereqParser: Sendable {
         var children = [parseTerm(tokens, &i)]
         loop: while i < tokens.count {
             switch tokens[i] {
-            case .and, .comma, .semicolon:
+            case .and, .comma:
                 i += 1
+                // Oxford comma: ", and X" is one separator, not an empty term.
+                if i < tokens.count, case .and = tokens[i] { i += 1 }
                 children.append(parseTerm(tokens, &i))
             default:
                 break loop
@@ -286,9 +319,10 @@ public struct PrereqParser: Sendable {
     }
 
     private static func prepareSegment(_ text: String, activeProgramTitle: String?) -> PreparedSegment {
-        let withoutHeader = stripLeadingHeader(text)
+        let withoutHeader = normalizeStandingPhrases(in: stripLeadingHeader(text))
         let conditional = selectApplicableMajorClause(in: withoutHeader, activeProgramTitle: activeProgramTitle)
-        let gradeAdjusted = stripGradeQualifier(from: conditional)
+        var gradeAdjusted = stripGradeQualifier(from: conditional)
+        gradeAdjusted.clauseText = conditional
         return gradeAdjusted
     }
 
@@ -362,13 +396,16 @@ public struct PrereqParser: Sendable {
 
     private struct MajorClause {
         var isNonMajor: Bool
+        /// "For X minors:" clauses only bound the clause before them; the
+        /// active program is always a major, so they are never selected.
+        var isMinor: Bool
         var label: String
         var body: String
     }
 
     private static let majorClausePattern: NSRegularExpression = {
         // swiftlint:disable:next force_try
-        try! NSRegularExpression(pattern: #"(?i)\bfor\s+(non[-\s]+)?(.+?)\s+majors?\s*:"#)
+        try! NSRegularExpression(pattern: #"(?i)\bfor\s+(non[-\s]+)?(.+?)\s+(majors?|minors?)\s*:"#)
     }()
 
     private static func selectApplicableMajorClause(in text: String, activeProgramTitle: String?) -> String {
@@ -388,23 +425,27 @@ public struct PrereqParser: Sendable {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .trimmingCharacters(in: CharacterSet(charactersIn: "."))
             let isNonMajor = match.range(at: 1).location != NSNotFound
+            let isMinor = Range(match.range(at: 3), in: trimmed)
+                .map { trimmed[$0].lowercased().hasPrefix("minor") } ?? false
             return MajorClause(
                 isNonMajor: isNonMajor,
+                isMinor: isMinor,
                 label: String(trimmed[labelRange]).trimmingCharacters(in: .whitespacesAndNewlines),
                 body: body
             )
         }
 
         let active = activeProgramTitle.map(normalizeProgramMatchText)
+        let selectable = clauses.filter { !$0.isMinor }
         let selected: MajorClause?
         if let active,
-           let matchingMajor = clauses.first(where: { !$0.isNonMajor && program(active, matches: $0.label) }) {
+           let matchingMajor = selectable.first(where: { !$0.isNonMajor && program(active, matches: $0.label) }) {
             selected = matchingMajor
         } else if let active,
-                  let nonMajor = clauses.first(where: { $0.isNonMajor && !program(active, matches: $0.label) }) {
+                  let nonMajor = selectable.first(where: { $0.isNonMajor && !program(active, matches: $0.label) }) {
             selected = nonMajor
         } else if active == nil,
-                  let nonMajor = clauses.first(where: \.isNonMajor) {
+                  let nonMajor = selectable.first(where: \.isNonMajor) {
             selected = nonMajor
         } else {
             selected = nil
@@ -433,6 +474,175 @@ public struct PrereqParser: Sendable {
             .map(String.init)
             .filter { !stopWords.contains($0) }
             .joined(separator: " ")
+    }
+
+    // MARK: Class standing
+
+    /// One class level as catalogs write it: "junior", "Juniors", "jr",
+    /// "First-year" (which the lexer turns into "First- year"), "First year
+    /// students", "freshmen". Non-capturing so callers can wrap it.
+    private static let standingLevelPattern = #"(?:first[-\s]*year(?:\s+students?)?|freshm[ae]n|sophomores?|juniors?|seniors?|jr|sr)"#
+
+    /// A level phrase only counts when it describes students: followed by
+    /// "standing" / "status" / "only", or by a nearby majors / minors /
+    /// students. Keeps "senior thesis" and "junior year" out.
+    private static let standingContextLookahead = #"(?=\s+(?:standing|status|only)\b|\s+(?:[\w&'.-]+\s+){0,5}?(?:majors?|minors?|students?)\b)"#
+
+    /// "Sophomore, junior and senior dance majors" / "junior or senior
+    /// standing" / "jr/sr standing" → "Sophomore thru senior ...", so the
+    /// lexer keeps the range in one unknown leaf instead of splitting it on
+    /// commas, "and", and "or".
+    private static let standingListPattern: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"(?i)\b("# + standingLevelPattern + #")(?:\s*,\s*"# + standingLevelPattern + #")*\s*,?\s*(?:and|or|/|&)\s*("# + standingLevelPattern + #")\b"# + standingContextLookahead)
+    }()
+
+    /// "junior status" → "junior standing".
+    private static let standingStatusPattern: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"(?i)\b("# + standingLevelPattern + #")\s+status\b"#)
+    }()
+
+    /// "standing or higher/above" → "standing".
+    private static let standingOrHigherPattern: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"(?i)\bstanding\s+or\s+(?:higher|above)\b"#)
+    }()
+
+    /// A level, or a "thru" range of levels, inside an unknown leaf.
+    private static let standingLevelRunPattern: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"(?i)\b("# + standingLevelPattern + #")(?:\s+thru\s+("# + standingLevelPattern + #"))?\b"#)
+    }()
+
+    private static let standingFollowsPattern: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"(?i)^\s+standing\b"#)
+    }()
+
+    private static let studentGroupFollowsPattern: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"(?i)^\s+(?:[\w&'.-]+\s+){0,5}?(?:majors?|minors?|students?)\b"#)
+    }()
+
+    /// Words that can sit beside a standing phrase without adding a
+    /// requirement of their own ("Students must have at least junior
+    /// standing only").
+    private static let standingFillerWords: Set<String> = [
+        "students", "student", "must", "have", "at", "least", "only", "required", "a", "an", "the", "in", "with"
+    ]
+
+    private static func normalizeStandingPhrases(in text: String) -> String {
+        var result = text
+        for (pattern, template) in [
+            (standingListPattern, "$1 thru $2"),
+            (standingStatusPattern, "$1 standing"),
+            (standingOrHigherPattern, "standing")
+        ] {
+            result = pattern.stringByReplacingMatches(
+                in: result,
+                range: NSRange(result.startIndex..., in: result),
+                withTemplate: template
+            )
+        }
+        return result
+    }
+
+    /// First standing requirement named in any sentence of `text`. Scanned
+    /// sentence by sentence so an "only" in one sentence ("Non-business
+    /// majors only. Junior standing") doesn't make another exact.
+    private static func standingRequirement(in text: String) -> StandingRequirement? {
+        for sentence in text.split(whereSeparator: { ".;".contains($0) }) {
+            var ignored = false
+            if case .standing(let requirement) = extractStanding(from: .unknown(String(sentence)), residue: &ignored) {
+                return requirement
+            }
+        }
+        return nil
+    }
+
+    private static func standingLevel(_ word: String) -> ClassStanding? {
+        let lower = word.lowercased()
+        if lower.hasPrefix("first") || lower.hasPrefix("freshm") { return .firstYear }
+        if lower.hasPrefix("sophomore") { return .sophomore }
+        if lower.hasPrefix("junior") || lower == "jr" { return .junior }
+        if lower.hasPrefix("senior") || lower == "sr" { return .senior }
+        return nil
+    }
+
+    /// "seniors", "first year students": the level word names the students
+    /// themselves, so it needs no "standing" or "majors" after it.
+    private static func namesStudents(_ word: String) -> Bool {
+        let lower = word.lowercased()
+        if lower.hasPrefix("first") { return lower.contains("student") }
+        return lower.count > 2 && lower.hasSuffix("s") || lower == "freshmen"
+    }
+
+    /// The level phrase in `text` that states a standing requirement, with
+    /// the range of text it covers.
+    private static func standingMatch(in text: String) -> (requirement: StandingRequirement, range: Range<String.Index>)? {
+        // "second-semester juniors may enroll with instructor permission"
+        // grants an exception rather than stating a requirement.
+        guard !text.lowercased().split(whereSeparator: { !$0.isLetter }).contains("may") else { return nil }
+        let whole = NSRange(text.startIndex..., in: text)
+        for match in standingLevelRunPattern.matches(in: text, range: whole) {
+            guard let matchRange = Range(match.range, in: text),
+                  let firstRange = Range(match.range(at: 1), in: text),
+                  let first = standingLevel(String(text[firstRange]))
+            else { continue }
+            let lastRange = Range(match.range(at: 2), in: text)
+            let second = lastRange.flatMap { standingLevel(String(text[$0])) }
+            let lastWord = String(text[lastRange ?? firstRange])
+
+            let after = String(text[matchRange.upperBound...])
+            let afterRange = NSRange(after.startIndex..., in: after)
+            var covered = matchRange
+            if let standing = standingFollowsPattern.firstMatch(in: after, range: afterRange),
+               let standingRange = Range(standing.range, in: after) {
+                covered = matchRange.lowerBound..<text.index(matchRange.upperBound, offsetBy: after.distance(from: after.startIndex, to: standingRange.upperBound))
+            } else if !namesStudents(lastWord),
+                      studentGroupFollowsPattern.firstMatch(in: after, range: afterRange) == nil {
+                continue
+            }
+
+            let requirement: StandingRequirement
+            if let second {
+                requirement = StandingRequirement(minimum: min(first, second), maximum: max(first, second))
+            } else {
+                // A lone level is that level or higher, unless the phrase
+                // says "only" ("Open only to sophomore business majors").
+                let saysOnly = text.lowercased()
+                    .split { !$0.isLetter }
+                    .contains("only")
+                requirement = StandingRequirement(minimum: first, maximum: saysOnly ? first : .senior)
+            }
+            return (requirement, covered)
+        }
+        return nil
+    }
+
+    /// Replace unknown leaves that name a class standing with `.standing`
+    /// leaves. Sets `residue` when a leaf held other unparsed words too
+    /// ("senior standing in the IA program", "senior Finance majors"), so
+    /// the course stays flagged.
+    private static func extractStanding(from expr: PrereqExpr, residue: inout Bool) -> PrereqExpr {
+        switch expr {
+        case .unknown(let text):
+            guard let match = standingMatch(in: text) else { return expr }
+            var leftover = text
+            leftover.removeSubrange(match.range)
+            let words = leftover.lowercased()
+                .split { !$0.isLetter && !$0.isNumber }
+                .filter { !standingFillerWords.contains(String($0)) }
+            if !words.isEmpty { residue = true }
+            return .standing(match.requirement)
+        case .all(let children):
+            return .all(children.map { extractStanding(from: $0, residue: &residue) })
+        case .any(let children):
+            return .any(children.map { extractStanding(from: $0, residue: &residue) })
+        default:
+            return expr
+        }
     }
 
     private static func firstRange(of pattern: NSRegularExpression, in text: String) -> Range<String.Index>? {

@@ -207,6 +207,17 @@ public extension PrereqExpr {
         }
     }
 
+    var containsStanding: Bool {
+        switch self {
+        case .standing:
+            return true
+        case .all(let children), .any(let children):
+            return children.contains { $0.containsStanding }
+        default:
+            return false
+        }
+    }
+
     var courseLeaves: [String] {
         switch self {
         case .course(let id):

@@ -1,14 +1,79 @@
 import Foundation
 
+/// A student's class standing in a planned semester.
+public enum ClassStanding: Int, Codable, Hashable, Comparable, CaseIterable, Sendable {
+    case firstYear
+    case sophomore
+    case junior
+    case senior
+
+    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .firstYear: "first-year"
+        case .sophomore: "sophomore"
+        case .junior: "junior"
+        case .senior: "senior"
+        }
+    }
+
+    /// Standing for the semester at 1-based `position` in a plan of
+    /// `totalSemesters`. A semester earns the higher of two standings:
+    /// - by position on a four-year track (semesters 1–2 first-year, 3–4
+    ///   sophomore, 5–6 junior, 7+ senior), and
+    /// - by semesters remaining, counting this one, for students finishing
+    ///   early (≤ 6 sophomore, ≤ 4 junior, ≤ 2 senior).
+    /// Pass a nil total when the plan length isn't known yet (the schedule
+    /// generator); only the position rule applies then.
+    public static func forSemester(position: Int, totalSemesters: Int?) -> ClassStanding {
+        let byPosition = ClassStanding(rawValue: min(max(position - 1, 0) / 2, ClassStanding.senior.rawValue)) ?? .senior
+        guard let totalSemesters else { return byPosition }
+        let remaining = totalSemesters - position + 1
+        let byRemaining: ClassStanding = switch remaining {
+        case ...2: .senior
+        case ...4: .junior
+        case ...6: .sophomore
+        default: .firstYear
+        }
+        return max(byPosition, byRemaining)
+    }
+}
+
+/// A "sophomore standing"-style prerequisite: the standing a semester must
+/// fall within for the course to be taken then.
+public struct StandingRequirement: Codable, Hashable, Sendable {
+    public var minimum: ClassStanding
+    public var maximum: ClassStanding
+
+    public init(minimum: ClassStanding, maximum: ClassStanding = .senior) {
+        self.minimum = minimum
+        self.maximum = max(minimum, maximum)
+    }
+
+    public func isSatisfied(by standing: ClassStanding) -> Bool {
+        (minimum...maximum).contains(standing)
+    }
+
+    public var displayString: String {
+        if maximum == .senior || minimum == maximum {
+            return "\(minimum.displayName) standing"
+        }
+        let joiner = maximum.rawValue - minimum.rawValue == 1 ? "or" : "through"
+        return "\(minimum.displayName) \(joiner) \(maximum.displayName) standing"
+    }
+}
+
 public indirect enum PrereqExpr: Codable, Hashable, Sendable {
     case empty
     case course(String)
     case unknown(String)
+    case standing(StandingRequirement)
     case all([PrereqExpr])
     case any([PrereqExpr])
 
-    private enum CodingKeys: String, CodingKey { case kind, value, children }
-    private enum Kind: String, Codable { case empty, course, unknown, all, any }
+    private enum CodingKeys: String, CodingKey { case kind, value, children, standing }
+    private enum Kind: String, Codable { case empty, course, unknown, standing, all, any }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -17,6 +82,7 @@ public indirect enum PrereqExpr: Codable, Hashable, Sendable {
         case .empty: self = .empty
         case .course: self = .course(try c.decode(String.self, forKey: .value))
         case .unknown: self = .unknown(try c.decode(String.self, forKey: .value))
+        case .standing: self = .standing(try c.decode(StandingRequirement.self, forKey: .standing))
         case .all: self = .all(try c.decode([PrereqExpr].self, forKey: .children))
         case .any: self = .any(try c.decode([PrereqExpr].self, forKey: .children))
         }
@@ -33,6 +99,9 @@ public indirect enum PrereqExpr: Codable, Hashable, Sendable {
         case .unknown(let text):
             try c.encode(Kind.unknown, forKey: .kind)
             try c.encode(text, forKey: .value)
+        case .standing(let requirement):
+            try c.encode(Kind.standing, forKey: .kind)
+            try c.encode(requirement, forKey: .standing)
         case .all(let children):
             try c.encode(Kind.all, forKey: .kind)
             try c.encode(children, forKey: .children)
@@ -48,7 +117,7 @@ public extension PrereqExpr {
         switch self {
         case .empty:
             return .empty
-        case .course:
+        case .course, .standing:
             return self
         case .unknown:
             return .empty
@@ -81,6 +150,8 @@ public extension PrereqExpr {
             return coursesByID[id]?.code ?? id
         case .unknown(let text):
             return text
+        case .standing(let requirement):
+            return requirement.displayString
         case .all(let children):
             return joinChildren(children, separator: " and ", coursesByID: coursesByID)
         case .any(let children):

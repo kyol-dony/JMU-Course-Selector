@@ -434,10 +434,9 @@ final class PrereqLiveFixtureTests: XCTestCase {
              input: "Prerequisite: CS 240 and junior standing.") { r in
             if case .all(let xs) = r.prerequisiteExpr {
                 XCTAssertEqual(xs.count, 2)
-                if case .unknown(let text) = xs[1] {
-                    XCTAssertTrue(text.lowercased().contains("junior standing"))
-                } else { XCTFail("expected 'junior standing' as unknown") }
+                XCTAssertEqual(xs[1], .standing(StandingRequirement(minimum: .junior)))
             } else { XCTFail("expected .all") }
+            // Still flagged: the empty catalog leaves CS 240 unresolved.
             XCTAssertTrue(r.hasUnknownTokens)
         },
         Case(label: "minimum_grade_qualifier_falls_to_unknown",

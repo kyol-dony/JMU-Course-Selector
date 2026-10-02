@@ -32,3 +32,6 @@ GEMINI.md
 .claude-plugin/
 .cursorrules
 .aider*
+
+# Graphify local code graph
+graphify-out/

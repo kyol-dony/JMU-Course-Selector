@@ -227,6 +227,119 @@ struct StandingParserTests {
     }
 }
 
+@Suite("Prerequisite list parsing")
+struct PrereqListParsingTests {
+    /// A parser whose catalog holds `codes`, each with its code minus the
+    /// space as its id ("CS 240" → "CS240").
+    private func parser(_ codes: String...) -> PrereqParser {
+        PrereqParser(coursesByID: Dictionary(uniqueKeysWithValues: codes.map { code in
+            let id = code.replacingOccurrences(of: " ", with: "")
+            return (id, Course(id: id, code: code, title: code, credits: 3, availability: nil, prerequisites: []))
+        }))
+    }
+
+    private func courses(_ ids: String...) -> [PrereqExpr] { ids.map(PrereqExpr.course) }
+
+    @Test("an Oxford ', and' list separates items more loosely than 'or'")
+    func oxfordAndListBindsLooserThanOr() {
+        let ldt = parser("PSYC 160", "EDUC 175", "LDT 370")
+        #expect(ldt.parse("Prerequisites: PSYC 160 or EDUC 175 , and LDT 370 . Corequisites: LDT 370 .").prerequisiteExpr
+            == .all([.any(courses("PSYC160", "EDUC175")), .course("LDT370")]))
+
+        let math = parser("MATH 245", "MATH 238", "MATH 300", "MATH 318", "MATH 329")
+        #expect(math.parse("Prerequisites: MATH 245 , MATH 238 or MATH 300 , and MATH 318 or MATH 329 .").prerequisiteExpr
+            == .all([.course("MATH245"), .any(courses("MATH238", "MATH300")), .any(courses("MATH318", "MATH329"))]))
+
+        let geol = parser("GEOL 110L", "GEOL 115L", "GEOL 280", "CHEM 131")
+        let result = geol.parse("Prerequisites: GEOL 110L or GEOL 115L , and GEOL 280 and CHEM 131 ; or permission of the instructor.")
+        #expect(result.prerequisiteExpr.enforcedCourseOnly
+            == .all([.any(courses("GEOL110L", "GEOL115L")), .course("GEOL280"), .course("CHEM131")]))
+    }
+
+    @Test("a list closed by a plain 'and' also separates items more loosely than 'or'")
+    func plainAndListBindsLooserThanOr() {
+        let result = parser("ACTG 244", "COB 242").parse(
+            "Prerequisites: ACTG 244 or COB 242 , junior standing (60 hours) and a cumulative 2.0 GPA in all courses taken at JMU."
+        )
+        #expect(result.prerequisiteExpr.enforcedCourseOnly
+            == .all([.any(courses("ACTG244", "COB242")), .standing(StandingRequirement(minimum: .junior))]))
+        #expect(result.hasUnknownTokens)
+    }
+
+    @Test("a comma list closed by 'or' is one choice")
+    func orListIsChoice() {
+        let scom = parser("SCOM 121", "SCOM 122", "SCOM 123")
+        #expect(scom.parse("Prerequisites: SCOM 121 , SCOM 122 or SCOM 123 .").prerequisiteExpr
+            == .any(courses("SCOM121", "SCOM122", "SCOM123")))
+
+        let msse = parser("MSSE 411", "MSSE 412", "MSSE 413", "MSSE 414", "MSSE 415")
+        #expect(msse.parse("Prerequisites: MSSE 411 , MSSE 412 , MSSE 413 , or MSSE 414 ; and MSSE 415 .").prerequisiteExpr
+            == .all([.any(courses("MSSE411", "MSSE412", "MSSE413", "MSSE414")), .course("MSSE415")]))
+    }
+
+    @Test("', or' separates groups that are themselves comma lists")
+    func commaOrSeparatesGroups() {
+        let eled = parser("ELED 334", "LED 350", "ELED 374", "ELED 375", "LED 370")
+        #expect(eled.parse("Prerequisites: ELED 334 and LED 350 , or ELED 374 , ELED 375 and LED 370 .").prerequisiteExpr
+            == .any([.all(courses("ELED334", "LED350")), .all(courses("ELED374", "ELED375", "LED370"))]))
+    }
+
+    @Test("grade qualifiers before and after courses are stripped", arguments: [
+        #"Prerequisites: A minimum grade of "C-" in CHEM 132 ."#,
+        #"Prerequisites: Grade of "C-"or higher in CHEM 132 ."#,
+        #"Prerequisites: A grade of "C-" or better in CHEM 132 ."#,
+        #"Prerequisites: CHEM 132 with a minimum grade of "C-"."#,
+        #"Prerequisites: CHEM 132 with a "C" or better."#
+    ])
+    func gradeQualifiers(input: String) {
+        let result = parser("CHEM 132").parse(input)
+        #expect(result.prerequisiteExpr == .course("CHEM132"))
+        #expect(!result.hasUnknownTokens)
+    }
+
+    @Test("plural 'minimum grades of' keeps every listed course")
+    func pluralGradeQualifier() {
+        let sowk = parser("SOWK 305", "SOWK 317", "SOWK 320", "SOWK 335")
+        let result = sowk.parse(
+            #"Prerequisites: Social work majors with senior standing and minimum grades of "C" in SOWK 305 , SOWK 317 , SOWK 320 and SOWK 335 ."#
+        )
+        #expect(result.prerequisiteExpr.enforcedCourseOnly
+            == .all([.standing(StandingRequirement(minimum: .senior))] + courses("SOWK305", "SOWK317", "SOWK320", "SOWK335")))
+    }
+
+    @Test("'either' groups its alternatives inside an 'and'")
+    func eitherGroup() {
+        let cs = parser("CS 240", "MATH 220", "MATH 229", "MATH 318")
+        #expect(cs.parse(#"Prerequisites: A minimum grade of "C-" in CS 240 and either MATH 220 , MATH 229 or MATH 318 ."#)
+            .prerequisiteExpr == .all([.course("CS240"), .any(courses("MATH220", "MATH229", "MATH318"))]))
+    }
+
+    @Test("a slash pairs a lecture with its lab, or cross-listed courses")
+    func slashPairs() {
+        let bio = parser("BIO 240", "BIO 240L", "CHEM 132")
+        #expect(bio.parse("Prerequisites: BIO 240 / BIO 240L and CHEM 132 .").prerequisiteExpr
+            == .all(courses("BIO240", "BIO240L", "CHEM132")))
+
+        let cs = parser("CS 159", "CS 227", "MATH 227", "MATH 245", "MATH 231")
+        #expect(cs.parse(#"Prerequisites: Grades of "C-" or better in CS 159 , CS 227 / MATH 227 or MATH 245 , and MATH 231 ."#)
+            .prerequisiteExpr == .all([.course("CS159"), .any(courses("CS227", "MATH227", "MATH245")), .course("MATH231")]))
+
+        // A partner missing from the catalog drops out without flagging.
+        let result = parser("BIO 250").parse("Prerequisites: BIO 250 / BIO 250L .")
+        #expect(result.prerequisiteExpr == .course("BIO250"))
+        #expect(!result.hasUnknownTokens)
+    }
+
+    @Test("text the grammar stops before is flagged as unparsed")
+    func leftoverTextFlagged() {
+        let result = parser("PSYC 101", "PSYC 160").parse(
+            "Prerequisites: PSYC 101 or PSYC 160 . A student cannot earn credit for PSYC 250 after completing PSYC 335 ."
+        )
+        #expect(result.prerequisiteExpr == .any(courses("PSYC101", "PSYC160")))
+        #expect(result.hasUnknownTokens)
+    }
+}
+
 @Suite("Standing prerequisite warnings")
 struct StandingWarningTests {
     static let semesters: [SemesterIdentity] = {

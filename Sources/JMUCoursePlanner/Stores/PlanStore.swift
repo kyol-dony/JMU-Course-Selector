@@ -368,7 +368,7 @@ final class PlanStore: ObservableObject {
     }
 
     func addDualEnrollment(label: String, courseID: String, credits: Int) {
-        plan.transferCredits.append(TransferCredit(sourceDescription: label, courseIDs: [courseID], credits: credits))
+        plan.transferCredits.append(TransferCredit(sourceDescription: label, courseIDs: [courseID], credits: Double(credits), source: .manual))
         autosave()
     }
 

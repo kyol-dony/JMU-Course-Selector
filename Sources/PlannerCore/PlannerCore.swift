@@ -403,13 +403,20 @@ public enum WorkloadPreference: String, Codable, CaseIterable, Hashable, Sendabl
 public struct SemesterPlan: Codable, Hashable, Identifiable, Sendable {
     public var id: SemesterIdentity
     public var courseIDs: [String]
-
-    public init(id: SemesterIdentity, courseIDs: [String]) {
-        self.id = id
-        self.courseIDs = courseIDs
+    public var creditOverrides: [String: Double]
+    public var courseTitles: [String: String]
+    public init(id: SemesterIdentity, courseIDs: [String], creditOverrides: [String: Double] = [:], courseTitles: [String: String] = [:]) {
+        self.id = id; self.courseIDs = courseIDs; self.creditOverrides = creditOverrides; self.courseTitles = courseTitles
     }
-
     public var term: SemesterTerm { id.term }
+    private enum CodingKeys: String, CodingKey { case id, courseIDs, creditOverrides, courseTitles }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(SemesterIdentity.self, forKey: .id)
+        courseIDs = try c.decode([String].self, forKey: .courseIDs)
+        creditOverrides = try c.decodeIfPresent([String: Double].self, forKey: .creditOverrides) ?? [:]
+        courseTitles = try c.decodeIfPresent([String: String].self, forKey: .courseTitles) ?? [:]
+    }
 }
 
 /// A single un-filled requirement slot in a generated schedule. The user
@@ -562,13 +569,20 @@ public struct TransferCredit: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
     public var sourceDescription: String
     public var courseIDs: [String]
-    public var credits: Int
-
-    public init(id: UUID = UUID(), sourceDescription: String, courseIDs: [String], credits: Int) {
-        self.id = id
-        self.sourceDescription = sourceDescription
-        self.courseIDs = courseIDs
-        self.credits = credits
+    public var credits: Double
+    public var source: AcademicCreditSource
+    public init(id: UUID = UUID(), sourceDescription: String, courseIDs: [String], credits: Double, source: AcademicCreditSource = .legacy) {
+        self.id = id; self.sourceDescription = sourceDescription; self.courseIDs = courseIDs
+        self.credits = credits; self.source = source
+    }
+    private enum CodingKeys: String, CodingKey { case id, sourceDescription, courseIDs, credits, source }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        sourceDescription = try c.decode(String.self, forKey: .sourceDescription)
+        courseIDs = try c.decode([String].self, forKey: .courseIDs)
+        credits = try c.decode(Double.self, forKey: .credits)
+        source = try c.decodeIfPresent(AcademicCreditSource.self, forKey: .source) ?? .legacy
     }
 }
 
@@ -677,7 +691,7 @@ public struct TransferCreditMapper: Sendable {
             return TransferCredit(
                 sourceDescription: "AP \(name) score \(score.score)",
                 courseIDs: rule.awardedCourseIDs,
-                credits: rule.credits
+                credits: Double(rule.credits), source: .apMapped
             )
         }
     }

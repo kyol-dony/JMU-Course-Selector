@@ -13,6 +13,9 @@ struct ContentView: View {
             }
         }
         .tint(DesignTokens.Colors.brandPurple)
+        .sheet(isPresented: $store.setupSheetPresented) {
+            SetupSheet(catalog: store.catalog).environmentObject(store)
+        }
     }
 
     private func dashboard(catalog: Catalog) -> some View {
@@ -27,10 +30,6 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: store.scheduleGenerationProgress)
-        .sheet(isPresented: $store.setupSheetPresented) {
-            SetupSheet(catalog: catalog)
-                .environmentObject(store)
-        }
         .sheet(item: $store.selectedCourse) { course in
             CourseDetailSheet(course: course, catalog: catalog)
                 .environmentObject(store)
@@ -46,11 +45,7 @@ struct ContentView: View {
         } message: {
             Text(store.errorMessage ?? "")
         }
-        .onAppear {
-            if store.activeProgram == nil {
-                store.setupSheetPresented = true
-            }
-        }
+
     }
 
     @ViewBuilder

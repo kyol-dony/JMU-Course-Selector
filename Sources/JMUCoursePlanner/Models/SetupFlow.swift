@@ -12,3 +12,29 @@ extension SemesterIdentity {
         .init(year: calendar.component(.year, from: date), term: calendar.component(.month, from: date) >= 8 ? .fall : .spring)
     }
 }
+
+enum SetupStep: String, CaseIterable { case year, major, minor, transfer, transcript, review, workload }
+struct SetupFlow {
+    private(set) var step: SetupStep = .year
+    private(set) var visited: [SetupStep] = []
+    private(set) var year: StudentYear?
+    var route: [SetupStep] {
+        year == .incomingFreshman ? [.year, .major, .minor, .transfer, .workload] : [.year, .major, .minor, .transcript, .review, .workload]
+    }
+    static func needsInitialSetup(plan: SavedStudentPlan) -> Bool { plan.programID == nil && !plan.setupCompleted }
+    mutating func selectYear(_ year: StudentYear) { self.year = year }
+    private mutating func go(_ next: SetupStep) { guard next != step else { return }; visited.append(step); step = next }
+    mutating func advance(majorSelectionComplete: Bool) {
+        switch step {
+        case .year: if year != nil { go(.major) }
+        case .major: if majorSelectionComplete { go(.minor) }
+        case .minor: go(year == .incomingFreshman ? .transfer : .transcript)
+        case .transfer: go(.workload)
+        default: break
+        }
+    }
+    mutating func skipUpload() { if step == .transcript { go(.review) } }
+    mutating func importReady() { if step == .transcript { go(.review) } }
+    mutating func reviewConfirmed() { if step == .review { go(.workload) } }
+    mutating func back() { if let previous = visited.popLast() { step = previous } }
+}

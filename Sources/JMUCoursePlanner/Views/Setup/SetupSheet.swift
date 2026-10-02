@@ -4,10 +4,10 @@ import PlannerCore
 struct SetupSheet: View {
     @EnvironmentObject private var store: PlanStore
     @Environment(\.dismiss) private var dismiss
-    var catalog: Catalog
-    @State private var step: Int = 0
+    var catalog: Catalog?
+    @State private var flow = SetupFlow()
 
-    private let stepCount = 4
+    private var stepCount: Int { flow.route.count }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +21,7 @@ struct SetupSheet: View {
         }
         .frame(minWidth: 640, minHeight: 560)
         .background(DesignTokens.Colors.surface)
+        .onAppear { if let year = store.plan.studentYear { flow.selectYear(year) } }
         // The sheet sits above the dashboard, so the dashboard's overlay is
         // hidden while setup is up. Repeat it here so setup-triggered
         // generation shows the same progress modal.
@@ -41,7 +42,7 @@ struct SetupSheet: View {
             HStack(spacing: 6) {
                 ForEach(0..<stepCount, id: \.self) { index in
                     Circle()
-                        .fill(index <= step ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.borderSubtle)
+                        .fill(index <= (flow.route.firstIndex(of: flow.step) ?? 0) ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.borderSubtle)
                         .frame(width: 8, height: 8)
                 }
             }
@@ -61,11 +62,28 @@ struct SetupSheet: View {
     private var stepContent: some View {
         ScrollView {
             Group {
-                switch step {
-                case 0: SetupStepMajor(catalog: catalog)
-                case 1: SetupStepMinor(catalog: catalog)
-                case 2: SetupStepTransfer(catalog: catalog)
-                default: SetupStepWorkload()
+                if flow.step == .year {
+                    SetupStepYear(selection: flow.year) { year in
+                        store.plan.studentYear = year
+                        flow.selectYear(year)
+                        advance()
+                    }
+                } else if let catalog {
+                    switch flow.step {
+                    case .major: SetupStepMajor(catalog: catalog)
+                    case .minor: SetupStepMinor(catalog: catalog)
+                    case .transfer: SetupStepTransfer(catalog: catalog)
+                    case .transcript: Text("Upload your JMU unofficial transcript or enter courses manually.")
+                    case .review: Text("Review completed credit and current enrollment.")
+                    case .workload: SetupStepWorkload()
+                    case .year: EmptyView()
+                    }
+                } else {
+                    VStack(spacing: 16) {
+                        ProgressView()
+                        Text(store.statusMessage)
+                        if store.errorMessage != nil { Button("Retry") { Task { await store.load() } } }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -75,26 +93,29 @@ struct SetupSheet: View {
     private var footer: some View {
         HStack {
             Button("Back") {
-                if step > 0 { step -= 1 }
+                flow.back()
             }
             .buttonStyle(.dtSecondary)
-            .disabled(step == 0)
+            .disabled(flow.visited.isEmpty)
 
             Spacer()
 
-            if step == 1 || step == 2 {
+            if flow.step == .minor || flow.step == .transfer {
                 Button("Skip") {
                     advance()
                 }
                 .buttonStyle(.dtTertiary)
             }
 
-            if step < stepCount - 1 {
+            if flow.step != .workload {
                 Button("Next") {
                     advance()
                 }
                 .buttonStyle(.dtPrimary)
-                .disabled(step == 0 && !store.majorSelectionComplete)
+                .disabled((flow.step == .year && flow.year == nil)
+                    || (flow.step == .major && !store.majorSelectionComplete)
+                    || (flow.step != .year && catalog == nil)
+                    || flow.step == .transcript || flow.step == .review)
             } else {
                 Button("Generate Plan") {
                     Task {
@@ -113,8 +134,6 @@ struct SetupSheet: View {
     }
 
     private func advance() {
-        if step < stepCount - 1 {
-            step += 1
-        }
+        flow.advance(majorSelectionComplete: store.majorSelectionComplete)
     }
 }

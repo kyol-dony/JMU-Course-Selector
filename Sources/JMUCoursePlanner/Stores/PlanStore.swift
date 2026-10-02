@@ -272,12 +272,14 @@ final class PlanStore: ObservableObject {
 
     func load() async {
         do {
-            catalog = try catalogRepository.loadCatalog()
             savedPlans = try loadPlans()
             if let autosave = savedPlans.first(where: { $0.name == "Autosave" }) {
                 plan = autosave
-                validateSelectedConcentration()
             }
+            setupSheetPresented = SetupFlow.needsInitialSetup(plan: plan)
+            await Task.yield()
+            catalog = try catalogRepository.loadCatalog()
+            validateSelectedConcentration()
             let catalogYear = catalog?.source.catalogYear ?? JMUCatalogConfiguration.catalogYear
             statusMessage = "Catalog loaded from the \(catalogYear) JMU undergraduate catalog cache."
         } catch {
@@ -896,6 +898,7 @@ final class PlanStore: ObservableObject {
     func startFresh() {
         clearScheduleHistory()
         plan = SavedStudentPlan()
+        setupSheetPresented = true
         autosave()
     }
 

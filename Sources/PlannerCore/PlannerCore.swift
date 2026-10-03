@@ -882,7 +882,12 @@ public struct ScheduleGenerator: Sendable {
         primaryList.append(contentsOf: openElectivePlaceholders(gap: gap, placeholders: &placeholders))
         perProgramLists.append(primaryList)
         perProgramLists.append(contentsOf: extraLists)
-        let required = Self.interleaveByProportion(perProgramLists)
+        let required = withLabs(
+            Self.interleaveByProportion(perProgramLists),
+            completed: completed,
+            placeholders: &placeholders,
+            labPairing: LabPairing(catalog: catalog, activeProgramTitle: program.title)
+        )
         guard !required.isEmpty else {
             return (1...3).map { index in
                 Pathway(id: "path-\(index)", name: pathwayName(index), semesters: preservedSemester.map { [$0] } ?? [])
@@ -1127,6 +1132,57 @@ public struct ScheduleGenerator: Sendable {
         return knownCredits.max() ?? fallback
     }
 
+    /// `courseIDs` with lectures and labs completed into pairs: each lecture
+    /// that needs a lab followed by one (the lab when only one fits, else a
+    /// "Lab for ..." placeholder), and each lone lab preceded by its lecture.
+    /// Skipped when the partner is already listed or completed.
+    private func withLabs(
+        _ courseIDs: [String],
+        completed: Set<String>,
+        placeholders: inout [String: PlaceholderSpec],
+        labPairing: LabPairing
+    ) -> [String] {
+        var listed = Set(courseIDs)
+        var result: [String] = []
+        for courseID in courseIDs {
+            // A lab listed on its own ("choose two laboratory courses") is
+            // taken with its lecture, so the lecture comes along.
+            let lectures = labPairing.lectures(forLab: courseID)
+            if let lecture = lectures.first,
+               !lectures.contains(where: { listed.contains($0) || completed.contains($0) }),
+               listed.insert(lecture).inserted {
+                result.append(lecture)
+            }
+            result.append(courseID)
+            let labs = labPairing.labOptions(forLecture: courseID)
+            guard !labs.isEmpty,
+                  !labs.contains(where: { listed.contains($0) || completed.contains($0) })
+            else { continue }
+            let lab = labs.count == 1 ? labs[0] : LabPairing.labPlaceholderID(forLecture: courseID)
+            guard listed.insert(lab).inserted else { continue }
+            if labs.count > 1 {
+                placeholders[lab] = labPairing.labPlaceholderSpec(forLecture: courseID)
+            }
+            result.append(lab)
+        }
+        return result
+    }
+
+    /// Lecture → lab pairs among `courseIDs` that must be placed together.
+    private func labUnits(in courseIDs: [String], labPairing: LabPairing) -> [String: String] {
+        let pool = Pathway(id: "", name: "", semesters: [SemesterPlan(id: SemesterIdentity(year: 0, term: .fall), courseIDs: courseIDs)])
+        var labFor: [String: String] = [:]
+        var paired: Set<String> = []
+        for item in courseIDs where LabPairing.isLab(item) || LabPairing.lecture(forLabPlaceholder: item) != nil {
+            guard let lecture = labPairing.partners(of: item, in: pool).first,
+                  !paired.contains(lecture), !paired.contains(item)
+            else { continue }
+            labFor[lecture] = item
+            paired.formUnion([lecture, item])
+        }
+        return labFor
+    }
+
     private func buildSemesters(
         courseIDs: [String],
         completedAtStart: Set<String>,
@@ -1144,12 +1200,15 @@ public struct ScheduleGenerator: Sendable {
         var result: [SemesterPlan] = []
         var emptySemesterCount = 0
         let resolver = PrereqRuleResolver(catalog: catalog)
+        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
 
         while !remaining.isEmpty {
             var selected: [String] = []
             var credits = 0.0
             let maxCredits = Double(workload.creditRange.upperBound)
             let target = targetLevel(for: semesterOffset)
+            let labFor = labUnits(in: remaining, labPairing: labPairing)
+            let pairedLabs = Set(labFor.values)
 
             let ready = remaining.enumerated().compactMap { order, courseID -> ScheduleCandidate? in
                 let courseCredits: Double
@@ -1162,7 +1221,10 @@ public struct ScheduleGenerator: Sendable {
                 } else if let course = catalog.coursesByID[courseID] {
                     courseCredits = Double(course.credits)
                     courseAvailability = course.availability
+                    // A lecture and its lab go in together, so neither waits
+                    // on the other as a prerequisite.
                     prerequisiteExpr = resolver.rule(for: course, activeProgramTitle: activeProgramTitle).prerequisiteExpr
+                        .treatingAsSatisfied(labPairing.pairedCourses(of: courseID))
                 } else {
                     return nil
                 }
@@ -1183,11 +1245,18 @@ public struct ScheduleGenerator: Sendable {
                 compare(lhs, rhs, targetLevel: target, semesterOffset: semesterOffset, placeholders: placeholders)
             }
 
-            for candidate in ready {
-                let courseCredits = candidate.credits
-                guard credits + courseCredits <= maxCredits else { continue }
-                selected.append(candidate.courseID)
-                credits += courseCredits
+            let readyByID = Dictionary(ready.map { ($0.courseID, $0) }, uniquingKeysWith: { first, _ in first })
+            for candidate in ready where !pairedLabs.contains(candidate.courseID) {
+                var unit = [candidate]
+                if let lab = labFor[candidate.courseID] {
+                    // A lecture waits until its lab can share the semester.
+                    guard let labCandidate = readyByID[lab] else { continue }
+                    unit.append(labCandidate)
+                }
+                let unitCredits = unit.reduce(0) { $0 + $1.credits }
+                guard credits + unitCredits <= maxCredits else { continue }
+                selected.append(contentsOf: unit.map(\.courseID))
+                credits += unitCredits
             }
 
             if selected.isEmpty {
@@ -1234,6 +1303,7 @@ public struct ScheduleGenerator: Sendable {
         var semesterOffset = baseSemesterOffset
         var result: [SemesterPlan] = []
         let maxCredits = Double(workload.creditRange.upperBound)
+        let labPairing = LabPairing(catalog: catalog)
 
         while !remaining.isEmpty {
             var selected: [String] = []
@@ -1251,14 +1321,19 @@ public struct ScheduleGenerator: Sendable {
                     compare(lhs, rhs, targetLevel: target, semesterOffset: semesterOffset, placeholders: placeholders)
                 }
 
-            for candidate in candidates {
-                if candidate.credits > maxCredits, selected.isEmpty {
-                    selected.append(candidate.courseID)
+            // Lectures keep their labs beside them here too.
+            let labFor = labUnits(in: remaining, labPairing: labPairing)
+            let pairedLabs = Set(labFor.values)
+            for candidate in candidates where !pairedLabs.contains(candidate.courseID) {
+                let unit = [candidate.courseID] + (labFor[candidate.courseID].map { [$0] } ?? [])
+                let unitCredits = unit.reduce(0) { $0 + credits(for: $1, placeholders: placeholders) }
+                if unitCredits > maxCredits, selected.isEmpty {
+                    selected.append(contentsOf: unit)
                     break
                 }
-                guard selectedCredits + candidate.credits <= maxCredits else { continue }
-                selected.append(candidate.courseID)
-                selectedCredits += candidate.credits
+                guard selectedCredits + unitCredits <= maxCredits else { continue }
+                selected.append(contentsOf: unit)
+                selectedCredits += unitCredits
             }
 
             if selected.isEmpty, let first = candidates.first {
@@ -1552,11 +1627,13 @@ public enum ConflictKind: String, Codable, Hashable, Sendable {
     case unknownAvailability
     case heavyLoad
     case lightLoad
+    case labNotPaired
 
     public var displayName: String {
         switch self {
         case .missingPrerequisite: "Prerequisite warning"
         case .missingCorequisite: "Corequisite warning"
+        case .labNotPaired: "Lab pairing warning"
         case .unavailableSemester: "Semester availability warning"
         case .unknownAvailability: "Availability unknown"
         case .heavyLoad: "Heavy load warning"
@@ -1566,7 +1643,7 @@ public enum ConflictKind: String, Codable, Hashable, Sendable {
 
     public var severity: ConflictSeverity {
         switch self {
-        case .missingPrerequisite, .unavailableSemester: .mustFix
+        case .missingPrerequisite, .unavailableSemester, .labNotPaired: .mustFix
         case .missingCorequisite, .heavyLoad, .lightLoad: .worthALook
         case .unknownAvailability: .hidden
         }
@@ -1576,6 +1653,7 @@ public enum ConflictKind: String, Codable, Hashable, Sendable {
         switch self {
         case .missingPrerequisite: "Missing prerequisite"
         case .missingCorequisite: "Missing corequisite"
+        case .labNotPaired: "Lab not paired"
         case .unavailableSemester: "Not offered this term"
         case .unknownAvailability: "Availability unknown"
         case .heavyLoad: "Heavy load"
@@ -1735,6 +1813,7 @@ public struct ConflictDetector: Sendable {
         var earnedHours = earnedHoursAtStart
         var warnings: [ConflictWarning] = []
         let resolver = PrereqRuleResolver(catalog: catalog)
+        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
 
         let orderedSemesters = pathway.semesters.sorted(by: { $0.id < $1.id })
         // Class standing counts semesters by their place in the plan, so a
@@ -1770,7 +1849,12 @@ public struct ConflictDetector: Sendable {
                 }
 
                 let resolvedRule = resolver.rule(for: course, activeProgramTitle: activeProgramTitle)
-                if case .unmet(let missing, let original) = evaluator.evaluate(resolvedRule.prerequisiteExpr, mode: .prereq) {
+                let labs = labPairing.labOptions(forLecture: courseID)
+                let lectures = labPairing.lectures(forLab: courseID)
+                // A lecture and its lab are taken together, so neither is the
+                // other's prerequisite; the lab-pairing check covers them.
+                let pairedCourses = Set(labs + lectures)
+                if case .unmet(let missing, let original) = evaluator.evaluate(resolvedRule.prerequisiteExpr.treatingAsSatisfied(pairedCourses), mode: .prereq) {
                     let text = Self.prereqText(
                         original: original,
                         missing: missing,
@@ -1793,7 +1877,39 @@ public struct ConflictDetector: Sendable {
                     ))
                 }
 
-                if case .unmet(let missing, _) = evaluator.evaluate(resolvedRule.corequisiteExpr, mode: .coreq) {
+                // A lecture and its lab must share the semester, which the
+                // "alongside or before" coreq check would let slide; the
+                // lab-pairing check below covers them instead.
+                let itemsThisTerm = Set(semester.courseIDs)
+                if !labs.isEmpty,
+                   !labs.contains(where: itemsThisTerm.contains),
+                   !itemsThisTerm.contains(LabPairing.labPlaceholderID(forLecture: courseID)) {
+                    let names = labs.map { coursesByID[$0]?.code ?? $0 }.joined(separator: " or ")
+                    warnings.append(warning(
+                        courseID: courseID,
+                        semester: semester.id,
+                        kind: .labNotPaired,
+                        summary: "Needs \(names) this term",
+                        detail: "Take \(names) in \(semester.id.displayName), the same semester as \(course.code).",
+                        missingCourseIDs: labs,
+                        overrides: overrides
+                    ))
+                }
+                if !lectures.isEmpty, !lectures.contains(where: itemsThisTerm.contains) {
+                    let names = lectures.map { coursesByID[$0]?.code ?? $0 }.joined(separator: " or ")
+                    warnings.append(warning(
+                        courseID: courseID,
+                        semester: semester.id,
+                        kind: .labNotPaired,
+                        summary: "Take with \(names)",
+                        detail: "Take \(course.code) in the same semester as \(names).",
+                        missingCourseIDs: lectures,
+                        overrides: overrides
+                    ))
+                }
+                let corequisites = resolvedRule.corequisiteExpr.treatingAsSatisfied(pairedCourses)
+
+                if case .unmet(let missing, _) = evaluator.evaluate(corequisites, mode: .coreq) {
                     let rendered = missing.displayString(coursesByID: coursesByID)
                     warnings.append(warning(
                         courseID: courseID,

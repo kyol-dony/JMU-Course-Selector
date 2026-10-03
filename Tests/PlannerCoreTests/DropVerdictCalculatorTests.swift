@@ -16,9 +16,9 @@ struct DropVerdictCalculatorTests {
             Course(id: "CS261", code: "CS 261", title: "Computer Systems I", credits: 3, availability: [.fall], prerequisites: []),
             Course(id: "CHEM131", code: "CHEM 131", title: "General Chemistry", credits: 3, availability: [.fall, .spring], prerequisites: []),
             Course(
-                id: "CHEM131L",
-                code: "CHEM 131L",
-                title: "General Chemistry Lab",
+                id: "CHEM140",
+                code: "CHEM 140",
+                title: "Chemistry Seminar",
                 credits: 1,
                 availability: [.fall, .spring],
                 prerequisites: [],
@@ -33,7 +33,7 @@ struct DropVerdictCalculatorTests {
         id: "base",
         name: "Base",
         semesters: [
-            SemesterPlan(id: fall26, courseIDs: ["MATH231", "CS261", "CHEM131", "CHEM131L"]),
+            SemesterPlan(id: fall26, courseIDs: ["MATH231", "CS261", "CHEM131", "CHEM140"]),
             SemesterPlan(id: spring27, courseIDs: ["MATH232"]),
             SemesterPlan(id: fall27, courseIDs: [])
         ]
@@ -108,8 +108,8 @@ struct DropVerdictCalculatorTests {
     func coreqSplit() throws {
         let later = try #require(verdicts(moving: "CHEM131")[Self.fall27])
         #expect(later.level == .caution)
-        #expect(later.affectedCourseIDs == ["CHEM131L"])
-        #expect(later.reason == "CHEM 131L loses its coreq")
+        #expect(later.affectedCourseIDs == ["CHEM140"])
+        #expect(later.reason == "CHEM 140 loses its coreq")
     }
 
     @Test("a move that clears an existing warning reports the fix")

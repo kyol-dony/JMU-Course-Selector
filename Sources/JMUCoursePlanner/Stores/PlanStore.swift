@@ -266,6 +266,11 @@ final class PlanStore: ObservableObject {
             }
         }
         pathway.resolvedPlaceholders[placeholderID] = chosenCourseID
+        // Choosing a lecture (CHEM 132 for Physical Principles) brings its lab.
+        if let labPairing,
+           let semester = pathway.semesters.first(where: { $0.courseIDs.contains(chosenCourseID) })?.id {
+            pathway = labPairing.addingLab(for: chosenCourseID, in: semester, to: pathway)
+        }
         plan.pathways[pathwayIndex] = pathway
         autosave()
     }
@@ -710,7 +715,16 @@ final class PlanStore: ObservableObject {
     /// slot leaves the plan untouched.
     func moveCourse(_ courseID: String, to semester: SemesterIdentity, at index: Int? = nil) {
         let origin = activePathway?.semesters.first { $0.courseIDs.contains(courseID) }?.id
-        let name = scheduleItemName(courseID)
+        // A lecture and its lab travel together; name both in the toast.
+        let name: String
+        if origin == nil {
+            let labs = labPairing?.labOptions(forLecture: courseID) ?? []
+            let lab = labs.count == 1 ? scheduleItemName(labs[0]) : "a lab"
+            name = labs.isEmpty ? scheduleItemName(courseID) : "\(scheduleItemName(courseID)) and \(lab)"
+        } else {
+            let partners = activePathway.map { labPairing?.partners(of: courseID, in: $0) ?? [] } ?? []
+            name = ([courseID] + partners).map(scheduleItemName).joined(separator: " and ")
+        }
         let actionName: String
         let message: String
         if origin == nil {
@@ -731,26 +745,17 @@ final class PlanStore: ObservableObject {
     private func applyMove(_ courseID: String, to semester: SemesterIdentity, at index: Int?) {
         guard let pathwayIndex = activePathwayIndex else { return }
         let original = plan.pathways[pathwayIndex]
-        var pathway = original
-        let origin = original.semesters.first { $0.courseIDs.contains(courseID) }
-        let creditOverride = origin?.creditOverrides[courseID]
-        let titleOverride = origin?.courseTitles[courseID]
-        for semesterIndex in pathway.semesters.indices {
-            pathway.semesters[semesterIndex].courseIDs.removeAll { $0 == courseID }
-            pathway.semesters[semesterIndex].creditOverrides.removeValue(forKey: courseID)
-            pathway.semesters[semesterIndex].courseTitles.removeValue(forKey: courseID)
-        }
-        if let target = pathway.semesters.firstIndex(where: { $0.id == semester }) {
-            let count = pathway.semesters[target].courseIDs.count
-            let position = min(max(index ?? count, 0), count)
-            pathway.semesters[target].courseIDs.insert(courseID, at: position)
+        let isNew = !original.semesters.contains { $0.courseIDs.contains(courseID) }
+        var pathway: Pathway
+        if let labPairing {
+            // Moves the item's lab or lecture along; a newly added lecture
+            // gets its lab beside it.
+            pathway = labPairing.moving(courseID, to: semester, at: index, in: original)
+            if isNew {
+                pathway = labPairing.addingLab(for: courseID, in: semester, to: pathway)
+            }
         } else {
-            pathway.semesters.append(SemesterPlan(id: semester, courseIDs: [courseID]))
-            pathway.semesters.sort { $0.id < $1.id }
-        }
-        if let target = pathway.semesters.firstIndex(where: { $0.id == semester }) {
-            pathway.semesters[target].creditOverrides[courseID] = creditOverride
-            pathway.semesters[target].courseTitles[courseID] = titleOverride
+            pathway = LabPairing.moving([courseID], to: semester, at: index, in: original)
         }
         guard pathway != original else { return }
         plan.pathways[pathwayIndex] = pathway
@@ -758,19 +763,54 @@ final class PlanStore: ObservableObject {
     }
 
     func removeCourse(_ courseID: String) {
-        let name = scheduleItemName(courseID)
+        let name = ([courseID] + removalPartners(of: courseID)).map(scheduleItemName).joined(separator: " and ")
         recordScheduleChange(actionName: "Remove \(name)", message: "Removed \(name)") {
             applyRemove(courseID)
         }
     }
 
+    /// A lecture's lab in the same semester goes with it. A lab removed on
+    /// its own leaves its lecture (flagged until another lab is added).
+    private func removalPartners(of courseID: String) -> [String] {
+        guard let labPairing,
+              let pathway = activePathway,
+              !labPairing.labOptions(forLecture: courseID).isEmpty,
+              let semester = pathway.semesters.first(where: { $0.courseIDs.contains(courseID) })
+        else { return [] }
+        return labPairing.partners(of: courseID, in: pathway).filter(semester.courseIDs.contains)
+    }
+
     private func applyRemove(_ courseID: String) {
         guard let pathwayIndex = activePathwayIndex else { return }
+        let partners = removalPartners(of: courseID)
         var pathway = plan.pathways[pathwayIndex]
+        removeItem(courseID, from: &pathway, withLecture: false)
+        for partner in partners {
+            removeItem(partner, from: &pathway, withLecture: true)
+        }
+        plan.pathways[pathwayIndex] = pathway
+        autosave()
+    }
+
+    /// Removes one schedule item. `withLecture` marks a lab leaving with its
+    /// lecture: a lab placeholder, or a lab chosen from one, existed only
+    /// for that lecture, so it's dropped rather than restored.
+    private func removeItem(_ courseID: String, from pathway: inout Pathway, withLecture: Bool) {
+        let resolvedFrom = pathway.resolvedPlaceholders.first(where: { $0.value == courseID })?.key
+        let labPlaceholder = LabPairing.lecture(forLabPlaceholder: courseID) != nil ? courseID
+            : resolvedFrom.flatMap { LabPairing.lecture(forLabPlaceholder: $0) != nil ? $0 : nil }
+        if withLecture, let labPlaceholder {
+            for index in pathway.semesters.indices {
+                pathway.semesters[index].courseIDs.removeAll { $0 == courseID }
+            }
+            pathway.placeholders.removeValue(forKey: labPlaceholder)
+            pathway.resolvedPlaceholders.removeValue(forKey: labPlaceholder)
+            return
+        }
         // If this course was previously resolved from a placeholder, swap
         // the placeholder slot back into the same semester instead of
         // leaving an empty hole.
-        if let placeholderID = pathway.resolvedPlaceholders.first(where: { $0.value == courseID })?.key {
+        if let placeholderID = resolvedFrom {
             for index in pathway.semesters.indices {
                 pathway.semesters[index].courseIDs = pathway.semesters[index].courseIDs.map { id in
                     id == courseID ? placeholderID : id
@@ -803,8 +843,6 @@ final class PlanStore: ObservableObject {
                 pathway.semesters[index].courseIDs.removeAll { $0 == courseID }
             }
         }
-        plan.pathways[pathwayIndex] = pathway
-        autosave()
     }
 
     func override(_ warning: ConflictWarning) {
@@ -957,6 +995,12 @@ final class PlanStore: ObservableObject {
                 errorMessage = "Catalog HTML refresh failed. The app is still using cached data."
             }
         }
+    }
+
+    /// Lecture/lab pairs for the current catalog and program; nil before
+    /// the catalog loads.
+    private var labPairing: LabPairing? {
+        catalog.map { LabPairing(catalog: $0, activeProgramTitle: effectiveActiveProgram?.title) }
     }
 
     private var activePathwayIndex: Int? {

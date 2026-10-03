@@ -13,7 +13,7 @@ struct ConflictTextTests {
             Course(id: "MATH232", code: "MATH 232", title: "Calculus II", credits: 4, availability: [.fall, .spring], prerequisites: ["MATH231"]),
             Course(id: "CS261", code: "CS 261", title: "Computer Systems I", credits: 3, availability: [.fall], prerequisites: []),
             Course(id: "CHEM131", code: "CHEM 131", title: "General Chemistry", credits: 3, availability: [.fall, .spring], prerequisites: []),
-            Course(id: "CHEM131L", code: "CHEM 131L", title: "General Chemistry Lab", credits: 1, availability: [.fall, .spring], prerequisites: [], corequisiteExpr: .course("CHEM131"))
+            Course(id: "CHEM140", code: "CHEM 140", title: "Chemistry Seminar", credits: 1, availability: [.fall, .spring], prerequisites: [], corequisiteExpr: .course("CHEM131"))
         ],
         program: Program.fixture(id: "p", title: "Program", requirements: [])
     )
@@ -21,7 +21,7 @@ struct ConflictTextTests {
     static func warnings() -> [ConflictWarning] {
         let pathway = Pathway(id: "text", name: "Text", semesters: [
             SemesterPlan(id: fall26, courseIDs: ["MATH232"]),
-            SemesterPlan(id: spring27, courseIDs: ["CS261", "CHEM131L"])
+            SemesterPlan(id: spring27, courseIDs: ["CS261", "CHEM140"])
         ])
         return ConflictDetector(catalog: catalog).warnings(for: pathway, overrides: [])
     }

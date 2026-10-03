@@ -107,6 +107,7 @@ public struct DropVerdictCalculator: Sendable {
         }
 
         let detector = ConflictDetector(catalog: catalog)
+        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
         func detect(_ candidate: Pathway) -> [ConflictWarning] {
             detector.warnings(
                 for: candidate,
@@ -120,8 +121,6 @@ public struct DropVerdictCalculator: Sendable {
 
         let originSemester = pathway.semesters.first { $0.courseIDs.contains(itemID) }
         let origin = originSemester?.id
-        let creditOverride = originSemester?.creditOverrides[itemID]
-        let courseTitle = originSemester?.courseTitles[itemID]
         let baseline = detect(pathway)
         var result: [SemesterIdentity: DropVerdict] = [:]
         for semesterID in semesterIDs {
@@ -129,17 +128,8 @@ public struct DropVerdictCalculator: Sendable {
                 result[semesterID] = .neutral
                 continue
             }
-            var candidate = pathway
-            for index in candidate.semesters.indices {
-                candidate.semesters[index].courseIDs.removeAll { $0 == itemID }
-                candidate.semesters[index].creditOverrides.removeValue(forKey: itemID)
-                candidate.semesters[index].courseTitles.removeValue(forKey: itemID)
-                if candidate.semesters[index].id == semesterID {
-                    candidate.semesters[index].courseIDs.append(itemID)
-                    candidate.semesters[index].creditOverrides[itemID] = creditOverride
-                    candidate.semesters[index].courseTitles[itemID] = courseTitle
-                }
-            }
+            // Lectures and labs move together, so simulate the paired move.
+            let candidate = labPairing.moving(itemID, to: semesterID, at: nil, in: pathway)
             let simulated = detect(candidate)
             let resolved = WarningDiff.removed(before: baseline, after: simulated)
             result[semesterID] = verdict(
@@ -219,6 +209,7 @@ public struct DropVerdictCalculator: Sendable {
         switch kind {
         case .missingPrerequisite: "loses its prereq"
         case .missingCorequisite: "loses its coreq"
+        case .labNotPaired: "loses its lab pairing"
         case .unavailableSemester: "is not offered that term"
         case .unknownAvailability: "has unknown availability"
         case .heavyLoad: "is overloaded"
@@ -230,6 +221,7 @@ public struct DropVerdictCalculator: Sendable {
         switch warning.kind {
         case .missingPrerequisite: "Missing prereq"
         case .missingCorequisite: "Coreq not in place"
+        case .labNotPaired: "Lab not paired"
         case .unavailableSemester: "Not offered in \(warning.semester.term.rawValue)"
         case .unknownAvailability: "Availability unknown"
         case .heavyLoad: "Heavy load"
@@ -241,7 +233,7 @@ public struct DropVerdictCalculator: Sendable {
         switch warning.kind {
         case .missingPrerequisite:
             return firstSentence(of: warning.detail)
-        case .missingCorequisite:
+        case .missingCorequisite, .labNotPaired:
             return warning.summary
         case .unavailableSemester, .unknownAvailability, .heavyLoad, .lightLoad:
             return nil

@@ -16,10 +16,10 @@ struct ScheduleChange: Identifiable, Equatable {
 @MainActor
 final class PlanStore: ObservableObject {
     @Published var catalog: Catalog? {
-        didSet { invalidateDerivedState() }
+        didSet { cancelPartialRegeneration(); invalidateDerivedState() }
     }
     @Published var plan = SavedStudentPlan() {
-        didSet { invalidateDerivedState() }
+        didSet { cancelPartialRegeneration(); invalidateDerivedState() }
     }
     @Published var savedPlans: [SavedStudentPlan] = []
     @Published var selectedCourse: Course?
@@ -40,8 +40,16 @@ final class PlanStore: ObservableObject {
     /// The window's undo manager, injected by ScheduleBoardView.
     var undoManager: UndoManager?
 
+    @Published private(set) var partialRegeneration: PartialRegenerationState?
+    var canEditSchedule: Bool { scheduleGenerationProgress == nil && partialRegeneration == nil }
+    private var partialGenerationTask: Task<Pathway, any Error>?
+    private let anchoredGenerator: any AnchoredScheduleGenerating
+
     private let storageDirectory: URL?
-    init(storageDirectory: URL? = nil) { self.storageDirectory = storageDirectory }
+    init(storageDirectory: URL? = nil, anchoredGenerator: any AnchoredScheduleGenerating = LocalAnchoredScheduleGenerator()) {
+        self.storageDirectory = storageDirectory
+        self.anchoredGenerator = anchoredGenerator
+    }
     private let catalogRepository = CatalogRepository()
     private let detailService = CourseDetailService()
     private var courseDetailCache: [String: CourseDetail] = [:]
@@ -421,7 +429,7 @@ final class PlanStore: ObservableObject {
     }
 
     func generateSchedules() async {
-        guard scheduleGenerationProgress == nil else { return }
+        guard canEditSchedule else { return }
         guard let catalog, let programID = plan.programID else {
             errorMessage = "Choose a major before generating a plan."
             return
@@ -492,6 +500,84 @@ final class PlanStore: ObservableObject {
         scheduleGenerationProgress = nil
     }
 
+    /// The saved pathway remains unchanged while the worker runs. Every plan
+    /// or catalog assignment cancels the token, including programmatic changes
+    /// that bypass the board's interaction lock.
+    func regenerateActivePathway(after cutoff: SemesterIdentity) async {
+        guard canEditSchedule else { return }
+        guard let catalog, let programID = plan.programID, majorSelectionComplete,
+              let source = activePathway else {
+            errorMessage = "Choose a major and a pathway before regenerating."
+            return
+        }
+        do { _ = try AnchoredScheduleContext(source: source, through: cutoff) }
+        catch { errorMessage = error.localizedDescription; return }
+        let creditResult = EffectiveCreditBuilder.build(records: plan.academicRecords, legacyCredits: plan.transferCredits)
+        guard creditResult.issues.isEmpty else {
+            errorMessage = "Review overlapping or invalid prior credit in setup before generating."
+            return
+        }
+        let planID = plan.id
+        let operationID = UUID()
+        let request = PartialRegenerationRequest(
+            catalog: catalog, source: source, cutoff: cutoff, programID: programID,
+            concentrationID: plan.concentrationID,
+            strategy: .resolve(pathwayID: source.id, index: plan.pathways.firstIndex(where: { $0.id == source.id }) ?? 0),
+            workload: plan.workload, transferCredits: creditResult.credits,
+            additionalPrograms: selectedMinorPrograms(), earnedHoursAtStart: earnedHoursContext)
+        errorMessage = nil
+        partialRegeneration = .init(operationID: operationID, pathwayID: source.id, cutoff: cutoff,
+                                    progress: .init(current: 0, total: 1, pathwayName: "Preparing"))
+        let generator = anchoredGenerator
+        let task = Task {
+            try await generator.regenerate(request) { [weak self] progress in
+                Task { @MainActor in
+                    guard let self, self.partialRegeneration?.operationID == operationID,
+                          self.plan.id == planID, self.activePathway == source else { return }
+                    self.partialRegeneration?.progress = progress
+                }
+            }
+        }
+        partialGenerationTask = task
+        do {
+            let replacement = try await withTaskCancellationHandler {
+                let result = try await task.value
+                try Task.checkCancellation()
+                return result
+            } onCancel: { task.cancel() }
+            guard partialRegeneration?.operationID == operationID,
+                  plan.id == planID, activePathway == source, !task.isCancelled else { return }
+            partialGenerationTask = nil
+            partialRegeneration = nil
+            applyRegeneratedPathway(replacement, source: source)
+            errorMessage = nil
+        } catch {
+            guard partialRegeneration?.operationID == operationID else { return }
+            partialGenerationTask = nil
+            partialRegeneration = nil
+            if !(error is CancellationError) {
+                errorMessage = "Could not regenerate the later semesters. Your plan is unchanged. " + error.localizedDescription
+            }
+        }
+    }
+
+    func cancelPartialRegeneration() {
+        partialGenerationTask?.cancel()
+        partialGenerationTask = nil
+        partialRegeneration = nil
+    }
+
+    private func applyRegeneratedPathway(_ replacement: Pathway, source: Pathway) {
+        guard let index = plan.pathways.firstIndex(where: { $0 == source }) else { return }
+        var updated = plan
+        var replacement = replacement
+        replacement.id = source.id
+        replacement.name = source.name
+        updated.pathways[index] = replacement
+        plan = updated
+        autosave()
+    }
+
     private struct ScheduleSnapshot: Equatable, Sendable {
         var pathway: Pathway
         var overrides: [ConflictOverride]
@@ -500,7 +586,7 @@ final class PlanStore: ObservableObject {
     }
 
     private func recordScheduleChange(actionName: String, message: String, _ mutation: () -> Void) {
-        guard let pathwayIndex = activePathwayIndex else { return }
+        guard canEditSchedule, let pathwayIndex = activePathwayIndex else { return }
         let planID = plan.id
         let before = ScheduleSnapshot(pathway: plan.pathways[pathwayIndex], overrides: plan.overrides, currentSemester: plan.currentSemester, academicRecords: plan.academicRecords)
         let warningsBefore = warnings
@@ -846,6 +932,7 @@ final class PlanStore: ObservableObject {
     }
 
     func override(_ warning: ConflictWarning) {
+        guard canEditSchedule else { return }
         let override = ConflictOverride(courseID: warning.courseID, semester: warning.semester, kind: warning.kind)
         if !plan.overrides.contains(override) {
             plan.overrides.append(override)
@@ -854,6 +941,7 @@ final class PlanStore: ObservableObject {
     }
 
     func removeOverride(_ warning: ConflictWarning) {
+        guard canEditSchedule else { return }
         guard plan.overrides.contains(where: { $0.courseID == warning.courseID && $0.semester == warning.semester && $0.kind == warning.kind }) else { return }
         plan.overrides.removeAll { $0.courseID == warning.courseID && $0.semester == warning.semester && $0.kind == warning.kind }
         autosave()

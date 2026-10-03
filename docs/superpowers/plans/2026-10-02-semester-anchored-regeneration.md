@@ -178,3 +178,7 @@ The user previously chose native execution with a commit per task; preserve that
 - Reconciled committed transcript-review improvements from 5d31913 into the isolated branch. Primary-checkout uncommitted catalog/elective changes were neither staged nor reset.
 - Native synthetic app compiled and launched using /private/tmp/RegenerationSmokePlans. Native inspection repeatedly timed out, including after resetting the UI tool. Visual fade/scroll, keyboard, cancellation/error presentation, empty-suffix and system Reduce Motion checks remain unverified; do not treat those as manual passes.
 - Private application hook takes the explicit cutoff for accurate undo naming and suffix-only override pruning; no public API or persistent-plan schema changed.
+
+## Final independent review
+
+A fresh-context reviewer found three material issues: ordinary resolved choices could satisfy independent slots twice, later-index reservations could be skipped by a selective cap, and standing warnings did not share deduplicated/reserved credit accounting. All were reproduced with failing regressions and fixed in one pass. The complete suite passes 377 tests, the native target builds, whitespace checks pass, and the AST graph was updated. No minor findings were deferred. Native visual verification remains unavailable as recorded above; concurrent uncommitted elective/catalog work remains in the primary checkout for later integration.

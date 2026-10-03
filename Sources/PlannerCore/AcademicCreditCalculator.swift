@@ -56,14 +56,13 @@ public enum AcademicCreditCalculator {
     /// graduation/standing capacity, never concrete-course equivalence.
     public static func projectedHours(in semesters: [SemesterPlan], placeholders: [String: PlaceholderSpec],
                                       transferCredits: [TransferCredit], catalog: Catalog) -> Double {
-        var seen = Set(transferCredits.flatMap(\.courseIDs))
-        var result = transferCredits.reduce(0.0) { $0 + $1.credits }
+        var accumulator = PlannedCreditAccumulator(
+            hours: transferCredits.reduce(0.0) { $0 + $1.credits },
+            completedCourseIDs: Set(transferCredits.flatMap(\.courseIDs)))
         for semester in semesters {
-            for id in semester.courseIDs where seen.insert(id).inserted {
-                result += semester.creditOverrides[id] ?? placeholders[id]?.credits ?? Double(catalog.coursesByID[id]?.credits ?? 0)
-            }
+            accumulator.include(semester, placeholders: placeholders, catalog: catalog)
         }
-        return result
+        return accumulator.hours
     }
 
     public static func totals(history: AcademicHistory, pathway: Pathway, catalog: Catalog) -> AcademicCreditTotals {
@@ -75,5 +74,23 @@ public enum AcademicCreditCalculator {
             }
         }
         return .init(earnedHours: history.earnedHours, projectedHours: projected)
+    }
+}
+
+/// Shared chronological accounting for future standing. Concrete IDs already
+/// earned or planned contribute once; unresolved slots contribute hours only.
+struct PlannedCreditAccumulator {
+    private(set) var hours: Double
+    private var seen: Set<String>
+
+    init(hours: Double, completedCourseIDs: Set<String>) {
+        self.hours = hours
+        self.seen = completedCourseIDs
+    }
+
+    mutating func include(_ semester: SemesterPlan, placeholders: [String: PlaceholderSpec], catalog: Catalog) {
+        for id in semester.courseIDs where seen.insert(id).inserted {
+            hours += semester.creditOverrides[id] ?? placeholders[id]?.credits ?? Double(catalog.coursesByID[id]?.credits ?? 0)
+        }
     }
 }

@@ -71,6 +71,70 @@ import Testing
         #expect(r.semesters.dropFirst().flatMap(\.courseIDs) == ["__pl::choice::1"])
         #expect(r.placeholders["__pl::choice::0"] == spec)
     }
+    @Test func resolvedOrdinaryChoiceCannotFillAnotherOverlappingSlot() throws {
+        let courses = ["A", "B", "C"].map { Course(id: $0, code: $0, title: $0, credits: 3, availability: nil, prerequisites: []) }
+        let c = Catalog.fixture(courses: courses, program: .fixture(id: "m", title: "M", requirements: [
+            .init(id: "choice", name: "Core", requiredCredits: 6, courseOptions: [["A", "B"], ["A", "B", "C"]])
+        ]))
+        let spec = PlaceholderSpec(categoryID: "choice", categoryName: "Core", alternates: ["A", "B"], credits: 3)
+        let p = Pathway(id: "p", name: "P", semesters: [.init(id: fall, courseIDs: ["A"])],
+                        placeholders: ["__pl::choice::0": spec], resolvedPlaceholders: ["__pl::choice::0": "A"])
+        let r = try regenerate(p, catalog: c, programID: "m")
+        #expect(r.semesters.dropFirst().flatMap(\.courseIDs) == ["__pl::choice::1"])
+        #expect(r.placeholders["__pl::choice::1"]?.credits == 3)
+        #expect(r.resolvedPlaceholders == p.resolvedPlaceholders)
+    }
+    @Test(arguments: [true, false]) func ordinaryReservationsAndSecondMajorFillDistinctSlots(_ overlappingExtra: Bool) throws {
+        let courses = ["A", "B", "C"].map { Course(id: $0, code: $0, title: $0, credits: 3, availability: nil, prerequisites: []) }
+        let c = Catalog.fixture(courses: courses, program: .fixture(id: "m", title: "M", requirements: [
+            .init(id: "choice", name: "Core", requiredCredits: 9, courseOptions: [["A", "B", "C"], ["A", "B", "C"], overlappingExtra ? ["A", "B", "C"] : ["A", "C"]])
+        ]))
+        let extra = Program.fixture(id: "extra", title: "Extra", requirements: [.init(id: "required", name: "Required", requiredCredits: 3, courseOptions: [["B"]])])
+        let spec = PlaceholderSpec(categoryID: "choice", categoryName: "Core", alternates: ["A", "B", "C"], credits: 3)
+        let p = Pathway(id: "p", name: "P", semesters: [.init(id: fall, courseIDs: ["A", "__pl::choice::1"])],
+                        placeholders: ["__pl::choice::0": spec, "__pl::choice::1": spec],
+                        resolvedPlaceholders: ["__pl::choice::0": "A"])
+        let r = try regenerate(p, catalog: c, programID: "m", extras: [extra])
+        #expect(Set(r.semesters.dropFirst().flatMap(\.courseIDs)) == (overlappingExtra ? Set(["B"]) : Set(["B", "__pl::choice::2"])))
+        #expect(r.placeholders.count == (overlappingExtra ? 2 : 3))
+        #expect(r.placeholders["__pl::choice::1"] == spec)
+        #expect(r.resolvedPlaceholders == p.resolvedPlaceholders)
+    }
+    @Test func laterReservationConsumesSelectiveCapacityBeforeEarlierOption() throws {
+        let courses = ["A", "B", "C", "D"].map { Course(id: $0, code: $0, title: $0, credits: 3, availability: nil, prerequisites: []) }
+        let c = Catalog.fixture(courses: courses, program: .fixture(id: "m", title: "M", requirements: [
+            .init(id: "choice", name: "Choose one", requiredCredits: 3, courseOptions: [["A", "B"], ["C", "D"]])
+        ]))
+        let spec = PlaceholderSpec(categoryID: "choice", categoryName: "Choose one", alternates: ["C", "D"], credits: 3)
+        let p = Pathway(id: "p", name: "P", semesters: [.init(id: fall, courseIDs: ["__pl::choice::1"])], placeholders: ["__pl::choice::1": spec])
+        let r = try regenerate(p, catalog: c, programID: "m")
+        #expect(r.semesters == p.semesters)
+        #expect(r.placeholders == p.placeholders)
+    }
+    @Test func standingWarningsIncludeReservedHoursOnRegeneratedPathway() throws {
+        var c = AnchoredRegenerationFixtures.prerequisiteCatalog()
+        c.courses[1].prerequisites = []
+        c.courses[1].prerequisiteExpr = .standing(.init(minimum: .junior))
+        c.programs[0].requirements[0].courseOptions = [["CS159"]]
+        let slot = "__pl::open-elective::0"
+        let p = Pathway(id: "p", name: "P", semesters: [.init(id: fall, courseIDs: [slot])],
+                        placeholders: [slot: .init(categoryID: "open-elective", categoryName: "Open", alternates: [], credits: 3)])
+        let r = try regenerate(p, catalog: c, hours: 57, strict: true)
+        #expect(r.semesters.last?.id == fall.next)
+        #expect(!ConflictDetector(catalog: c).warnings(for: r, overrides: [], earnedHoursAtStart: 57).contains { $0.courseID == "CS159" && $0.kind == .missingPrerequisite })
+    }
+    @Test func standingWarningsDoNotRecountRepeatedPriorAndCorrectedAnchors() {
+        var c = AnchoredRegenerationFixtures.prerequisiteCatalog()
+        c.courses[1].prerequisites = []
+        c.courses[1].prerequisiteExpr = .standing(.init(minimum: .junior))
+        let p = Pathway(id: "p", name: "P", semesters: [
+            .init(id: fall, courseIDs: ["CS149", "ZZZ123"], creditOverrides: ["ZZZ123": 1.5]),
+            .init(id: fall.next, courseIDs: ["CS149", "ZZZ123"], creditOverrides: ["ZZZ123": 1.5]),
+            .init(id: fall.next.next, courseIDs: ["CS159"])
+        ])
+        let warnings = ConflictDetector(catalog: c).warnings(for: p, overrides: [], completedAtStart: ["CS149"], earnedHoursAtStart: 57)
+        #expect(warnings.contains { $0.courseID == "CS159" && $0.kind == .missingPrerequisite })
+    }
     @Test func fractionalPriorAndAnchorHoursCountOnce() throws {
         let c = AnchoredRegenerationFixtures.degreeCatalog()
         let p = Pathway(id: "path-1", name: "P", semesters: [.init(id: fall, courseIDs: ["REQ1"], creditOverrides: ["REQ1": 1.5])])

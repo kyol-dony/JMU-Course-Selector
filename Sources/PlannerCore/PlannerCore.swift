@@ -1098,28 +1098,43 @@ public struct ScheduleGenerator: Sendable {
                 continue
             }
 
-            var plannedCredits = 0
-            // Only honor `requiredCredits` as a hard cap on iteration when the
-            // category's name signals selective semantics ("Choose N",
-            // "Elective"). Required blocks ignore the cap so every option
-            // lands in the schedule.
+            // Only selective categories use an allowance. Reserve its entire
+            // anchored amount before choosing earlier options; a retained later
+            // slot must not be overlooked when the cap stops iteration.
             let categoryIsSelective = !categoryIsRequired && (
                 lowerName.contains("choose")
                 || lowerName.contains("elective")
                 || lowerName.contains("select")
             )
             let hasCreditLimit = categoryIsSelective && category.requiredCredits > 0
+            var reservedIDs = Set((anchors?.placeholders ?? [:]).filter { $0.value.categoryID == category.id }.keys)
+            for (index, _) in category.courseOptions.enumerated() {
+                let id = PathwayPlaceholder.id(categoryID: category.id, optionIndex: index)
+                if anchors?.reservedPlaceholderIDs.contains(id) == true { reservedIDs.insert(id) }
+            }
+            let reservedHours = reservedIDs.reduce(0.0) { hours, id in
+                if let spec = anchors?.placeholders[id] { return hours + spec.credits }
+                let option = category.courseOptions.enumerated().first {
+                    PathwayPlaceholder.id(categoryID: category.id, optionIndex: $0.offset) == id
+                }?.element ?? []
+                return hours + Double(credits(for: option, fallback: fallbackOptionCredits))
+            }
+            var plannedCredits = hasCreditLimit ? reservedHours : 0
+            // Resolved anchor choices belong to their exact slots in this
+            // category. Other programs/categories can still use their concrete
+            // equivalence, but another row here needs a distinct choice.
+            var consumed = Set((anchors?.resolvedPlaceholders ?? [:]).filter { reservedIDs.contains($0.key) }.values)
             for (idx, option) in category.courseOptions.enumerated() {
-                if hasCreditLimit && plannedCredits >= category.requiredCredits { break }
-
+                if hasCreditLimit && plannedCredits >= Double(category.requiredCredits) { break }
                 let optionCredits = credits(for: option, fallback: fallbackOptionCredits)
                 let slotID = PathwayPlaceholder.id(categoryID: category.id, optionIndex: idx)
-                if anchors?.reservedPlaceholderIDs.contains(slotID) == true {
-                    plannedCredits += optionCredits
-                    continue
-                }
-                if option.contains(where: completed.contains) || option.contains(where: seen.contains) {
-                    plannedCredits += optionCredits
+                if reservedIDs.contains(slotID) { continue }
+                let available = completed.union(seen).union(option.count > 1 ? anticipatedCourses : [])
+                if let match = option.first(where: {
+                    available.contains($0) && (anchors == nil || !consumed.contains($0))
+                }) {
+                    consumed.insert(match)
+                    plannedCredits += Double(optionCredits)
                     continue
                 }
 
@@ -1141,8 +1156,9 @@ public struct ScheduleGenerator: Sendable {
                     if seen.insert(pick).inserted {
                         result.append(pick)
                     }
+                    consumed.insert(pick)
                 }
-                plannedCredits += optionCredits
+                plannedCredits += Double(optionCredits)
             }
         }
         plannedCourseIDs.formUnion(result.filter { !PathwayPlaceholder.isPlaceholder($0) })
@@ -1902,7 +1918,9 @@ public struct ConflictDetector: Sendable {
         // false prereq warnings for chains the student already started in
         // high school (e.g., AP Calculus awarding MATH 231/232).
         var completedBefore = completedAtStart
-        var earnedHours = earnedHoursAtStart
+        var creditContext = earnedHoursAtStart.map {
+            PlannedCreditAccumulator(hours: $0, completedCourseIDs: completedAtStart)
+        }
         var warnings: [ConflictWarning] = []
         let resolver = PrereqRuleResolver(catalog: catalog)
         let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
@@ -1914,7 +1932,7 @@ public struct ConflictDetector: Sendable {
         let planLength = (orderedSemesters.lastIndex { !$0.courseIDs.isEmpty } ?? -1) + 1
         for (index, semester) in orderedSemesters.enumerated() {
             let realInThisTerm = Set(semester.courseIDs.filter { !PathwayPlaceholder.isPlaceholder($0) })
-            let standing = earnedHours.map(ClassStanding.forEarnedCredits) ?? ClassStanding.forSemester(position: index + 1, totalSemesters: planLength)
+            let standing = creditContext.map { ClassStanding.forEarnedCredits($0.hours) } ?? ClassStanding.forSemester(position: index + 1, totalSemesters: planLength)
             let evaluator = PrereqEvaluator(completedBefore: completedBefore, scheduledThisTerm: realInThisTerm, standing: standing)
 
             for courseID in semester.courseIDs where !PathwayPlaceholder.isPlaceholder(courseID) {
@@ -2015,7 +2033,7 @@ public struct ConflictDetector: Sendable {
                 }
             }
             completedBefore.formUnion(realInThisTerm)
-            earnedHours = earnedHours.map { $0 + AcademicCreditCalculator.hours(in: semester, catalog: catalog) }
+            creditContext?.include(semester, placeholders: pathway.placeholders, catalog: catalog)
         }
 
         if let workload {

@@ -33,8 +33,8 @@ actor SuspendedAnchoredGenerator: AnchoredScheduleGenerating {
 
 @Suite @MainActor struct PlanStorePartialRegenerationTests {
     static let fall = SemesterIdentity(year: 2026, term: .fall)
-    static func makeStore(worker: any AnchoredScheduleGenerating) -> PlanStore {
-        let store = PlanStore(storageDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString), anchoredGenerator: worker)
+    static func makeStore(worker: any AnchoredScheduleGenerating, storageDirectory: URL? = nil) -> PlanStore {
+        let store = PlanStore(storageDirectory: storageDirectory ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString), anchoredGenerator: worker)
         store.catalog = AnchoredRegenerationFixtures.prerequisiteCatalog()
         let source = Pathway(id: "path-2", name: "Crafted major first", semesters: [
             .init(id: fall, courseIDs: ["CS149"]),

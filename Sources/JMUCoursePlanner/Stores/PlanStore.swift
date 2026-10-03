@@ -549,7 +549,7 @@ final class PlanStore: ObservableObject {
                   plan.id == planID, activePathway == source, !task.isCancelled else { return }
             partialGenerationTask = nil
             partialRegeneration = nil
-            applyRegeneratedPathway(replacement, source: source)
+            applyRegeneratedPathway(replacement, source: source, cutoff: cutoff)
             errorMessage = nil
         } catch {
             guard partialRegeneration?.operationID == operationID else { return }
@@ -567,15 +567,28 @@ final class PlanStore: ObservableObject {
         partialRegeneration = nil
     }
 
-    private func applyRegeneratedPathway(_ replacement: Pathway, source: Pathway) {
+    private func applyRegeneratedPathway(_ replacement: Pathway, source: Pathway, cutoff: SemesterIdentity) {
         guard let index = plan.pathways.firstIndex(where: { $0 == source }) else { return }
-        var updated = plan
         var replacement = replacement
         replacement.id = source.id
         replacement.name = source.name
-        updated.pathways[index] = replacement
-        plan = updated
-        autosave()
+        let action = "Regenerate after " + cutoff.displayName
+        recordScheduleChange(actionName: action, message: action, synchronizeCurrentEnrollment: false) {
+            func containsSubject(_ pathway: Pathway, _ override: ConflictOverride) -> Bool {
+                pathway.semesters.contains {
+                    $0.id == override.semester &&
+                    (override.courseID == ConflictWarning.semesterSubjectID || $0.courseIDs.contains(override.courseID))
+                }
+            }
+            let alternatives = plan.pathways.filter { $0.id != source.id }
+            var updated = plan
+            updated.pathways[index] = replacement
+            updated.overrides.removeAll { override in
+                override.semester > cutoff && containsSubject(source, override) &&
+                !containsSubject(replacement, override) && !alternatives.contains { containsSubject($0, override) }
+            }
+            plan = updated
+        }
     }
 
     private struct ScheduleSnapshot: Equatable, Sendable {
@@ -585,13 +598,13 @@ final class PlanStore: ObservableObject {
         var academicRecords: [AcademicCourseRecord]
     }
 
-    private func recordScheduleChange(actionName: String, message: String, _ mutation: () -> Void) {
+    private func recordScheduleChange(actionName: String, message: String, synchronizeCurrentEnrollment: Bool = true, _ mutation: () -> Void) {
         guard canEditSchedule, let pathwayIndex = activePathwayIndex else { return }
         let planID = plan.id
         let before = ScheduleSnapshot(pathway: plan.pathways[pathwayIndex], overrides: plan.overrides, currentSemester: plan.currentSemester, academicRecords: plan.academicRecords)
         let warningsBefore = warnings
         mutation()
-        syncCurrentEnrollmentFromActivePathway()
+        if synchronizeCurrentEnrollment { syncCurrentEnrollmentFromActivePathway() }
         autosave()
         guard plan.id == planID,
               let index = plan.pathways.firstIndex(where: { $0.id == before.pathway.id })
@@ -637,6 +650,7 @@ final class PlanStore: ObservableObject {
         planID: UUID,
         actionName: String
     ) {
+        cancelPartialRegeneration()
         guard plan.id == planID,
               let index = plan.pathways.firstIndex(where: { $0.id == snapshot.pathway.id }),
               plan.pathways[index] == expected.pathway

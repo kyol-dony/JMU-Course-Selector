@@ -166,10 +166,36 @@ public struct JMUHTMLCatalogParser: Sendable {
         var usedCategoryIDs: Set<String> = []
         var categories: [RequirementCategory] = []
         let blocks = requirementBlocks(in: requirementSlice)
-        let split = splitConcentrationBlocks(blocks)
+        var split = splitConcentrationBlocks(blocks)
+
+        // "Choose one of the following options" groups of "Option N:" blocks
+        // are alternatives: each option becomes its own track, inside the
+        // concentration that holds it or, with none, beside the shared core.
+        if split.concentrationRuns.isEmpty {
+            if let options = optionVariants(in: split.shared) {
+                split.shared = options.common
+                split.concentrationRuns = options.variants
+                split.concentrationSelectionRequired = true
+            }
+        } else {
+            split.concentrationRuns = split.concentrationRuns.flatMap { run in
+                guard let options = optionVariants(in: run.blocks) else { return [run] }
+                return options.variants.map { variant in
+                    (name: "\(run.name) - \(variant.name)", blocks: options.common + variant.blocks)
+                }
+            }
+        }
 
         for block in split.shared {
             if let parsed = category(from: block, catoid: catoid, usedCategoryIDs: &usedCategoryIDs, coursesByID: &coursesByID) {
+                // Once requirements split into tracks, a course-less row that
+                // points at them ("two options ... listed below") is covered
+                // by each track's own requirements.
+                if !split.concentrationRuns.isEmpty,
+                   parsed.courseOptions.isEmpty,
+                   parsed.name.lowercased().contains("option") {
+                    continue
+                }
                 categories.append(parsed)
             }
         }
@@ -182,6 +208,16 @@ public struct JMUHTMLCatalogParser: Sendable {
                 if let parsed = category(from: block, catoid: catoid, usedCategoryIDs: &usedRequirementIDs, coursesByID: &coursesByID) {
                     parsedRequirements.append((block, parsed))
                 }
+            }
+            // The track's own heading with no course list ("Additional
+            // Requirements for Students Not Seeking ...") only restates what
+            // the requirements under it add up to.
+            if parsedRequirements.count > 1,
+               let first = parsedRequirements.first,
+               first.block.isStructuralHeading,
+               first.category.courseOptions.isEmpty,
+               run.blocks.first?.heading == first.block.heading {
+                parsedRequirements.removeFirst()
             }
             let requirements = adjustedConcentrationRequirements(
                 from: parsedRequirements,
@@ -513,6 +549,11 @@ public struct JMUHTMLCatalogParser: Sendable {
         var heading: String
         var body: String
         var isStructuralHeading: Bool = true
+        /// The "Total Credits" of the block's only course table, when that
+        /// table has no sub-requirements. More reliable than credit hours
+        /// mentioned in the block's prose ("complete the 22-24 credit hours
+        /// of the education program").
+        var tableTotal: Int? = nil
     }
 
     private func requirementBlocks(in html: String) -> [RequirementBlock] {
@@ -573,19 +614,28 @@ public struct JMUHTMLCatalogParser: Sendable {
 
             var baseBody = String(segment[..<tables[0].range.lowerBound])
             var commentBlocks: [RequirementBlock] = []
+            var tableTotals: [Int] = []
+            var hasCommentRequirements = false
 
             for table in tables {
                 var currentCommentHeading: String?
                 var currentCommentBody = ""
+                // "9 credits of MATH electives" rows stand alone, but the
+                // course rows after them still belong to the requirement
+                // above ("Option 1:"); emit them right after it.
+                var pendingAllowances: [RequirementBlock] = []
 
                 func flushComment() {
-                    guard let heading = currentCommentHeading else { return }
-                    commentBlocks.append(RequirementBlock(
-                        level: min(level + 1, 5),
-                        heading: heading,
-                        body: currentCommentBody,
-                        isStructuralHeading: false
-                    ))
+                    if let heading = currentCommentHeading {
+                        commentBlocks.append(RequirementBlock(
+                            level: min(level + 1, 5),
+                            heading: heading,
+                            body: currentCommentBody,
+                            isStructuralHeading: false
+                        ))
+                    }
+                    commentBlocks.append(contentsOf: pendingAllowances)
+                    pendingAllowances = []
                     currentCommentHeading = nil
                     currentCommentBody = ""
                 }
@@ -596,6 +646,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                     if rowHTML.range(of: #"class="[^"]*\blistsum\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
                         flushComment()
                         if let credits = parseLeadingCredits(HTMLCleaner.clean(rowHTML).replacingOccurrences(of: "Total Credits", with: "")) {
+                            tableTotals.append(credits)
                             commentBlocks.append(RequirementBlock(
                                 level: min(level + 1, 5),
                                 heading: "Catalog Table Total: \(credits) Credit Hours",
@@ -616,8 +667,17 @@ public struct JMUHTMLCatalogParser: Sendable {
                             || hours?.isEmpty == false
                             || choiceSelectionCount(heading: commentHeading, body: "") != nil
                             || currentCommentHeading == nil
-                        if startsRequirement {
+                        if Self.isCreditAllowanceText(commentHeading), currentCommentHeading != nil {
+                            hasCommentRequirements = true
+                            pendingAllowances.append(RequirementBlock(
+                                level: min(level + 1, 5),
+                                heading: commentHeading,
+                                body: rowHTML,
+                                isStructuralHeading: false
+                            ))
+                        } else if startsRequirement {
                             flushComment()
+                            hasCommentRequirements = true
                             currentCommentHeading = commentHeading
                             currentCommentBody = rowHTML
                         } else {
@@ -632,11 +692,48 @@ public struct JMUHTMLCatalogParser: Sendable {
                 flushComment()
             }
 
-            blocks.append(RequirementBlock(level: level, heading: heading, body: baseBody))
+            blocks.append(RequirementBlock(
+                level: level,
+                heading: heading,
+                body: baseBody,
+                tableTotal: tables.count == 1 && !hasCommentRequirements ? tableTotals.first : nil
+            ))
             blocks.append(contentsOf: commentBlocks)
         }
 
         return blocks
+    }
+
+    /// "Option 1:", "Option 2:" sub-headings inside a course table.
+    private func isOptionHeading(_ block: RequirementBlock) -> Bool {
+        !block.isStructuralHeading
+            && block.heading.range(of: #"(?i)^\s*option\s+(?:\d+|[a-z])\s*:?\s*$"#, options: .regularExpression) != nil
+    }
+
+    /// Splits blocks holding two or more "Option N:" groups into one variant
+    /// per option. `common` is everything outside the groups (minus the
+    /// "Choose one of the following options" intro); each variant holds its
+    /// option's blocks, up to the next option or the end of the table.
+    private func optionVariants(in blocks: [RequirementBlock]) -> (common: [RequirementBlock], variants: [(name: String, blocks: [RequirementBlock])])? {
+        let optionStarts = blocks.indices.filter { isOptionHeading(blocks[$0]) }
+        guard optionStarts.count >= 2, let first = optionStarts.first, let last = optionStarts.last else { return nil }
+        let groupEnd = blocks[(last + 1)...].firstIndex { block in
+            let lower = block.heading.lowercased()
+            return block.isStructuralHeading
+                || lower.hasPrefix("catalog table total")
+                || lower.hasPrefix("subtotal")
+        } ?? blocks.endIndex
+
+        let common = blocks[..<first].filter { !$0.heading.lowercased().contains("one of the following options") }
+            + blocks[groupEnd...]
+        let variants = optionStarts.enumerated().map { offset, start in
+            let end = offset + 1 < optionStarts.count ? optionStarts[offset + 1] : groupEnd
+            let name = blocks[start].heading
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+            return (name: name, blocks: Array(blocks[start..<end]))
+        }
+        return (common, variants)
     }
 
     private func splitConcentrationBlocks(_ blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])], concentrationSelectionRequired: Bool) {
@@ -842,7 +939,7 @@ public struct JMUHTMLCatalogParser: Sendable {
         var currentBlocks: [RequirementBlock] = []
 
         for block in tail {
-            if isConcreteConcentrationHeading(block.heading) {
+            if isConcreteConcentrationHeading(block.heading), !isOptionHeading(block) {
                 let candidateClean = JMUHTMLCatalogParser.cleanConcentrationName(block.heading)
                 if let cleaned = currentCleanName,
                    !candidateClean.isEmpty,
@@ -916,6 +1013,9 @@ public struct JMUHTMLCatalogParser: Sendable {
         if lower.contains("specialization") { return true }
         if lower.contains("subtrack") { return true }
         if lower.contains(" track") || lower.hasSuffix("track") { return true }
+        // "Additional Requirements for Students (Not) Seeking Secondary
+        // Teaching Licensure": mutually exclusive tracks.
+        if lower.range(of: #"\bstudents\s+(?:who\s+are\s+)?(?:not\s+)?seeking\b"#, options: .regularExpression) != nil { return true }
         // Match "Option N", "Path N", "Route N" word boundaries. Avoid
         // matching every "Course Options" sub-heading by requiring the noun
         // to be followed by a digit / colon / dash / end-of-line.
@@ -934,6 +1034,7 @@ public struct JMUHTMLCatalogParser: Sendable {
             #"(?i)\s*\(in addition to[^)]*\)\s*$"#,
             #"(?i)\s*Required Courses.*$"#,
             #"(?i)^Concentration in\s+"#,
+            #"(?i)^(?:Additional\s+)?Requirements\s+for\s+Students\s+(?:who\s+are\s+)?"#,
             #"(?i)\s*Concentration\s*$"#,
             #"(?i)\s*Track\s*$"#,
             #"(?i)\s*Emphasis\s*$"#,
@@ -975,6 +1076,7 @@ public struct JMUHTMLCatalogParser: Sendable {
         } ?? choiceSelectionCount(heading: block.heading, body: block.body)
         let requiredCredits = selectedCreditHours
             ?? parseCredits(from: block.heading)
+            ?? block.tableTotal
             ?? parseTotalCreditsFromBody(block.body)
             ?? inferredCredits(for: courseItems, selectionCount: selectionCount)
 
@@ -1069,6 +1171,14 @@ public struct JMUHTMLCatalogParser: Sendable {
                 .firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>(.*?)</td>"#)
                 .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
             let links = codeCell[1].matches(for: #"(?is)<a\b[^>]*href="([^"]*/search/\?P=[^"]+)"[^>]*>(.*?)</a>"#)
+            // "or MATH 431" rows (class "orclass") are alternatives to the
+            // course above. A row offering a pair ("or MATH 229 & MATH 329")
+            // can't be expressed as a single-course alternative, so its
+            // courses stay separate requirements.
+            let rowTag = row[0].firstMatch(for: #"(?is)^<tr\b[^>]*>"#)?.first ?? ""
+            if rowTag.range(of: #"class="[^"]*\borclass\b"#, options: .regularExpression) != nil, links.count == 1 {
+                items.append(.marker("or"))
+            }
             let rowCredits = hoursText.flatMap(parseLeadingCredits)
             let perCourseCredits = rowCredits.map { max(Int(ceil(Double($0) / Double(max(links.count, 1)))), 1) } ?? 3
 
@@ -1143,7 +1253,8 @@ public struct JMUHTMLCatalogParser: Sendable {
         let patterns = [
             #"(?i):\s*(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#,
             #"(?i)Credits?:\s*(\d+(?:\.\d+)?)"#,
-            #"(?i)(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#
+            #"(?i)(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#,
+            Self.creditAllowancePattern
         ]
 
         for pattern in patterns {
@@ -1156,6 +1267,14 @@ public struct JMUHTMLCatalogParser: Sendable {
             return max(Int(value.rounded(.up)), 0)
         }
         return nil
+    }
+
+    /// "9 credits of MATH electives at MATH 310 or above": a credit
+    /// allowance with no course list, its own requirement.
+    private static let creditAllowancePattern = #"(?i)^\s*(\d+)\s+credits?\s+(?:of|in)\b"#
+
+    private static func isCreditAllowanceText(_ text: String) -> Bool {
+        text.range(of: creditAllowancePattern, options: .regularExpression) != nil
     }
 
     /// Block-body credit parser. Excludes the per-course "Credits: 3.00" pattern

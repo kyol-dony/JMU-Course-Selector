@@ -33,6 +33,18 @@ public enum JMUTranscriptParser {
     public static func normalizedCode(_ code: String) -> String {
         code.uppercased().filter { !$0.isWhitespace }
     }
+    /// Readable form of a normalized code: "CS149" becomes "CS 149". Codes
+    /// without digits (transcript placeholders like "CSOOO") split before
+    /// their last three characters, matching the printed "CS OOO".
+    public static func displayCode(_ code: String) -> String {
+        let compact = normalizedCode(code)
+        if let digit = compact.firstIndex(where: \.isNumber), digit != compact.startIndex {
+            return "\(compact[..<digit]) \(compact[digit...])"
+        }
+        guard compact.count > 3 else { return compact }
+        let split = compact.index(compact.endIndex, offsetBy: -3)
+        return "\(compact[..<split]) \(compact[split...])"
+    }
     public static func supportedTerm(_ printed: String) -> SemesterIdentity? {
         let parts = printed.split(separator: " ")
         guard let last = parts.last, let year = Int(last) else { return nil }

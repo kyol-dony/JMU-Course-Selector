@@ -2,6 +2,17 @@ import Testing
 @testable import PlannerCore
 
 @Suite struct JMUTranscriptParserTests {
+    @Test(arguments: [
+        ("CS149", "CS 149"),
+        ("MATH236", "MATH 236"),
+        ("BIO140L", "BIO 140L"),
+        ("CSOOO", "CS OOO"),
+        ("CS 149", "CS 149"),
+        ("XYZ", "XYZ"),
+    ])
+    func displayCodeSeparatesSubjectAndNumber(_ code: String, _ expected: String) {
+        #expect(JMUTranscriptParser.displayCode(code) == expected)
+    }
     @Test func sample() throws {
         let parsed = try JMUTranscriptParser.parse(pages: [TranscriptTestFixtures.sampleText()])
         #expect(parsed.records.filter { $0.status == .earned }.count == 19)

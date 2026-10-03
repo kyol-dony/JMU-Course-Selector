@@ -172,7 +172,15 @@ struct SetupSheet: View {
             case .transcript:
                 scrolling { SetupStepTranscript(controller: importController) }
             case .review:
-                scrolling { SetupStepCourseReview(controller: importController, catalog: catalog) }
+                ScrollViewReader { proxy in
+                    scrolling {
+                        SetupStepCourseReview(controller: importController, catalog: catalog) { recordID in
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) {
+                                proxy.scrollTo(recordID, anchor: .center)
+                            }
+                        }
+                    }
+                }
             case .workload:
                 scrolling { SetupStepWorkload() }
             case .year:

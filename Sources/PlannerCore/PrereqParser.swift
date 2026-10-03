@@ -383,18 +383,13 @@ public struct PrereqParser: Sendable {
         return isOrList()
     }
 
-    /// ", or" separates alternatives like "or" ("A and B , or C"), except
-    /// in a comma-separated list, where `parseClause` places it.
+    /// ", or" makes what follows an alternative to everything before it
+    /// in the clause ("A and B , or C"), except in a comma-separated list,
+    /// where `parseClause` places it.
     private func parseOr(_ tokens: [PrereqToken], _ i: inout Int, commasSeparate: Bool = false) -> PrereqExpr {
         var children = [parseAnd(tokens, &i, commasSeparate: commasSeparate)]
-        while i < tokens.count {
-            if case .or = tokens[i] {
-                i += 1
-            } else if !commasSeparate, Self.isCommaOr(tokens, at: i) {
-                i += 2
-            } else {
-                break
-            }
+        while !commasSeparate, Self.isCommaOr(tokens, at: i) {
+            i += 2
             children.append(parseAnd(tokens, &i, commasSeparate: commasSeparate))
         }
         return children.count == 1 ? children[0] : .any(children)
@@ -407,21 +402,74 @@ public struct PrereqParser: Sendable {
 
     /// `commasSeparate` leaves commas to `parseClause`, which splits on them.
     private func parseAnd(_ tokens: [PrereqToken], _ i: inout Int, commasSeparate: Bool = false) -> PrereqExpr {
-        var children = [parseTerm(tokens, &i)]
+        // Runs of items joined only by commas; "and" (or ", and") starts a
+        // new run.
+        var runs: [[PrereqExpr]] = [[parseChoice(tokens, &i)]]
         loop: while i < tokens.count {
             switch tokens[i] {
             case .comma where commasSeparate || Self.isCommaOr(tokens, at: i):
                 break loop
-            case .and, .comma:
+            case .and:
+                i += 1
+                runs.append([parseChoice(tokens, &i)])
+            case .comma:
                 i += 1
                 // Oxford comma: ", and X" is one separator, not an empty term.
-                if i < tokens.count, case .and = tokens[i] { i += 1 }
-                children.append(parseTerm(tokens, &i))
+                if i < tokens.count, case .and = tokens[i] {
+                    i += 1
+                    runs.append([parseChoice(tokens, &i)])
+                } else {
+                    runs[runs.count - 1].append(parseChoice(tokens, &i))
+                }
             default:
                 break loop
             }
         }
+        // A comma run closed by an "or" choice lists alternatives: "CIS 221
+        // , CS 149 or ISAT 252" is one of the three, as in a standalone list.
+        // Trailing prose ("..., as appropriate to course content") doesn't
+        // reopen the list.
+        let children = runs.flatMap { run -> [PrereqExpr] in
+            let isProse: (PrereqExpr) -> Bool = { item in
+                if case .unknown(let text) = item { return !PrereqLexer.isCourseCode(text) }
+                return false
+            }
+            guard let closer = run.lastIndex(where: { !isProse($0) }),
+                  closer > 0,
+                  case .any(let closing) = run[closer]
+            else { return run }
+            // "A , B or permission of the instructor" closes with an escape
+            // hatch for the whole list, not a choice between courses; "or
+            // equivalent" still marks a choice list.
+            let closesWithCourseChoice = closing.filter { !isProse($0) }.count >= 2
+                || closing.contains { item in
+                    if case .unknown(let text) = item { return text.lowercased().contains("equivalent") }
+                    return false
+                }
+            guard closesWithCourseChoice else {
+                let escapes = closing.filter(isProse)
+                let required = Array(run[..<closer]) + closing.filter { !isProse($0) }
+                return [.any([.all(required)] + escapes)] + run[(closer + 1)...]
+            }
+            let alternatives = run[...closer].flatMap { item -> [PrereqExpr] in
+                if case .any(let choices) = item { return choices }
+                return [item]
+            }
+            return [.any(alternatives)] + run[(closer + 1)...]
+        }
         return children.count == 1 ? children[0] : .all(children)
+    }
+
+    /// JMU puts "or" between substitutable courses, so it binds tighter than
+    /// "and": "MATH 300 or MATH 238 and MATH 321 or MATH 322" is (300 or
+    /// 238) and (321 or 322).
+    private func parseChoice(_ tokens: [PrereqToken], _ i: inout Int) -> PrereqExpr {
+        var children = [parseTerm(tokens, &i)]
+        while i < tokens.count, case .or = tokens[i] {
+            i += 1
+            children.append(parseTerm(tokens, &i))
+        }
+        return children.count == 1 ? children[0] : .any(children)
     }
 
     private func parseTerm(_ tokens: [PrereqToken], _ i: inout Int) -> PrereqExpr {

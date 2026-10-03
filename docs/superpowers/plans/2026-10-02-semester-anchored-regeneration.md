@@ -1,6 +1,6 @@
 # Semester-Anchored Regeneration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Rebuild only the displayed pathway after a selected semester while preserving its entire anchored prefix and supporting recovery and undo.
 
@@ -51,7 +51,7 @@
 
 **Interfaces:** Produce public `ScheduleGenerationStrategy: String, CaseIterable, Sendable` cases `balanced`, `majorFirst`, `genEdFirst`, with `static resolve(pathwayID: String, index: Int) -> Self` (path-1/2/3 first; position 0/1/2 next; otherwise Balanced). Produce public `AnchoredScheduleContext: Sendable` with `init(source: Pathway, through cutoff: SemesterIdentity) throws`, read-only `semesters: [SemesterPlan]`, `placeholders: [String: PlaceholderSpec]`, `resolvedPlaceholders: [String: String]`, `completedCourseIDs: Set<String>`, `reservedPlaceholderIDs: Set<String>`, `standingSemesterOffset: Int`, `preferenceSemesterOffset: Int`, and `startingSemester: SemesterIdentity`. Define `AnchoredRegenerationError: Error, LocalizedError` case `invalidCutoff` with copy `Choose an existing semester in the displayed pathway.` Create fixture methods `prerequisiteCatalog() -> Catalog`, `degreeCatalog() -> Catalog` (30 distinct required courses at 3 hours, 90 declared hours), and `pathway(id: String = "path-1") -> Pathway`.
 
-- [ ] Write `includesSelectedSemesterAndPreservesMetadata`, `resolutionsBelongToAnchors`, `invalidCutoffThrows`, and `strategyResolution` tests. First two prefix semesters are Fall 2026/Spring 2027; cutoff Spring 2027 starts Fall 2027. Include unknown ZZZ123 at 1.5 hours, an empty listed semester, an unresolved slot and a resolved slot in one category, and obsolete suffix metadata. Assert exact prefix equality, correct retained maps, concrete-only completion IDs, and missing cutoff rejection.
+- [x] Write `includesSelectedSemesterAndPreservesMetadata`, `resolutionsBelongToAnchors`, `invalidCutoffThrows`, and `strategyResolution` tests. First two prefix semesters are Fall 2026/Spring 2027; cutoff Spring 2027 starts Fall 2027. Include unknown ZZZ123 at 1.5 hours, an empty listed semester, an unresolved slot and a resolved slot in one category, and obsolete suffix metadata. Assert exact prefix equality, correct retained maps, concrete-only completion IDs, and missing cutoff rejection.
   Example assertions with a two-semester prefix:
   ```swift
   let context = try AnchoredScheduleContext(source: source, through: .init(year: 2027, term: .spring))
@@ -60,10 +60,10 @@
   #expect(context.standingSemesterOffset == 2)
   #expect(!context.completedCourseIDs.contains(anchorPlaceholderID))
   ```
-- [ ] Run `swift test --disable-sandbox --filter AnchoredScheduleContextTests`. Expected: FAIL because the new contracts do not exist.
-- [ ] Implement the context. Retain definitions for unresolved anchored IDs and for resolution keys whose chosen course is in the prefix. Reserve both retained kinds of placeholder IDs against future collisions. Count listed prefix semesters for legacy standing; compute calendar preference offset with Spring=0/Fall=1 and `2 * year + termIndex`, ending at the first new term. Do not normalize anchors or reject them because of course warnings.
-- [ ] Run `swift test --disable-sandbox --filter AnchoredScheduleContextTests`. Expected: PASS.
-- [ ] Commit: `feat: model anchored schedule regeneration context`.
+- [x] Run `swift test --disable-sandbox --filter AnchoredScheduleContextTests`. Expected: FAIL because the new contracts do not exist.
+- [x] Implement the context. Retain definitions for unresolved anchored IDs and for resolution keys whose chosen course is in the prefix. Reserve both retained kinds of placeholder IDs against future collisions. Count listed prefix semesters for legacy standing; compute calendar preference offset with Spring=0/Fall=1 and `2 * year + termIndex`, ending at the first new term. Do not normalize anchors or reject them because of course warnings.
+- [x] Run `swift test --disable-sandbox --filter AnchoredScheduleContextTests`. Expected: PASS.
+- [x] Commit: `feat: model anchored schedule regeneration context`.
 
 ## Task 2: Shared generator with reserved anchors and one variant
 
@@ -71,7 +71,7 @@
 
 **Interfaces:** Consume Task 1 context/strategy. Produce `ScheduleGenerator.regeneratePathway(from source: Pathway, through cutoff: SemesterIdentity, for programID: String, concentrationID: String? = nil, strategy: ScheduleGenerationStrategy, workload: WorkloadPreference, transferCredits: [TransferCredit], additionalPrograms: [Program] = [], earnedHoursAtStart: Double? = nil, progress: (@Sendable (Int, Int, String) -> Void)? = nil) throws -> Pathway`. Add `AcademicCreditCalculator.projectedHours(in semesters: [SemesterPlan], placeholders: [String: PlaceholderSpec], transferCredits: [TransferCredit], catalog: Catalog) -> Double` for credit/standing context; prior awards count once, concrete anchor IDs once excluding previously earned IDs, retained unresolved slots once at their defined fractional amount. Existing `generatePathways` signature stays compatible and still returns three variants.
 
-- [ ] Write generator tests using Task 1 fixtures. Minimum assertions:
+- [x] Write generator tests using Task 1 fixtures. Minimum assertions:
   ```swift
   #expect(result.id == source.id && result.name == source.name)
   #expect(Array(result.semesters.prefix(anchors.count)) == anchors)
@@ -79,13 +79,13 @@
   #expect(result.semesters.flatMap(\.courseIDs).filter { $0 == "CS149" }.count == 1)
   ```
   Include `anchoredPrerequisitesAndCorequisites`, `warningsDoNotModifyAnchors`, `reservedSlotDoesNotGrantPrerequisite`, `resolvedAndSharedElectiveReservations`, `fractionalPriorAndAnchorHoursCountOnce`, `boundaryDoesNotMoveLectureOrLab`, `standingAndTimingRetainOffsets`, `lastCutoffCanAppendOrHaveNoSuffix`, and `cancellationStopsBuilder`. Assert an anchored 3-hour open slot reduces the future open allowance by 3 without becoming completed in progress. In the 90-hour fixture with anchored REQ1=1.5 and general prior credit=10.5, the future top-up is 21 hours and total earned+planned hours is 120. Include placeholder collision, unsupported availability, and overlapping second-major cases.
-- [ ] Run `swift test --disable-sandbox --filter AnchoredScheduleGeneratorTests`. Expected: FAIL before the new entry point/accounting exists.
-- [ ] Factor shared requirement selection and variant ordering inside the existing generator. Generalize its preserved-semester seed to a prefix context; setup adapts its existing single current semester without changing its public API. Generate only the requested variant for partial regeneration. Preserve source ID/name and concatenate exact prefix plus generated suffix. Return the prefix even when no remaining work exists.
-- [ ] Extend requirement allocation to consume reserved slot IDs/category amounts before selecting suffix work. Preserve exact ordinary option-slot reservations; selective pools subtract reserved amounts and fill only their remaining allowance. Concrete anchored choices still participate in existing shared-program fulfillment. Generate new placeholder IDs around retained IDs and discard suffix-only definitions/resolutions. Unresolved anchors never enter named prerequisite/corequisite completion sets.
-- [ ] Extend credit allocation across the prefix and its retained slots. Keep the existing major/declared-credit substance gate (major and at least 60 declared credits) and 120-hour minimum. For eligible partial regeneration, derive remaining top-up from effective prior+anchor hours and the actual new required-course/slot hours; never subtract a required credit twice. Retain legacy full-generation outputs unless the approved anchor generalization requires a correction verified by a failing regression test.
-- [ ] Pass separate standing/preference offsets into builders and their fallback. Anchor hours feed future standing where earned context exists, including reserved planned-slot hours. Otherwise apply listed-semester offset to existing standing rules. Apply elapsed term offset to course-level/Gen Ed preferences. Apply pairing only within suffix work; previously anchored partners remain completion input. Check task cancellation between variant preparation, requirement categories, and semester iterations, including best-effort fallback.
-- [ ] Run `swift test --disable-sandbox --filter 'AnchoredScheduleGeneratorTests|ScheduleGeneratorTests|ContinuingStudentScheduleTests|TranscriptRegressionTests|StandingPrereqTests|LabPairing|ConflictAndProgressTests|SemesterLayoutTests'`. Expected: PASS. Run full suite if shared selection/credit behavior changes beyond these fixtures; expected PASS.
-- [ ] Commit: `feat: regenerate one pathway after anchored semesters`.
+- [x] Run `swift test --disable-sandbox --filter AnchoredScheduleGeneratorTests`. Expected: FAIL before the new entry point/accounting exists.
+- [x] Factor shared requirement selection and variant ordering inside the existing generator. Generalize its preserved-semester seed to a prefix context; setup adapts its existing single current semester without changing its public API. Generate only the requested variant for partial regeneration. Preserve source ID/name and concatenate exact prefix plus generated suffix. Return the prefix even when no remaining work exists.
+- [x] Extend requirement allocation to consume reserved slot IDs/category amounts before selecting suffix work. Preserve exact ordinary option-slot reservations; selective pools subtract reserved amounts and fill only their remaining allowance. Concrete anchored choices still participate in existing shared-program fulfillment. Generate new placeholder IDs around retained IDs and discard suffix-only definitions/resolutions. Unresolved anchors never enter named prerequisite/corequisite completion sets.
+- [x] Extend credit allocation across the prefix and its retained slots. Keep the existing major/declared-credit substance gate (major and at least 60 declared credits) and 120-hour minimum. For eligible partial regeneration, derive remaining top-up from effective prior+anchor hours and the actual new required-course/slot hours; never subtract a required credit twice. Retain legacy full-generation outputs unless the approved anchor generalization requires a correction verified by a failing regression test.
+- [x] Pass separate standing/preference offsets into builders and their fallback. Anchor hours feed future standing where earned context exists, including reserved planned-slot hours. Otherwise apply listed-semester offset to existing standing rules. Apply elapsed term offset to course-level/Gen Ed preferences. Apply pairing only within suffix work; previously anchored partners remain completion input. Check task cancellation between variant preparation, requirement categories, and semester iterations, including best-effort fallback.
+- [x] Run `swift test --disable-sandbox --filter 'AnchoredScheduleGeneratorTests|ScheduleGeneratorTests|ContinuingStudentScheduleTests|TranscriptRegressionTests|StandingPrereqTests|LabPairing|ConflictAndProgressTests|SemesterLayoutTests'`. Expected: PASS. Run full suite if shared selection/credit behavior changes beyond these fixtures; expected PASS.
+- [x] Commit: `feat: regenerate one pathway after anchored semesters`.
 
 ## Task 3: Cancellable store lifecycle and guarded replacement
 
@@ -93,7 +93,7 @@
 
 **Interfaces:** Produce `PartialRegenerationRequest: Sendable` holding `catalog: Catalog`, `source: Pathway`, `cutoff: SemesterIdentity`, `programID: String`, `concentrationID: String?`, `strategy: ScheduleGenerationStrategy`, `workload: WorkloadPreference`, `transferCredits: [TransferCredit]`, `additionalPrograms: [Program]`, `earnedHoursAtStart: Double?`. Produce `PartialRegenerationState: Equatable, Sendable` with `operationID: UUID`, `pathwayID: String`, `cutoff: SemesterIdentity`, `progress: ScheduleGenerationProgress`. Produce `protocol AnchoredScheduleGenerating: Sendable { func regenerate(_ request: PartialRegenerationRequest, progress: @escaping @Sendable (ScheduleGenerationProgress) -> Void) async throws -> Pathway }` and `LocalAnchoredScheduleGenerator`. Extend store initializer with `init(storageDirectory: URL? = nil, anchoredGenerator: any AnchoredScheduleGenerating = LocalAnchoredScheduleGenerator())`. Expose read-only published `partialRegeneration: PartialRegenerationState?`, `canEditSchedule: Bool`, `regenerateActivePathway(after: SemesterIdentity) async -> Void`, and `cancelPartialRegeneration() -> Void`. Define private `applyRegeneratedPathway(_ replacement: Pathway, source: Pathway)` as Task 4's application hook.
 
-- [ ] Write tests with a deterministic suspended worker: `successChangesOnlyCapturedPathway`, `failureAndCancelLeavePlanUntouched`, `lateResultCannotReplaceNewerOperation`, `lateProgressCannotReopenLoading`, `changedPlanOrCatalogRejectsResult`, and `mutationsAndCompetingGenerationAreLocked`. Include switching active pathway, changing program/workload/prior credit, loading another plan, cancellation immediately before delivery, and no valid cutoff. Assert original plan and history remain intact during the wait, operation state clears after every outcome, and other pathways stay byte-for-byte equivalent after success.
+- [x] Write tests with a deterministic suspended worker: `successChangesOnlyCapturedPathway`, `failureAndCancelLeavePlanUntouched`, `lateResultCannotReplaceNewerOperation`, `lateProgressCannotReopenLoading`, `changedPlanOrCatalogRejectsResult`, and `mutationsAndCompetingGenerationAreLocked`. Include switching active pathway, changing program/workload/prior credit, loading another plan, cancellation immediately before delivery, and no valid cutoff. Assert original plan and history remain intact during the wait, operation state clears after every outcome, and other pathways stay byte-for-byte equivalent after success.
   Assert lifecycle state and isolation explicitly:
   ```swift
   #expect(store.plan == before) // suspended operation has not published a result
@@ -103,11 +103,11 @@
   #expect(store.plan.academicRecords == before.academicRecords)
   #expect(store.partialRegeneration == nil)
   ```
-- [ ] Run `swift test --disable-sandbox --filter PlanStorePartialRegenerationTests`. Expected: FAIL because state/worker injection/store actions do not exist.
-- [ ] Implement the worker using Task 2 on a detached task with cancellation propagation. Capture an immutable request plus plan/source identity and all relevant catalog/program/workload/credit context. Validate context and operation identity before progress publication and success application. Cancel old work before replacing its token; late cleanup cannot clear a newer state. Invalid prior-credit validation uses the existing guard; anchor course warnings are not a generation gate.
-- [ ] Keep partial progress separate from `scheduleGenerationProgress`, so existing full-generation overlays cannot obscure anchors. `canEditSchedule` is false for either generation mode. Guard competing generation and board course/semester/placeholder/override mutation actions; allow external plan-context changes to invalidate and cancel partial work. On failure/cancel restore presentation by clearing state without changing saved pathway; on success call the application hook once and invalidate caches through the existing plan setter.
-- [ ] Run `swift test --disable-sandbox --filter 'PlanStorePartialRegenerationTests|PlanStoreTranscriptTests|PlanStoreMoveTests|PlanStoreSemesterTests|PlanStoreWarningsTests'`. Expected: PASS.
-- [ ] Commit: `feat: add cancellable partial pathway regeneration`.
+- [x] Run `swift test --disable-sandbox --filter PlanStorePartialRegenerationTests`. Expected: FAIL because state/worker injection/store actions do not exist.
+- [x] Implement the worker using Task 2 on a detached task with cancellation propagation. Capture an immutable request plus plan/source identity and all relevant catalog/program/workload/credit context. Validate context and operation identity before progress publication and success application. Cancel old work before replacing its token; late cleanup cannot clear a newer state. Invalid prior-credit validation uses the existing guard; anchor course warnings are not a generation gate.
+- [x] Keep partial progress separate from `scheduleGenerationProgress`, so existing full-generation overlays cannot obscure anchors. `canEditSchedule` is false for either generation mode. Guard competing generation and board course/semester/placeholder/override mutation actions; allow external plan-context changes to invalidate and cancel partial work. On failure/cancel restore presentation by clearing state without changing saved pathway; on success call the application hook once and invalidate caches through the existing plan setter.
+- [x] Run `swift test --disable-sandbox --filter 'PlanStorePartialRegenerationTests|PlanStoreTranscriptTests|PlanStoreMoveTests|PlanStoreSemesterTests|PlanStoreWarningsTests'`. Expected: PASS.
+- [x] Commit: `feat: add cancellable partial pathway regeneration`.
 
 ## Task 4: Undo, issue overrides, and persistence transaction
 
@@ -115,7 +115,7 @@
 
 **Interfaces:** Consume Task 3 application hook and existing `ScheduleSnapshot`, `recordScheduleChange`, `registerUndo`, `autosave`, and `flushPendingAutosaves`. Add an internal defaulted `synchronizeCurrentEnrollment: Bool = true` option to `recordScheduleChange`; partial regeneration uses false because the anchor/current history is already preserved. No new saved-plan fields or permanent anchor boundary.
 
-- [ ] Write `oneUndoStepRestoresOldSuffixAndMetadata`, `redoRestoresNewSuffix`, `earlierUndoHistoryRemains`, `anchorOverridesAndUnrelatedPathwaysSurvive`, and `savedPlanRoundTrip`. Include `nativeUndoDuringGenerationCancelsPendingWork`: cancel the pending operation before the existing native undo/redo restore proceeds, and verify that its entry is not consumed without restoring the edit. Include resolved and unresolved old suffix choices, anchor warnings, obsolete suffix-specific overrides, an unrelated Keep decision, and unchanged current/academic records. Undo/redo must restore exact pathway maps and only this operation's override delta. Persistence tests flush the serial autosave queue before reading the injected directory's JSON.
+- [x] Write `oneUndoStepRestoresOldSuffixAndMetadata`, `redoRestoresNewSuffix`, `earlierUndoHistoryRemains`, `anchorOverridesAndUnrelatedPathwaysSurvive`, and `savedPlanRoundTrip`. Include `nativeUndoDuringGenerationCancelsPendingWork`: cancel the pending operation before the existing native undo/redo restore proceeds, and verify that its entry is not consumed without restoring the edit. Include resolved and unresolved old suffix choices, anchor warnings, obsolete suffix-specific overrides, an unrelated Keep decision, and unchanged current/academic records. Undo/redo must restore exact pathway maps and only this operation's override delta. Persistence tests flush the serial autosave queue before reading the injected directory's JSON.
   ```swift
   undoManager.undo()
   #expect(store.activePathway == oldPathway)
@@ -123,10 +123,10 @@
   undoManager.redo()
   #expect(store.activePathway == regeneratedPathway)
   ```
-- [ ] Run `swift test --disable-sandbox --filter PartialRegenerationUndoTests`. Expected: FAIL because success does not yet register a complete undo transaction.
-- [ ] Implement the application hook through the existing undo mechanism without clearing schedule history or syncing unchanged current academic records. Keep source ID/name and active selection. An override subject is `(courseID, semester)`; for a semester-level override, existence means that semester still exists. Prune only suffix-specific overrides whose subject is absent from the replacement; preserve prefix and unrelated overrides. Autosave once after successful application and after undo/redo through existing queue behavior. Toast/action copy names the boundary: `Regenerate after Fall 2027`.
-- [ ] Run `swift test --disable-sandbox --filter 'PartialRegenerationUndoTests|PlanStorePartialRegenerationTests|PlanStoreUndoTests|PlanStoreTranscriptTests'`. Expected: PASS.
-- [ ] Commit: `feat: make partial regeneration undoable and persistent`.
+- [x] Run `swift test --disable-sandbox --filter PartialRegenerationUndoTests`. Expected: FAIL because success does not yet register a complete undo transaction.
+- [x] Implement the application hook through the existing undo mechanism without clearing schedule history or syncing unchanged current academic records. Keep source ID/name and active selection. An override subject is `(courseID, semester)`; for a semester-level override, existence means that semester still exists. Prune only suffix-specific overrides whose subject is absent from the replacement; preserve prefix and unrelated overrides. Autosave once after successful application and after undo/redo through existing queue behavior. Toast/action copy names the boundary: `Regenerate after Fall 2027`.
+- [x] Run `swift test --disable-sandbox --filter 'PartialRegenerationUndoTests|PlanStorePartialRegenerationTests|PlanStoreUndoTests|PlanStoreTranscriptTests'`. Expected: PASS.
+- [x] Commit: `feat: make partial regeneration undoable and persistent`.
 
 ## Task 5: Semester picker and anchored board transitions
 
@@ -134,19 +134,19 @@
 
 **Interfaces:** Produce `RegenerationBoundarySelection: Equatable` with `init(pathway: Pathway)`, `semesters: [SemesterIdentity]`, editable `selected: SemesterIdentity?`, computed `summary: String`, and `canConfirm: Bool`. Produce `RegenerationBoundarySheet(pathway: Pathway, onConfirm: (SemesterIdentity) -> Void)`, `PartialRegenerationStatusView(state: PartialRegenerationState, onCancel: () -> Void)`. Consume Task 3 state/actions/lock; animation state remains in the board and never mutates SavedStudentPlan for hiding.
 
-- [ ] Write picker tests asserting chronologically sorted existing choices, first-semester default, invalid/empty selection disabled, selected semester included, and last semester allowed. Exact example summary: `Keep everything through Fall 2027. Rebuild Spring 2028 onward.`
+- [x] Write picker tests asserting chronologically sorted existing choices, first-semester default, invalid/empty selection disabled, selected semester included, and last semester allowed. Exact example summary: `Keep everything through Fall 2027. Rebuild Spring 2028 onward.`
   ```swift
   #expect(selection.selected == .init(year: 2026, term: .fall))
   selection.selected = .init(year: 2027, term: .fall)
   #expect(selection.summary == "Keep everything through Fall 2027. Rebuild Spring 2028 onward.")
   #expect(selection.canConfirm)
   ```
-- [ ] Run `swift test --disable-sandbox --filter RegenerationBoundarySelectionTests`. Expected: FAIL before picker semantics exist.
-- [ ] Implement the sheet showing affected pathway, summary, replacement of later course/elective choices, Cancel, and regeneration confirmation. Add `Regenerate after…` beside the existing full action; retain `Regenerate` behavior. Disable unavailable/conflicting actions, selector, drag/edit controls and gap/add-semester controls through `canEditSchedule`.
-- [ ] Implement future-only fade-out, inline progress+Cancel after the cutoff, and fade-in on success. Retain invisible measured suffix space during the hide/loading transition so anchor columns and scroll position remain stable; use leading/stable layout during replacement. Keep the same anchor view identities. Coordinate fast worker completion with the hide/reveal lifecycle instead of relying only on semester IDs changing. Failure/cancel restores the original suffix; no remaining work clears loading and shows a brief completion message. Reduce Motion bypasses movement/stagger and unnecessary waits. Reset local presentation state on plan/pathway change or view departure, with stale worker protection handled by Task 3.
-- [ ] Run `swift test --disable-sandbox --filter 'RegenerationBoundarySelectionTests|PlanStorePartialRegenerationTests|ScheduleDragControllerTests'` and `swift build --disable-sandbox`. Expected: PASS and successful build. Before using library-specific animation APIs, follow repository documentation instructions.
-- [ ] Manually verify first/last cutoff, stable anchors while scrolled far right, unknown/fractional course chips, warnings remaining visible, picker keyboard navigation, Cancel, fast completion, empty suffix, and Reduce Motion. Expected: anchors remain visible/stationary, previous suffix returns on cancel/error, and no progress overlay obscures the board. Record any unavailable native check explicitly.
-- [ ] Commit: `feat: add regenerate-after controls and anchored transitions`.
+- [x] Run `swift test --disable-sandbox --filter RegenerationBoundarySelectionTests`. Expected: FAIL before picker semantics exist.
+- [x] Implement the sheet showing affected pathway, summary, replacement of later course/elective choices, Cancel, and regeneration confirmation. Add `Regenerate after…` beside the existing full action; retain `Regenerate` behavior. Disable unavailable/conflicting actions, selector, drag/edit controls and gap/add-semester controls through `canEditSchedule`.
+- [x] Implement future-only fade-out, inline progress+Cancel after the cutoff, and fade-in on success. Retain invisible measured suffix space during the hide/loading transition so anchor columns and scroll position remain stable; use leading/stable layout during replacement. Keep the same anchor view identities. Coordinate fast worker completion with the hide/reveal lifecycle instead of relying only on semester IDs changing. Failure/cancel restores the original suffix; no remaining work clears loading and shows a brief completion message. Reduce Motion bypasses movement/stagger and unnecessary waits. Reset local presentation state on plan/pathway change or view departure, with stale worker protection handled by Task 3.
+- [x] Run `swift test --disable-sandbox --filter 'RegenerationBoundarySelectionTests|PlanStorePartialRegenerationTests|ScheduleDragControllerTests'` and `swift build --disable-sandbox`. Expected: PASS and successful build. Before using library-specific animation APIs, follow repository documentation instructions.
+- [x] Manually verify first/last cutoff, stable anchors while scrolled far right, unknown/fractional course chips, warnings remaining visible, picker keyboard navigation, Cancel, fast completion, empty suffix, and Reduce Motion. Expected: anchors remain visible/stationary, previous suffix returns on cancel/error, and no progress overlay obscures the board. Record any unavailable native check explicitly.
+- [x] Commit: `feat: add regenerate-after controls and anchored transitions`.
 
 ## Task 6: End-to-end verification and integration readiness
 
@@ -154,18 +154,27 @@
 
 **Interfaces:** Consume Tasks 1–5; no additional product subsystem.
 
-- [ ] Write workflow tests for edited prefix → choose cutoff → regenerate active variant → preserve other two pathways → undo/redo → save/load → regenerate again. Include actual earned credit plus imported current enrollment, unresolved reserved slots, changed suffix elective choices, last-semester anchors, and catalog/program invalidation after earlier successful regeneration. Assert history and anchors remain exact and a second regeneration does not grow totals or duplicate slot IDs.
+- [x] Write workflow tests for edited prefix → choose cutoff → regenerate active variant → preserve other two pathways → undo/redo → save/load → regenerate again. Include actual earned credit plus imported current enrollment, unresolved reserved slots, changed suffix elective choices, last-semester anchors, and catalog/program invalidation after earlier successful regeneration. Assert history and anchors remain exact and a second regeneration does not grow totals or duplicate slot IDs.
   ```swift
   #expect(Array(store.activePathway!.semesters.prefix(anchors.count)) == anchors)
   #expect(store.plan.pathways[otherIndex] == untouchedAlternative)
   #expect(store.effectiveAcademicHistory.earnedHours == originalEarnedHours)
   #expect(regeneratedSuffix.flatMap(\.courseIDs).allSatisfy { !retainedPlaceholderIDs.contains($0) })
   ```
-- [ ] Run `swift test --disable-sandbox --filter PartialRegenerationWorkflowTests`. Expected: PASS if integration is correct; observe any behavioral failure before fixing a gap with its reproducing test.
-- [ ] Run `bash script/run_tests.sh`, `swift build --disable-sandbox`, and `git diff --check`. Expected: passing full suite, successful build, no whitespace errors. Run `graphify update .`; expected successful AST update.
-- [ ] Smoke-test the built native app with synthetic plans and an injected temporary storage directory through selected cutoff, future-only transition, successful suffix, Undo, redo, cancellation, error recovery, saved-plan reopen, and unchanged alternatives. Expected: spec behavior. Reconcile any newly committed catalog/elective/lab/transcript changes with this branch and repeat affected/full checks as appropriate before merging.
-- [ ] Commit: `test: verify semester-anchored regeneration workflow`.
+- [x] Run `swift test --disable-sandbox --filter PartialRegenerationWorkflowTests`. Expected: PASS if integration is correct; observe any behavioral failure before fixing a gap with its reproducing test.
+- [x] Run `bash script/run_tests.sh`, `swift build --disable-sandbox`, and `git diff --check`. Expected: passing full suite, successful build, no whitespace errors. Run `graphify update .`; expected successful AST update.
+- [x] Smoke-test the built native app with synthetic plans and an injected temporary storage directory through selected cutoff, future-only transition, successful suffix, Undo, redo, cancellation, error recovery, saved-plan reopen, and unchanged alternatives. Expected: spec behavior. Reconcile any newly committed catalog/elective/lab/transcript changes with this branch and repeat affected/full checks as appropriate before merging.
+- [x] Commit: `test: verify semester-anchored regeneration workflow`.
 
 ## Execution handoff
 
 The user previously chose native execution with a commit per task; preserve that preference after this written plan is approved. Native execution uses executing-plans, per-task red/green verification, and one final fresh-context whole-branch reviewer. Review all five Review Focus cases deliberately. Do not begin product changes before the user's plan review. Local merge remains a separately authorized integration action after the feature is complete.
+
+
+## Execution verification
+
+- Tasks 1–5 followed red/green checks and full-suite gates, with separate task commits.
+- Task 6 workflow tests passed against the finished implementation: edited prefix, fractional earned/current credits, unresolved reservations, alternative isolation, undo/redo, real autosave JSON reopen, repeated regeneration, and stale-context rejection.
+- Reconciled committed transcript-review improvements from 5d31913 into the isolated branch. Primary-checkout uncommitted catalog/elective changes were neither staged nor reset.
+- Native synthetic app compiled and launched using /private/tmp/RegenerationSmokePlans. Native inspection repeatedly timed out, including after resetting the UI tool. Visual fade/scroll, keyboard, cancellation/error presentation, empty-suffix and system Reduce Motion checks remain unverified; do not treat those as manual passes.
+- Private application hook takes the explicit cutoff for accurate undo naming and suffix-only override pruning; no public API or persistent-plan schema changed.

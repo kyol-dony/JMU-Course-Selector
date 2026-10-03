@@ -202,17 +202,17 @@ struct MyPlanView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Next term")
                             .font(DesignTokens.Typography.small)
-                            .foregroundStyle(DesignTokens.Colors.brandGold.opacity(0.75))
+                            .foregroundStyle(DesignTokens.Colors.brandGoldInk.opacity(0.75))
                             .textCase(.uppercase)
                         Text("\(semester.id.displayName) · \(semester.courseIDs.count) course\(semester.courseIDs.count == 1 ? "" : "s")")
                             .font(DesignTokens.Typography.bodyEmphasized)
-                            .foregroundStyle(DesignTokens.Colors.brandGold)
+                            .foregroundStyle(DesignTokens.Colors.brandGoldInk)
                             .monospacedDigit()
                     }
                     Spacer(minLength: DesignTokens.Spacing.s)
                     Image(systemName: "arrow.right")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(DesignTokens.Colors.brandGold)
+                        .foregroundStyle(DesignTokens.Colors.brandGoldInk)
                 }
                 .padding(.horizontal, DesignTokens.Spacing.m)
                 .padding(.vertical, DesignTokens.Spacing.s)

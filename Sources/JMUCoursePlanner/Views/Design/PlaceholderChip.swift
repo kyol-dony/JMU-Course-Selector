@@ -13,6 +13,8 @@ struct PlaceholderChip: View {
     private var isHoverActive: Bool { isHovering && appearance == .normal }
     private var isTinted: Bool { isHoverActive || appearance == .lifted }
     private var isLiftedMotion: Bool { appearance == .lifted && !reduceMotion }
+    /// Purple text turns gold whenever the purple wash is showing.
+    private var accent: Color { isTinted ? DesignTokens.Colors.brandGoldInk : DesignTokens.Colors.brandPurple }
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: DesignTokens.Radius.button, style: .continuous)
     }
@@ -20,11 +22,11 @@ struct PlaceholderChip: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
             Image(systemName: "questionmark.circle")
-                .foregroundStyle(DesignTokens.Colors.brandPurple)
+                .foregroundStyle(accent)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Choose course")
                     .font(DesignTokens.Typography.bodyEmphasized)
-                    .foregroundStyle(DesignTokens.Colors.brandPurple)
+                    .foregroundStyle(accent)
                 Text(spec.categoryName)
                     .font(DesignTokens.Typography.caption)
                     .foregroundStyle(DesignTokens.Colors.textSecondary)

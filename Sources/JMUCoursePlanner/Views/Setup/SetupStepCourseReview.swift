@@ -10,9 +10,7 @@ struct SetupStepCourseReview: View {
     @EnvironmentObject private var store: PlanStore
     @ObservedObject var controller: TranscriptImportController
     var catalog: Catalog
-    var onConfirm: (AcademicHistory) -> Void
     @State private var picker: TranscriptPickerRequest?
-    @State private var confirmationError: String?
     private var issues: [TranscriptIssue] { controller.draft.map { TranscriptReconciler.validate($0, catalog: catalog) } ?? [] }
     private var currentTerm: Binding<SemesterTerm> {
         Binding(get: { controller.draft?.currentSemester.term ?? .fall }, set: { term in
@@ -27,60 +25,64 @@ struct SetupStepCourseReview: View {
         })
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.l) {
-            SectionHeader("Review your courses", helper: "Check earned credit and current enrollment. Add anything missed, correct amounts or matches, and remove incorrect detections.")
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xl) {
             if let draft = controller.draft {
                 let earned = EffectiveCreditBuilder.build(records: draft.records, legacyCredits: []).earnedHours
                 let current = draft.records.filter { $0.status == .inProgress }.reduce(0.0) { $0 + $1.attemptedCredits }
-                HStack {
-                    StatusPill(text: "\(CreditHoursFormatter.string(earned)) earned hours", tone: .neutral)
-                    StatusPill(text: "\(CreditHoursFormatter.string(current)) current hours", tone: .neutral)
+                HStack(spacing: DesignTokens.Spacing.s) {
+                    StatChip(label: "Earned", value: "\(CreditHoursFormatter.string(earned)) cr")
+                    StatChip(label: "This semester", value: "\(CreditHoursFormatter.string(current)) cr")
+                }
+                .contentTransition(.numericText())
+                .animation(DesignTokens.Motion.hover, value: earned)
+                .animation(DesignTokens.Motion.hover, value: current)
+                let currentIssues = issues
+                if !currentIssues.isEmpty {
+                    noticesCard(currentIssues)
                 }
                 Card {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.m) {
                         Text("Current semester").font(DesignTokens.Typography.bodyEmphasized)
-                        HStack {
+                        HStack(spacing: DesignTokens.Spacing.m) {
                             Picker("Term", selection: currentTerm) { ForEach(SemesterTerm.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.frame(width: 200)
                             Stepper("Year \(currentYear.wrappedValue.formatted(.number.grouping(.never)))", value: currentYear, in: 1900...2200)
+                                .monospacedDigit()
                             Button("Confirm semester") { controller.draft?.setCurrentSemester(draft.currentSemester) }
+                                .buttonStyle(.dtTertiary)
                         }
-                        Text("These courses stay exactly in this semester. New courses will be planned afterward.").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if !issues.isEmpty {
-                    Card {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Review notices").font(DesignTokens.Typography.bodyEmphasized)
-                            ForEach(issues) { issue in
-                                HStack(alignment: .top) {
-                                    Text(issue.message).font(.caption).foregroundStyle(issue.isBlocking ? .red : .secondary)
-                                    if issue.recordID == nil && issue.kind == .malformedRow {
-                                        Button("Reviewed") { controller.draft?.dismissedIssueIDs.insert(issue.id) }.buttonStyle(.borderless)
-                                    }
-                                }
-                            }
-                        }
+                        Text("These courses stay exactly in this semester. New courses will be planned afterward.")
+                            .font(DesignTokens.Typography.caption)
+                            .foregroundStyle(DesignTokens.Colors.textSecondary)
                     }
                 }
                 group("Earned credit", status: .earned)
                 group("In progress", status: .inProgress)
-                DisclosureGroup("Excluded attempts / uncertain rows") {
-                    rows(draft.records.filter { $0.status == .excluded || $0.status == .needsReview })
+                InteractiveDisclosureGroup {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
+                        rows(draft.records.filter { $0.status == .excluded || $0.status == .needsReview })
+                    }
+                    .padding(.top, DesignTokens.Spacing.s)
+                } label: {
+                    Text("Excluded attempts and uncertain rows")
+                        .font(DesignTokens.Typography.bodyEmphasized)
+                        .foregroundStyle(DesignTokens.Colors.textPrimary)
                 }
-                DisclosureGroup("Add AP or dual-enrollment credit manually") {
+                InteractiveDisclosureGroup {
                     SetupStepTransfer(catalog: catalog, onAddAP: { exam, score in
                         controller.draft?.addAPScore(examName: exam, score: score, catalog: catalog, program: store.effectiveActiveProgram)
                     }, onAddDual: { label, code, credits in
                         controller.draft?.records.append(.init(code: code, title: label, courseIDs: catalog.coursesByID[code] == nil ? [] : [code], earnedCredits: credits, status: .earned, source: .manual, matchConfirmed: catalog.coursesByID[code] != nil))
                     }, reviewCredits: EffectiveCreditBuilder.build(records: draft.records, legacyCredits: []).credits)
+                    .padding(.top, DesignTokens.Spacing.s)
+                } label: {
+                    Text("Add AP or dual enrollment credit by hand")
+                        .font(DesignTokens.Typography.bodyEmphasized)
+                        .foregroundStyle(DesignTokens.Colors.textPrimary)
                 }
-                if let error = confirmationError { Text(error).foregroundStyle(.red) }
-                Button("Confirm courses and continue") {
-                    do { onConfirm(try TranscriptReconciler.confirm(draft, catalog: catalog)); confirmationError = nil }
-                    catch { confirmationError = error.localizedDescription }
-                }.buttonStyle(.dtPrimary).disabled(issues.contains { $0.isBlocking })
             } else {
                 Text("Choose a transcript or manual entry to begin review.")
+                    .font(DesignTokens.Typography.body)
+                    .foregroundStyle(DesignTokens.Colors.textSecondary)
             }
         }
         .sheet(item: $picker) { request in
@@ -90,15 +92,59 @@ struct SetupStepCourseReview: View {
             }
         }
     }
+    private func noticesCard(_ issues: [TranscriptIssue]) -> some View {
+        let blocking = issues.contains { $0.isBlocking }
+        return VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
+            Label(blocking ? "Fix these before continuing" : "Worth a look", systemImage: blocking ? "exclamationmark.octagon" : "exclamationmark.triangle")
+                .font(DesignTokens.Typography.bodyEmphasized)
+                .foregroundStyle(blocking ? DesignTokens.Colors.danger : DesignTokens.Colors.warning)
+            ForEach(issues) { issue in
+                HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
+                    Circle()
+                        .fill(issue.isBlocking ? DesignTokens.Colors.danger : DesignTokens.Colors.warning)
+                        .frame(width: 5, height: 5)
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                    Text(issue.message)
+                        .font(DesignTokens.Typography.caption)
+                        .foregroundStyle(DesignTokens.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    if issue.recordID == nil && issue.kind == .malformedRow {
+                        Button("Mark reviewed") { controller.draft?.dismissedIssueIDs.insert(issue.id) }
+                            .buttonStyle(.dtTertiary)
+                    }
+                }
+            }
+        }
+        .padding(DesignTokens.Spacing.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
+                .fill((blocking ? DesignTokens.Colors.danger : DesignTokens.Colors.warning).opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
+                .strokeBorder((blocking ? DesignTokens.Colors.danger : DesignTokens.Colors.warning).opacity(0.4), lineWidth: 1)
+        )
+    }
     private func group(_ title: String, status: AcademicCourseStatus) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let records = controller.draft?.records.filter { $0.status == status } ?? []
+        return VStack(alignment: .leading, spacing: DesignTokens.Spacing.m) {
             HStack {
                 Text(title).font(DesignTokens.Typography.heading)
+                Text("\(records.count)")
+                    .font(DesignTokens.Typography.label)
+                    .monospacedDigit()
+                    .foregroundStyle(DesignTokens.Colors.textTertiary)
                 Spacer()
-                Button("Add course") { picker = .init(status: status) }.buttonStyle(.dtSecondary)
+                Button { picker = .init(status: status) } label: { Label("Add course", systemImage: "plus") }
+                    .buttonStyle(.dtSecondary)
             }
-            let records = controller.draft?.records.filter { $0.status == status } ?? []
-            if records.isEmpty { Text("No courses in this group.").font(.caption).foregroundStyle(.secondary) }
+            if records.isEmpty {
+                Text("No courses in this group yet.")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textSecondary)
+            }
             rows(records)
         }
     }

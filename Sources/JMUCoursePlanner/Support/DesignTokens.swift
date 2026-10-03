@@ -18,6 +18,10 @@ enum DesignTokens {
         static let brandPurple = dynamic(light: 0x450084, dark: 0x7c3aed)
         static let brandPurpleSoft = dynamic(light: 0xf4f0fa, dark: 0x2a1840)
         static let brandGold = dynamic(light: 0xcbb677, dark: 0xb8a168)
+        /// Gold for text and glyphs on Royal Purple Soft or a light purple
+        /// wash. Light mode deepens it to about 5:1 against the wash; dark
+        /// mode matches `brandGold`. Solid Royal Purple keeps `brandGold`.
+        static let brandGoldInk = dynamic(light: 0x7d6419, dark: 0xb8a168)
 
         static let success = dynamic(light: 0x16a34a, dark: 0x22c55e)
         static let warning = dynamic(light: 0xd97706, dark: 0xf59e0b)
@@ -62,6 +66,10 @@ enum DesignTokens {
         static let hover = Animation.easeOut(duration: 0.15)
         /// Items settling into a slot, insertion gaps opening, spring-back.
         static let settle = Animation.spring(response: 0.25, dampingFraction: 0.85)
+        /// Button and card press-down.
+        static let press = Animation.easeOut(duration: 0.1)
+        /// Moving between setup steps and selection changes inside a step.
+        static let step = Animation.spring(response: 0.32, dampingFraction: 0.88)
     }
 
     private static func dynamic(light: Int, dark: Int) -> Color {

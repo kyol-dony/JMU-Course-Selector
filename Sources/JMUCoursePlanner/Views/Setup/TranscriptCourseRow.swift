@@ -16,13 +16,13 @@ struct TranscriptCourseRow: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(record.code).font(DesignTokens.Typography.bodyEmphasized)
-                        Text(record.title).font(DesignTokens.Typography.caption)
-                        Text(record.source.label + (record.grade.map { " · Grade \($0)" } ?? "")).font(.caption).foregroundStyle(.secondary)
-                        if let term = record.printedTerm { Text(term).font(.caption).foregroundStyle(.secondary) }
+                        Text(record.code).font(DesignTokens.Typography.bodyEmphasized).foregroundStyle(DesignTokens.Colors.textPrimary)
+                        Text(record.title).font(DesignTokens.Typography.caption).foregroundStyle(DesignTokens.Colors.textPrimary)
+                        Text(record.source.label + (record.grade.map { " · Grade \($0)" } ?? "")).font(DesignTokens.Typography.caption).foregroundStyle(DesignTokens.Colors.textSecondary)
+                        if let term = record.printedTerm { Text(term).font(DesignTokens.Typography.caption).foregroundStyle(DesignTokens.Colors.textSecondary) }
                     }
                     Spacer()
-                    Button("Remove", action: onRemove).buttonStyle(.borderless)
+                    Button("Remove", role: .destructive, action: onRemove).buttonStyle(.dtTertiary)
                 }
                 HStack {
                     Picker("Status", selection: $record.status) {
@@ -32,17 +32,17 @@ struct TranscriptCourseRow: View {
                         Text("Needs review").tag(AcademicCourseStatus.needsReview)
                     }.frame(maxWidth: 250)
                     TextField("Credits", value: amount, format: .number).textFieldStyle(.roundedBorder).frame(width: 85).accessibilityLabel("Credits for \(record.code)")
-                    Text("credits").font(.caption)
+                    Text("credits").font(DesignTokens.Typography.caption).foregroundStyle(DesignTokens.Colors.textSecondary)
                     Spacer()
-                    Button("Match / replace course", action: onReplace).buttonStyle(.borderless)
+                    Button("Match or replace course", action: onReplace).buttonStyle(.dtTertiary)
                 }
                 if !record.matchConfirmed && record.status != .excluded {
-                    Text("No catalog match. Match a course or retain the printed entry.").font(.caption).foregroundStyle(.orange)
-                    Button(record.status == .inProgress ? "Keep as current enrollment" : "Keep as general credit", action: onRetain).buttonStyle(.borderless)
+                    Label("No catalog match. Match a course or keep the printed entry.", systemImage: "exclamationmark.triangle").font(DesignTokens.Typography.caption).foregroundStyle(DesignTokens.Colors.warning)
+                    Button(record.status == .inProgress ? "Keep as current enrollment" : "Keep as general credit", action: onRetain).buttonStyle(.dtTertiary)
                 } else if record.courseIDs.isEmpty && record.status == .earned {
-                    Text("General earned hours; does not satisfy a named course prerequisite.").font(.caption).foregroundStyle(.secondary)
+                    Text("General earned hours; does not satisfy a named course prerequisite.").font(DesignTokens.Typography.caption).foregroundStyle(DesignTokens.Colors.textSecondary)
                 } else if record.courseIDs.count > 1 {
-                    Text("Awarded equivalents: " + record.courseIDs.joined(separator: ", ")).font(.caption)
+                    Text("Awarded equivalents: " + record.courseIDs.joined(separator: ", ")).font(DesignTokens.Typography.caption).foregroundStyle(DesignTokens.Colors.textSecondary)
                 }
             }
         }

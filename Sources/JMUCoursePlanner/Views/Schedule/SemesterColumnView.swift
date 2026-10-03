@@ -392,7 +392,7 @@ struct SemesterColumnView: View {
                 Text("Add course")
                     .font(DesignTokens.Typography.label)
             }
-            .foregroundStyle(DesignTokens.Colors.brandGold)
+            .foregroundStyle(DesignTokens.Colors.brandGoldInk)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
             .background(

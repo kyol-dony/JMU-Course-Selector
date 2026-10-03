@@ -8,6 +8,8 @@ colors:
   royal-purple-soft-dark: "#1f1530"
   madison-gold: "#cbb677"
   madison-gold-dark: "#b8a168"
+  madison-gold-ink: "#7d6419"
+  madison-gold-ink-dark: "#b8a168"
   paper: "#fafafa"
   paper-dark: "#0a0a0c"
   card-paper: "#ffffff"
@@ -162,10 +164,14 @@ A neutral paper-toned canvas, two brand colors used sparingly, three semantic si
 
 ### Primary
 - **Royal Purple** (`#450084` light / `#7c3aed` dark): JMU's official brand color. Used on primary buttons, the active-tab pill in the top bar, the completion percentage on the My Plan stat tile, the verification ring on category-deep-link hover. Vivid in dark mode so it stays unmistakable against near-black surfaces.
-- **Royal Purple Soft** (`#f4f0fa` light / `#1f1530` dark): The selected-row tint in the catalog browser, the highlight color on the Setup workload radio, the soft fill on info status pills. A whisper of the brand, not a flag.
+- **Royal Purple Soft** (`#f4f0fa` light / `#1f1530` dark): The selected-row tint in the catalog browser, the fill on selected Setup option cards, the soft fill on info status pills. A whisper of the brand, not a flag.
 
 ### Secondary
 - **Madison Gold** (`#cbb677` light / `#b8a168` dark): Marginalia. The "J" inside the small JMU monogram in the top bar. The 3px left-border accent on General Education course chips. Never used on text larger than 12px. Slightly desaturated in dark mode so it doesn't vibrate.
+
+**The Gold-on-Purple Rule.** Royal Purple text or glyphs never sit on a purple surface. Wherever Royal Purple Soft or a Royal Purple wash shows (at rest, on hover, on press, or when selected), purple content on it turns Madison Gold Ink: tertiary button text while hovered or pressed, the placeholder chip while tinted, setup selection checks, the current step number, a selected workload's range, icon tiles, and the numeral on a selected year badge. Borders and rings may stay purple. This rule takes precedence over the Marginalia Rule's 12px cap.
+
+- **Madison Gold Ink** (`#7d6419` light / `#b8a168` dark): The gold that text and glyphs take on Royal Purple Soft or a light purple wash (see the Gold-on-Purple Rule). Light Madison Gold reads at about 1.9:1 on that wash; the ink shade reaches about 5:1. Gold on solid Royal Purple (the active tab, the monogram, a selected year badge) keeps the brighter Madison Gold, which already contrasts strongly there.
 
 ### Neutral
 - **Paper** (`#fafafa` light / `#0a0a0c` dark): The workspace canvas. The space tabs and cards rest on.
@@ -198,7 +204,7 @@ A neutral paper-toned canvas, two brand colors used sparingly, three semantic si
 
 ### Hierarchy
 - **Display** (700, 28px, line-height 1.15, tracking -0.01em): Program titles on the My Plan hero card. Course code in the Course Detail sheet header.
-- **Title** (600, 22px): Setup sheet header. Donut hero text on the Progress tab.
+- **Title** (600, 22px): Setup step titles. Donut hero text on the Progress tab.
 - **Heading** (600, 18px): Section headers across My Plan, Progress, and the Course Detail sheet.
 - **Body** (400, 14px): Default reading text. Program descriptions, requirement notes, course titles. Line length is capped by container width (cards are ≤1100px, course detail sheet is 480px) so body never approaches the AI-slop wall-of-text feel.
 - **Body Emphasized** (600, 14px): The bolded course code in a CourseChip. Stat chip values in the top bar. Card titles.
@@ -233,7 +239,9 @@ Flat with one whisper of shadow. Cards sit on the Paper canvas with a 1px Hairli
 - **Secondary** (`button-secondary`): Card Paper background, Ink text, 1px Hairline border, same padding and typography as primary. Used for "Edit setup" footers, "Back" in the Setup sheet, "Regenerate" in the Schedule sub-toolbar.
 - **Tertiary** (`button-tertiary`): No background, Royal Purple text, Label typography, padding 4px / 8px. Used for "Skip", "Keep anyway" and fix actions in warning popovers, "Regenerate pathways".
 - **Destructive** (`button-destructive`): Card Paper background, Hard Stop Red text, Hard Stop Red 50%-alpha 1px border. Used only for Reset App Data and Start Over.
-- **Pressed state:** Primary darkens via 85% opacity; Secondary fills with the Royal Purple Soft tint; Destructive fills with Hard Stop Red 15%-alpha.
+- **Pressed state:** Primary darkens via 85% opacity; Secondary fills with the Royal Purple Soft tint; Destructive fills with Hard Stop Red 15%-alpha. Every style also dips to 97% scale on press (skipped under Reduce Motion).
+- **Hover state:** Primary lifts with a 10% white wash; Secondary's border darkens to Ink Stroke; Tertiary gains a Royal Purple Soft fill and its text turns Madison Gold (Hard Stop Red 8% for a `.destructive` role, which also turns its text red); Destructive gains a 7% red wash. 150ms ease-out.
+- **Disabled state:** 45% opacity, no hover. A disabled primary action should sit next to a one-line caption saying what unblocks it.
 
 ### Chips
 - **CourseChip:** Card Paper background, 6px corner radius, 1px Hairline border, internal padding 8px / 12px, a 3px left rail in the course's subject color (from `CourseClassificationPalette`). **Hover:** a 7% wash of the subject color, border at 35% of the subject color, 1px lift, soft subject-colored shadow (150ms ease-out), and a small Hard Stop Red trash button on a Card Paper circle in the top-right corner. **Press:** scales to 98%. **Dragging:** the floating copy tilts -1.5°, scales to 103%, and casts a deeper neutral shadow; the origin slot keeps a 35% ghost with a dashed border. When a category filter is active in My Plan, contributing chips gain a 2px Royal Purple ring; a chip that the current drag would break gains a 2px Hard Stop Red ring at 45% instead.
@@ -242,6 +250,13 @@ Flat with one whisper of shadow. Cards sit on the Paper canvas with a 1px Hairli
 - **StatusPill:** Filled 999px pill, padding 3px / 8px, 11px text. Tones: Verified Green (success), Advisor Amber (warning), Hard Stop Red (danger), Royal Purple (info), Hairline-50% (neutral). Optional 9px bold leading SF Symbol.
 - **Schedule drag:** while a block is dragged, every semester column shows what a drop there would do: a tinted border (Verified Green 40% fine, Advisor Amber 45% plus 4% fill for a coreq issue, Hard Stop Red 40% plus 4% fill for a broken prereq or unoffered term), a verdict StatusPill in place of the course count, and a one-line reason in place of the credit total. The origin column reads "Current spot". A 3px Royal Purple insertion line with a leading dot marks the drop point and the column's blocks open a gap (spring, response 0.25, damping 0.85). Reduce Motion drops the tilt, lift, and gap; the line and verdicts stay. At rest, a semester's border takes its worst active warning's color (same palette, 1pt, no fill); drag verdicts replace it while dragging. Warnings appear as a one-line tag under a course's title (or beside a semester's credit total for load) that opens a popover with the explanation, catalog caveats, a one-click fix, and Keep anyway.
 - **Semester add and delete:** the board's row of semesters is centered when it fits the window and scrolls from the leading edge when it doesn't. A dashed Royal Purple column after the last semester adds the next term; a slim dashed strip between two semesters refills a skipped term. An empty semester shows a small Hard Stop Red trash button in place of its course count. Add controls fade to 35% and ignore clicks while a block is dragged, so columns never shift under the cursor.
+
+### Setup sheet
+- **Layout:** two panes, 880px minimum. A 248px Paper sidebar holds the step rail and, below a Hairline, "Your plan so far": one row per answer (icon, Caption label, Label value) that fills in as the student goes. Workload joins the summary only on its own step, since it has a default. The main pane is Card Paper: a "Step N of M" Small eyebrow, the step's Title and Body helper, the step body, and a footer.
+- **Step rail:** 24px numbered markers joined by 2px connectors. Done steps are a filled Royal Purple circle with a white check and a purple connector below; they are clickable and jump back. The current step is a Royal Purple Soft circle with a 2px purple ring and a Body Emphasized label. Upcoming steps are an Ink Stroke outline with Quiet Gray text.
+- **Option cards and rows** (`SetupOptionStyle`): cards for small choice sets (year, workload), borderless rows for long lists (majors, minors). Hover washes 55% Royal Purple Soft and darkens the border; press dips to 98.5%; selected takes the Royal Purple Soft fill, a 1.5px Royal Purple edge, and a Madison Gold check that springs in. Purple content inside an option reads the `setupOptionHighlighted` environment value and turns gold while the wash shows.
+- **Footer:** Back (secondary, Cmd-[) on the left; on the right an optional caption explaining a blocked action or the latest error, Skip (tertiary) on optional steps that are still empty, and the step's primary action (Return).
+- **Motion:** the step body slides 32px in from the direction of travel and fades, while the outgoing step fades out in 120ms. Under Reduce Motion both are a plain fade. Picking a year holds 350ms on the selected card before moving on.
 
 ### Cards
 - **Corner Style:** 12px (gently curved).

@@ -925,6 +925,7 @@ final class PlanStore: ObservableObject {
 
     func resetAppData() {
         do {
+            Self.flushPendingAutosaves()
             try catalogRepository.resetAppData()
             clearScheduleHistory()
             plan = SavedStudentPlan()
@@ -983,12 +984,29 @@ final class PlanStore: ObservableObject {
         }
     }
 
+    /// Serial queue for autosave disk writes. Autosave runs on nearly every
+    /// edit, so the write happens off the main thread and `savedPlans` is
+    /// updated in memory instead of re-reading every plan file from disk.
+    private nonisolated static let autosaveQueue = DispatchQueue(label: "edu.jmu.courseplanner.autosave", qos: .utility)
+
+    /// Blocks until queued autosave writes reach disk. Called on quit.
+    nonisolated static func flushPendingAutosaves() {
+        autosaveQueue.sync {}
+    }
+
     private func autosave() {
         var autosaved = plan
         autosaved.name = "Autosave"
         autosaved.updatedAt = Date()
-        try? save(autosaved)
-        savedPlans = (try? loadPlans()) ?? savedPlans
+        if let url = try? planURL(for: autosaved), let data = try? encodedPlan(autosaved) {
+            Self.autosaveQueue.async { try? data.write(to: url, options: .atomic) }
+        }
+        if let index = savedPlans.firstIndex(where: { $0.id == autosaved.id }) {
+            savedPlans[index] = autosaved
+        } else {
+            savedPlans.append(autosaved)
+        }
+        savedPlans.sort { $0.updatedAt > $1.updatedAt }
     }
 
     private func plansDirectory() throws -> URL {
@@ -998,11 +1016,21 @@ final class PlanStore: ObservableObject {
     }
 
     private func save(_ savedPlan: SavedStudentPlan) throws {
+        // Autosave shares this plan's file; let queued writes land first so
+        // they cannot overwrite this one.
+        Self.flushPendingAutosaves()
+        try encodedPlan(savedPlan).write(to: planURL(for: savedPlan), options: .atomic)
+    }
+
+    private func planURL(for savedPlan: SavedStudentPlan) throws -> URL {
+        try plansDirectory().appending(path: "\(savedPlan.id.uuidString).jmuplan.json")
+    }
+
+    private func encodedPlan(_ savedPlan: SavedStudentPlan) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        let url = try plansDirectory().appending(path: "\(savedPlan.id.uuidString).jmuplan.json")
-        try encoder.encode(savedPlan).write(to: url, options: .atomic)
+        return try encoder.encode(savedPlan)
     }
 
     private func loadPlans() throws -> [SavedStudentPlan] {

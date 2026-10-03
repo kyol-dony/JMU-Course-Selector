@@ -12,10 +12,12 @@ struct InteractiveDisclosureGroup<Label: View, Content: View>: View {
 
     init(
         contentIndent: CGFloat = DesignTokens.Spacing.l,
+        initiallyExpanded: Bool = false,
         @ViewBuilder content: @escaping () -> Content,
         @ViewBuilder label: @escaping () -> Label
     ) {
         self.contentIndent = contentIndent
+        _isExpanded = State(initialValue: initiallyExpanded)
         self.content = content
         self.label = label
     }

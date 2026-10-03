@@ -37,4 +37,12 @@ struct SetupFlow {
     mutating func importReady() { if step == .transcript { go(.review) } }
     mutating func reviewConfirmed() { if step == .review { go(.workload) } }
     mutating func back() { if let previous = visited.popLast() { step = previous } }
+    /// Returns to a step already visited, dropping it and everything after it from history.
+    mutating func jumpBack(to target: SetupStep) {
+        guard let index = visited.lastIndex(of: target) else { return }
+        visited.removeSubrange(index...)
+        step = target
+    }
+    /// One-based position of the current step within the route.
+    var position: Int { (route.firstIndex(of: step) ?? 0) + 1 }
 }

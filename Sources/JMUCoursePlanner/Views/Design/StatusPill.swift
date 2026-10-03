@@ -33,7 +33,7 @@ struct StatusPill: View {
         case .success: DesignTokens.Colors.success
         case .warning: DesignTokens.Colors.warning
         case .danger: DesignTokens.Colors.danger
-        case .info: DesignTokens.Colors.brandGold
+        case .info: DesignTokens.Colors.brandGoldInk
         case .neutral: DesignTokens.Colors.textSecondary
         }
     }

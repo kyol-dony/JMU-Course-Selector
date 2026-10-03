@@ -6,6 +6,8 @@ struct TranscriptCourseRow: View {
     var onReplace: () -> Void
     var onRetain: () -> Void
     var onRemove: () -> Void
+    /// Briefly outlines the row after a notice link scrolls to it.
+    var isFlashed = false
     private var amount: Binding<Double> {
         Binding(get: { record.status == .inProgress ? record.attemptedCredits : record.earnedCredits }, set: { value in
             if record.status == .inProgress { record.attemptedCredits = value } else { record.earnedCredits = value }
@@ -16,7 +18,7 @@ struct TranscriptCourseRow: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(record.code).font(DesignTokens.Typography.bodyEmphasized).foregroundStyle(DesignTokens.Colors.textPrimary)
+                        Text(JMUTranscriptParser.displayCode(record.code)).font(DesignTokens.Typography.bodyEmphasized).foregroundStyle(DesignTokens.Colors.textPrimary)
                         Text(record.title).font(DesignTokens.Typography.caption).foregroundStyle(DesignTokens.Colors.textPrimary)
                         Text(record.source.label + (record.grade.map { " · Grade \($0)" } ?? "")).font(DesignTokens.Typography.caption).foregroundStyle(DesignTokens.Colors.textSecondary)
                         if let term = record.printedTerm { Text(term).font(DesignTokens.Typography.caption).foregroundStyle(DesignTokens.Colors.textSecondary) }
@@ -46,6 +48,13 @@ struct TranscriptCourseRow: View {
                 }
             }
         }
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
+                .strokeBorder(DesignTokens.Colors.danger, lineWidth: 2)
+                .opacity(isFlashed ? 1 : 0)
+                .allowsHitTesting(false)
+        )
+        .animation(.easeOut(duration: isFlashed ? 0.15 : 0.6), value: isFlashed)
         .onChange(of: record.status) { old, status in
             if status == .earned && record.earnedCredits == 0 { record.earnedCredits = record.attemptedCredits }
             if status == .inProgress && record.attemptedCredits == 0 { record.attemptedCredits = record.earnedCredits }

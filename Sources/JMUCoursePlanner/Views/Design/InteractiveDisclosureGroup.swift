@@ -3,8 +3,18 @@ import SwiftUI
 /// Disclosure row with a full-width hit target. Native macOS disclosure groups
 /// only toggle reliably from the chevron, which makes text labels feel inert.
 struct InteractiveDisclosureGroup<Label: View, Content: View>: View {
-    @State private var isExpanded = false
+    @State private var storedExpanded = false
     @State private var isHovering = false
+    /// When set, the parent owns the expanded state (e.g. to open the group
+    /// before scrolling to something inside it).
+    private let externalExpanded: Binding<Bool>?
+
+    private var isExpanded: Bool {
+        get { externalExpanded?.wrappedValue ?? storedExpanded }
+        nonmutating set {
+            if let externalExpanded { externalExpanded.wrappedValue = newValue } else { storedExpanded = newValue }
+        }
+    }
 
     private let contentIndent: CGFloat
     private let label: () -> Label
@@ -13,11 +23,13 @@ struct InteractiveDisclosureGroup<Label: View, Content: View>: View {
     init(
         contentIndent: CGFloat = DesignTokens.Spacing.l,
         initiallyExpanded: Bool = false,
+        isExpanded: Binding<Bool>? = nil,
         @ViewBuilder content: @escaping () -> Content,
         @ViewBuilder label: @escaping () -> Label
     ) {
         self.contentIndent = contentIndent
-        _isExpanded = State(initialValue: initiallyExpanded)
+        _storedExpanded = State(initialValue: initiallyExpanded)
+        externalExpanded = isExpanded
         self.content = content
         self.label = label
     }

@@ -13,6 +13,24 @@ struct ScheduleBoardView: View {
     @State private var highlightedSemester: SemesterIdentity?
     @State private var scrollRequest: ScrollRequest?
 
+    @State private var boundarySheetPresented = false
+    @State private var regeneration: RegenerationPresentation?
+    @State private var regenerationTask: Task<Void, Never>?
+    @State private var suffixOpacity = 1.0
+    @State private var boardSize = CGSize.zero
+    @State private var retainedBoardSize = CGSize.zero
+    @State private var completionMessage: String?
+
+    private struct RegenerationPresentation {
+        let id = UUID()
+        let planID: UUID
+        let pathwayID: String
+        let cutoff: SemesterIdentity
+        var pathway: Pathway
+    }
+    private var editingLocked: Bool { !store.canEditSchedule || regeneration != nil }
+    private var displayedPathway: Pathway? { regeneration?.pathway ?? store.activePathway }
+
     private struct ScrollRequest: Equatable {
         let id = UUID()
         var semester: SemesterIdentity
@@ -38,7 +56,17 @@ struct ScheduleBoardView: View {
         }
         .overlay(alignment: .bottom) { ScheduleToast() }
         .animation(DesignTokens.Motion.hover, value: store.lastScheduleChange)
+        .sheet(isPresented: $boundarySheetPresented) {
+            if let pathway = store.activePathway {
+                RegenerationBoundarySheet(pathway: pathway, onConfirm: beginRegeneration)
+            }
+        }
         .onAppear { store.undoManager = undoManager }
+        .onChange(of: store.plan.id) { _, _ in cancelRegeneration(); retainedBoardSize = .zero }
+        .onChange(of: store.activePathway?.id) { _, _ in cancelRegeneration(); retainedBoardSize = .zero }
+        .onChange(of: editingLocked) { _, locked in
+            if locked { drag.reset(); presentedWarningID = nil }
+        }
         .onChange(of: undoManager) { _, newValue in store.undoManager = newValue }
         .onChange(of: store.verdictRevision) { _, _ in
             if drag.isDragging {
@@ -69,6 +97,7 @@ struct ScheduleBoardView: View {
             }
         }
         .onDisappear {
+            cancelRegeneration()
             drag.reset()
             // A toast left over from another visit could offer Undo for a
             // change that is no longer on top of the undo stack.
@@ -82,12 +111,13 @@ struct ScheduleBoardView: View {
                 pathways: store.plan.pathways,
                 selection: Binding(
                     get: { store.plan.activePathwayID ?? store.plan.pathways.first?.id ?? "" },
-                    set: { store.plan.activePathwayID = $0 }
+                    set: { if !editingLocked { store.plan.activePathwayID = $0 } }
                 )
             )
             // Takes space before the spacer, so labels only shorten when the
             // toolbar is genuinely tight.
             .layoutPriority(1)
+            .disabled(editingLocked)
 
             Spacer()
 
@@ -108,7 +138,13 @@ struct ScheduleBoardView: View {
                 .buttonStyle(.dtSecondary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .disabled(store.scheduleGenerationProgress != nil)
+                .disabled(editingLocked)
+            Button("Regenerate after…") { boundarySheetPresented = true }
+                .buttonStyle(.dtSecondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .disabled(editingLocked || store.activePathway?.semesters.isEmpty != false)
+                .help("Preserve the selected semester and rebuild the rest of this pathway")
         }
         .padding(.horizontal, DesignTokens.Spacing.xl)
         .padding(.vertical, DesignTokens.Spacing.m)
@@ -128,11 +164,11 @@ struct ScheduleBoardView: View {
             ScrollViewReader { proxy in
                 ScrollView([.horizontal, .vertical]) {
                     let gaps = Dictionary(
-                        (store.activePathway?.semesterGaps ?? []).map { ($0.after, $0) },
+                        (displayedPathway?.semesterGaps ?? []).map { ($0.after, $0) },
                         uniquingKeysWith: { first, _ in first }
                     )
                     HStack(alignment: .top, spacing: DesignTokens.Spacing.m) {
-                        ForEach(store.activePathway?.semesters ?? []) { semester in
+                        ForEach(displayedPathway?.semesters ?? []) { semester in
                             SemesterColumnView(
                                 drag: drag,
                                 semester: semester,
@@ -147,21 +183,39 @@ struct ScheduleBoardView: View {
                                 onEndDrag: handleEnd
                             )
                             .id(semester.id)
+                            .opacity(isFuture(semester.id) ? suffixOpacity : 1)
+                            .disabled(editingLocked)
+                            .accessibilityHidden(isFuture(semester.id) && suffixOpacity == 0)
+                            .overlay(alignment: .topLeading) {
+                                if semester.id == firstDisplayedFuture { regenerationStatus }
+                            }
                             if let missing = gaps[semester.id]?.missing.first {
                                 addSlot(missing, style: .strip)
+                                    .opacity(isFuture(missing) ? suffixOpacity : 1)
                             }
                         }
-                        if let pathway = store.activePathway {
+                        if regeneration != nil && firstDisplayedFuture == nil { regenerationStatus }
+                        if let message = completionMessage {
+                            Text(message).foregroundStyle(.secondary)
+                                .padding(DesignTokens.Spacing.l).frame(width: 270)
+                        }
+                        if let pathway = displayedPathway {
                             addSlot(pathway.nextSemester, style: .column)
+                                .opacity(regeneration == nil ? 1 : 0)
                         }
                     }
                     .padding(DesignTokens.Spacing.xl)
-                    // Centered when the semesters fit the window; scrolls
-                    // from the leading edge when they don't.
-                    .frame(minWidth: viewport.size.width, alignment: .center)
-                    .animation(reduceMotion ? nil : DesignTokens.Motion.settle, value: store.activePathway?.semesters.map(\.id))
+                    // Leading layout and retained extent prevent anchor recentering
+                    // and scroll clamping when a shorter suffix replaces the old one.
+                    .frame(minWidth: max(viewport.size.width, retainedBoardSize.width),
+                           minHeight: retainedBoardSize.height, alignment: .topLeading)
+                    .background(GeometryReader { geometry in
+                        Color.clear.preference(key: RegenerationBoardSizeKey.self, value: geometry.size)
+                    })
+                    .animation(reduceMotion || regeneration != nil ? nil : DesignTokens.Motion.settle, value: store.activePathway?.semesters.map(\.id))
                 }
                 .coordinateSpace(name: ScheduleBoardSpace.name)
+                .onPreferenceChange(RegenerationBoardSizeKey.self) { boardSize = $0 }
                 .onPreferenceChange(ScheduleItemFramesKey.self) { frames in
                     itemFrames = frames
                 }
@@ -193,6 +247,79 @@ struct ScheduleBoardView: View {
         }
     }
 
+    private func isFuture(_ semester: SemesterIdentity) -> Bool {
+        regeneration.map { semester > $0.cutoff } ?? false
+    }
+    private var firstDisplayedFuture: SemesterIdentity? {
+        guard let regeneration else { return nil }
+        return regeneration.pathway.semesters.first { $0.id > regeneration.cutoff }?.id
+    }
+    @ViewBuilder private var regenerationStatus: some View {
+        if let regeneration, suffixOpacity == 0 {
+            PartialRegenerationStatusView(
+                state: store.partialRegeneration ?? .init(
+                    operationID: regeneration.id, pathwayID: regeneration.pathwayID, cutoff: regeneration.cutoff,
+                    progress: .init(current: 0, total: 1, pathwayName: "Preparing")),
+                onCancel: cancelRegeneration)
+        }
+    }
+    private func beginRegeneration(after cutoff: SemesterIdentity) {
+        guard !editingLocked, let source = store.activePathway else { return }
+        let originalPlan = store.plan
+        let presentation = RegenerationPresentation(planID: originalPlan.id, pathwayID: source.id, cutoff: cutoff, pathway: source)
+        completionMessage = nil
+        drag.reset()
+        retainedBoardSize = boardSize
+        regeneration = presentation
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { suffixOpacity = 0 }
+        regenerationTask = Task { @MainActor in
+            defer {
+                if regeneration?.id == presentation.id {
+                    regeneration = nil
+                    suffixOpacity = 1
+                    regenerationTask = nil
+                }
+            }
+            // Finish hiding before dispatch: even a fast result gets a complete
+            // fade-out/reveal cycle. Reduce Motion skips this presentation wait.
+            if !reduceMotion {
+                do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
+            }
+            guard !Task.isCancelled, store.plan == originalPlan else { return }
+            await store.regenerateActivePathway(after: cutoff)
+            guard !Task.isCancelled, regeneration?.id == presentation.id,
+                  store.plan.id == originalPlan.id, store.activePathway?.id == source.id else { return }
+            // Context changes cancel generation. Do not mistake them for a
+            // successful no-op or show completion against a different plan.
+            var expectedContext = originalPlan
+            expectedContext.pathways = store.plan.pathways
+            expectedContext.overrides = store.plan.overrides
+            guard store.plan == expectedContext else { return }
+            regeneration?.pathway = store.activePathway ?? source
+            if store.errorMessage == nil, store.activePathway?.semesters.contains(where: { $0.id > cutoff }) == false {
+                completionMessage = "No further semesters are needed."
+            }
+            withAnimation(reduceMotion ? nil : .easeIn(duration: 0.22)) { suffixOpacity = 1 }
+            if !reduceMotion {
+                do { try await Task.sleep(for: .milliseconds(220)) } catch { return }
+            }
+            if completionMessage != nil {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(4))
+                    if store.plan.id == presentation.planID, regeneration == nil { completionMessage = nil }
+                }
+            }
+        }
+    }
+    private func cancelRegeneration() {
+        regenerationTask?.cancel()
+        regenerationTask = nil
+        store.cancelPartialRegeneration()
+        regeneration = nil
+        suffixOpacity = 1
+        completionMessage = nil
+    }
+
     /// Add controls stay in the layout while dragging (so columns never shift
     /// under the cursor) but fade and ignore clicks.
     private func addSlot(_ semester: SemesterIdentity, style: AddSemesterSlot.Style) -> some View {
@@ -204,7 +331,8 @@ struct ScheduleBoardView: View {
             }
         }
         .opacity(drag.isDragging ? 0.35 : 1)
-        .allowsHitTesting(!drag.isDragging)
+        .allowsHitTesting(!drag.isDragging && !editingLocked)
+        .disabled(editingLocked)
         .transition(.opacity)
     }
 
@@ -257,7 +385,7 @@ struct ScheduleBoardView: View {
     }
 
     private func beginDrag(itemID: String, semester: SemesterIdentity, index: Int, start: CGPoint) {
-        guard let pathway = store.activePathway, let frame = itemFrames[itemID] else { return }
+        guard !editingLocked, let pathway = store.activePathway, let frame = itemFrames[itemID] else { return }
         drag.begin(
             itemID: itemID,
             origin: semester,
@@ -335,4 +463,10 @@ private struct FollowPointer: ViewModifier {
             y: pointer.location.y - grabOffset.height
         )
     }
+}
+
+
+private struct RegenerationBoardSizeKey: PreferenceKey {
+    static let defaultValue = CGSize.zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
 }

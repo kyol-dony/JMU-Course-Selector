@@ -267,7 +267,7 @@ struct SetupSheet: View {
             }
             .buttonStyle(.dtPrimary)
             .keyboardShortcut(.defaultAction)
-            .disabled(!store.majorSelectionComplete || store.scheduleGenerationProgress != nil)
+            .disabled(!store.majorSelectionComplete || !store.canEditSchedule)
         default:
             Button {
                 navigate { $0.advance(majorSelectionComplete: store.majorSelectionComplete) }

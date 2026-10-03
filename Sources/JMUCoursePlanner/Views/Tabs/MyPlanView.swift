@@ -356,7 +356,7 @@ struct MyPlanView: View {
                 .buttonStyle(.dtTertiary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .disabled(store.scheduleGenerationProgress != nil)
+                .disabled(!store.canEditSchedule)
             Spacer()
         }
     }

@@ -52,6 +52,20 @@ public enum AcademicCreditCalculator {
     public static func hours(in semester: SemesterPlan, catalog: Catalog) -> Double {
         Set(semester.courseIDs).reduce(0) { $0 + (semester.creditOverrides[$1] ?? Double(catalog.coursesByID[$1]?.credits ?? 0)) }
     }
+    /// Prior awards and planned rows contribute once. Placeholder hours reserve
+    /// graduation/standing capacity, never concrete-course equivalence.
+    public static func projectedHours(in semesters: [SemesterPlan], placeholders: [String: PlaceholderSpec],
+                                      transferCredits: [TransferCredit], catalog: Catalog) -> Double {
+        var seen = Set(transferCredits.flatMap(\.courseIDs))
+        var result = transferCredits.reduce(0.0) { $0 + $1.credits }
+        for semester in semesters {
+            for id in semester.courseIDs where seen.insert(id).inserted {
+                result += semester.creditOverrides[id] ?? placeholders[id]?.credits ?? Double(catalog.coursesByID[id]?.credits ?? 0)
+            }
+        }
+        return result
+    }
+
     public static func totals(history: AcademicHistory, pathway: Pathway, catalog: Catalog) -> AcademicCreditTotals {
         var seen = history.completedCourseIDs
         var projected = history.earnedHours

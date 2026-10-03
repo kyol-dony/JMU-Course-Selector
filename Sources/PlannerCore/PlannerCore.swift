@@ -840,9 +840,46 @@ public struct ScheduleGenerator: Sendable {
         earnedHoursAtStart: Double? = nil,
         progress: (@Sendable (Int, Int, String) -> Void)? = nil
     ) throws -> [Pathway] {
+        let context = try preservedSemester.map {
+            try AnchoredScheduleContext(source: Pathway(id: "", name: "", semesters: [$0]), through: $0.id)
+        }
+        return try generate(for: programID, concentrationID: concentrationID, workload: workload,
+                            transferCredits: transferCredits, starting: start, additionalPrograms: additionalPrograms,
+                            context: context, source: nil, strategy: nil, earnedHoursAtStart: earnedHoursAtStart, progress: progress)
+    }
+
+    public func regeneratePathway(
+        from source: Pathway,
+        through cutoff: SemesterIdentity,
+        for programID: String,
+        concentrationID: String? = nil,
+        strategy: ScheduleGenerationStrategy,
+        workload: WorkloadPreference,
+        transferCredits: [TransferCredit],
+        additionalPrograms: [Program] = [],
+        earnedHoursAtStart: Double? = nil,
+        progress: (@Sendable (Int, Int, String) -> Void)? = nil
+    ) throws -> Pathway {
+        let context = try AnchoredScheduleContext(source: source, through: cutoff)
+        return try generate(for: programID, concentrationID: concentrationID, workload: workload,
+                            transferCredits: transferCredits, starting: context.startingSemester,
+                            additionalPrograms: additionalPrograms, context: context, source: source,
+                            strategy: strategy, earnedHoursAtStart: earnedHoursAtStart, progress: progress)[0]
+    }
+
+    private func generate(
+        for programID: String, concentrationID: String?, workload: WorkloadPreference,
+        transferCredits: [TransferCredit], starting start: SemesterIdentity, additionalPrograms: [Program],
+        context: AnchoredScheduleContext?, source: Pathway?, strategy: ScheduleGenerationStrategy?,
+        earnedHoursAtStart: Double?, progress: (@Sendable (Int, Int, String) -> Void)?
+    ) throws -> [Pathway] {
+        try Task.checkCancellation()
+        let prefix = context?.semesters ?? []
+        let preservedSemester = prefix.first
+        let reservations = source == nil ? nil : context
         let program = try programForScheduling(programID, concentrationID: concentrationID)
-        let completed = Set(transferCredits.flatMap(\.courseIDs)).union(preservedSemester?.courseIDs ?? [])
-        var placeholders: [String: PlaceholderSpec] = [:]
+        let completed = Set(transferCredits.flatMap(\.courseIDs)).union(context?.completedCourseIDs ?? [])
+        var placeholders = context?.placeholders ?? [:]
         // Build one course list per program so the merge step below can
         // interleave them. Appending all extras after the primary made the
         // scheduler greedy-pack primary courses in early semesters and shove
@@ -854,19 +891,32 @@ public struct ScheduleGenerator: Sendable {
         // an overlap is scheduled only once, while each program's requirement
         // still treats it as fulfilled.
         var plannedCourseIDs: Set<String> = []
+        // Mandatory concrete work from any declared program can also fulfill
+        // a selective pool. Reserve that work before selecting elective slots.
+        let anticipatedCourses: Set<String> = source == nil ? [] : Set(([program] + additionalPrograms).flatMap { p in
+            p.requirements.filter { category in
+                let name = category.name.lowercased()
+                return name.contains("required") || !(name.contains("elective") || name.contains("choose") || name.contains("select"))
+            }.flatMap { $0.courseOptions.filter { $0.count == 1 }.flatMap { $0 } }
+        })
         var primaryList = requiredCourseIDs(
             for: program,
             completed: completed,
             plannedCourseIDs: &plannedCourseIDs,
-            placeholders: &placeholders
+            placeholders: &placeholders,
+            anchors: reservations,
+            anticipatedCourses: anticipatedCourses
         )
         var extraLists: [[String]] = []
         for extra in additionalPrograms {
+            try Task.checkCancellation()
             extraLists.append(requiredCourseIDs(
                 for: extra,
                 completed: completed,
                 plannedCourseIDs: &plannedCourseIDs,
-                placeholders: &placeholders
+                placeholders: &placeholders,
+                anchors: reservations,
+                anticipatedCourses: anticipatedCourses
             ))
         }
         // JMU degrees require 120 CRH total. If the primary major's declared
@@ -875,24 +925,30 @@ public struct ScheduleGenerator: Sendable {
         // down). Credits a minor / second major adds beyond the primary major
         // fill that same gap, so they shrink the top-up instead of stacking
         // on top of it. Secondary programs are never topped up themselves.
-        let originalGap = openElectiveGap(for: program, additionalPrograms: additionalPrograms)
-        let general = AcademicCreditCalculator.generalHours(credits: transferCredits, current: preservedSemester, programs: [program] + additionalPrograms, catalog: catalog)
-        let shortfall = AcademicCreditCalculator.requirementCreditShortfall(credits: transferCredits, current: preservedSemester, programs: [program] + additionalPrograms, catalog: catalog)
-        let gap = max(0, Double(originalGap) - general + shortfall)
-        primaryList.append(contentsOf: openElectivePlaceholders(gap: gap, placeholders: &placeholders))
+        try Task.checkCancellation()
+        // Both entry points share selection, lab expansion, variant ordering and
+        // semester construction. Full generation retains its legacy gap allocation.
+        if source == nil {
+            let originalGap = openElectiveGap(for: program, additionalPrograms: additionalPrograms)
+            let general = AcademicCreditCalculator.generalHours(credits: transferCredits, current: preservedSemester, programs: [program] + additionalPrograms, catalog: catalog)
+            let shortfall = AcademicCreditCalculator.requirementCreditShortfall(credits: transferCredits, current: preservedSemester, programs: [program] + additionalPrograms, catalog: catalog)
+            primaryList.append(contentsOf: openElectivePlaceholders(gap: max(0, Double(originalGap) - general + shortfall), placeholders: &placeholders))
+        }
         perProgramLists.append(primaryList)
         perProgramLists.append(contentsOf: extraLists)
-        let required = withLabs(
-            Self.interleaveByProportion(perProgramLists),
-            completed: completed,
+        var required = withLabs(
+            Self.interleaveByProportion(perProgramLists), completed: completed,
             placeholders: &placeholders,
-            labPairing: LabPairing(catalog: catalog, activeProgramTitle: program.title)
+            labPairing: LabPairing(catalog: catalog, activeProgramTitle: program.title),
+            reservedIDs: context?.reservedPlaceholderIDs ?? []
         )
-        guard !required.isEmpty else {
-            return (1...3).map { index in
-                Pathway(id: "path-\(index)", name: pathwayName(index), semesters: preservedSemester.map { [$0] } ?? [])
-            }
+        if source != nil, program.kind == .major,
+           program.requirements.filter({ !$0.courseOptions.isEmpty }).reduce(0, { $0 + $1.requiredCredits }) >= 60 {
+            let prefixHours = AcademicCreditCalculator.projectedHours(in: prefix, placeholders: placeholders, transferCredits: transferCredits, catalog: catalog)
+            let suffixHours = Set(required).reduce(0.0) { $0 + credits(for: $1, placeholders: placeholders) }
+            required += openElectivePlaceholders(gap: max(0, 120 - prefixHours - suffixHours), placeholders: &placeholders, reservedIDs: context?.reservedPlaceholderIDs ?? [])
         }
+        try Task.checkCancellation()
 
         let genEdCourseIDs: Set<String> = Set(
             program.requirements
@@ -929,22 +985,31 @@ public struct ScheduleGenerator: Sendable {
         var pathways: [Pathway] = []
         let variants = [required, majorFirst, genEdFirst]
 
-        for (index, variant) in variants.enumerated() {
-            progress?(index + 1, variants.count, pathwayName(index + 1))
+        let selectedIndices = strategy.map { [ScheduleGenerationStrategy.allCases.firstIndex(of: $0)!] } ?? Array(variants.indices)
+        for (progressIndex, index) in selectedIndices.enumerated() {
+            let variant = variants[index]
+            try Task.checkCancellation()
+            progress?(progressIndex + 1, selectedIndices.count, source?.name ?? pathwayName(index + 1))
+            try Task.checkCancellation()
             let semesters = try buildSemesters(
                 courseIDs: variant,
                 completedAtStart: completed,
                 workload: workload,
-                starting: preservedSemester?.id.next ?? start,
+                starting: context?.startingSemester ?? start,
                 placeholders: placeholders,
                 activeProgramTitle: program.title,
-                earnedHoursAtStart: earnedHoursAtStart.map { $0 + (preservedSemester.map { AcademicCreditCalculator.hours(in: $0, catalog: catalog) } ?? 0) }
+                earnedHoursAtStart: earnedHoursAtStart.map { initial in
+                    initial + AcademicCreditCalculator.projectedHours(in: prefix, placeholders: placeholders, transferCredits: transferCredits, catalog: catalog) - transferCredits.reduce(0.0) { $0 + $1.credits }
+                },
+                standingSemesterOffset: source == nil ? 0 : context?.standingSemesterOffset ?? 0,
+                preferenceSemesterOffset: source == nil ? 0 : context?.preferenceSemesterOffset ?? 0
             )
             pathways.append(Pathway(
-                id: "path-\(index + 1)",
-                name: pathwayName(index + 1),
-                semesters: (preservedSemester.map { [$0] } ?? []) + semesters,
-                placeholders: placeholders
+                id: source?.id ?? "path-\(index + 1)",
+                name: source?.name ?? pathwayName(index + 1),
+                semesters: prefix + semesters,
+                placeholders: placeholders,
+                resolvedPlaceholders: context?.resolvedPlaceholders ?? [:]
             ))
         }
 
@@ -995,7 +1060,9 @@ public struct ScheduleGenerator: Sendable {
         for program: Program,
         completed: Set<String>,
         plannedCourseIDs: inout Set<String>,
-        placeholders: inout [String: PlaceholderSpec]
+        placeholders: inout [String: PlaceholderSpec],
+        anchors: AnchoredScheduleContext? = nil,
+        anticipatedCourses: Set<String> = []
     ) -> [String] {
         let completedClusterTags = Set(completed.compactMap { TransferCreditMapper.genEdCreditClusterTag(for: $0) })
         // Seed the local de-duplication set with courses chosen for earlier
@@ -1004,6 +1071,7 @@ public struct ScheduleGenerator: Sendable {
         var seen = plannedCourseIDs
         var result: [String] = []
         for category in program.requirements {
+            if Task.isCancelled { break }
             let lowerName = category.name.lowercased()
             // Categories whose heading carries "required" are mandatory in
             // full — every option must reach the schedule. Bypass the Gen Ed
@@ -1020,11 +1088,12 @@ public struct ScheduleGenerator: Sendable {
                appendSelectableElectivePlaceholders(
                 for: category,
                 completed: completed,
-                plannedCourseIDs: plannedCourseIDs,
+                plannedCourseIDs: plannedCourseIDs.union(anticipatedCourses),
                 seen: &seen,
                 result: &result,
                 placeholders: &placeholders,
-                fallbackOptionCredits: fallbackOptionCredits
+                fallbackOptionCredits: fallbackOptionCredits,
+                anchors: anchors
             ) {
                 continue
             }
@@ -1044,6 +1113,11 @@ public struct ScheduleGenerator: Sendable {
                 if hasCreditLimit && plannedCredits >= category.requiredCredits { break }
 
                 let optionCredits = credits(for: option, fallback: fallbackOptionCredits)
+                let slotID = PathwayPlaceholder.id(categoryID: category.id, optionIndex: idx)
+                if anchors?.reservedPlaceholderIDs.contains(slotID) == true {
+                    plannedCredits += optionCredits
+                    continue
+                }
                 if option.contains(where: completed.contains) || option.contains(where: seen.contains) {
                     plannedCredits += optionCredits
                     continue
@@ -1082,7 +1156,8 @@ public struct ScheduleGenerator: Sendable {
         seen: inout Set<String>,
         result: inout [String],
         placeholders: inout [String: PlaceholderSpec],
-        fallbackOptionCredits: Int
+        fallbackOptionCredits: Int,
+        anchors: AnchoredScheduleContext? = nil
     ) -> Bool {
         guard category.name.lowercased().contains("elective"),
               category.requiredCredits > 0,
@@ -1099,7 +1174,10 @@ public struct ScheduleGenerator: Sendable {
         let fulfilledCredits = uniqueCourseIDs(category.courseOptions.flatMap { $0 })
             .filter(satisfiedCourseIDs.contains)
             .reduce(0) { $0 + (catalog.coursesByID[$1]?.credits ?? fallbackOptionCredits) }
-        let remainingCredits = max(category.requiredCredits - fulfilledCredits, 0)
+        let reservedHours = anchors?.placeholders.filter {
+            $0.value.categoryID == category.id && anchors?.resolvedPlaceholders[$0.key] == nil
+        }.values.reduce(0.0) { $0 + $1.credits } ?? 0
+        let remainingCredits = max(Double(category.requiredCredits - fulfilledCredits) - reservedHours, 0)
         guard remainingCredits > 0 else { return true }
 
         let alternates = uniqueCourseIDs(category.courseOptions.flatMap { $0 })
@@ -1109,14 +1187,14 @@ public struct ScheduleGenerator: Sendable {
         let slotCredits = max(optionCredits.max() ?? fallbackOptionCredits, 1)
         let slotCount = max(Int(ceil(Double(remainingCredits) / Double(slotCredits))), 1)
         for slot in 0..<slotCount {
-            let id = PathwayPlaceholder.id(categoryID: category.id, optionIndex: slot)
+            let id = unusedPlaceholderID(categoryID: category.id, startingAt: slot, placeholders: placeholders, reservedIDs: anchors?.reservedPlaceholderIDs ?? [])
             guard seen.insert(id).inserted else { continue }
             result.append(id)
             placeholders[id] = PlaceholderSpec(
                 categoryID: category.id,
                 categoryName: category.name,
                 alternates: alternates,
-                credits: min(slotCredits, max(remainingCredits - (slot * slotCredits), 1))
+                credits: min(Double(slotCredits), remainingCredits - Double(slot * slotCredits))
             )
         }
         return true
@@ -1140,9 +1218,10 @@ public struct ScheduleGenerator: Sendable {
         _ courseIDs: [String],
         completed: Set<String>,
         placeholders: inout [String: PlaceholderSpec],
-        labPairing: LabPairing
+        labPairing: LabPairing,
+        reservedIDs: Set<String> = []
     ) -> [String] {
-        var listed = Set(courseIDs)
+        var listed = Set(courseIDs).union(reservedIDs)
         var result: [String] = []
         for courseID in courseIDs {
             // A lab listed on its own ("choose two laboratory courses") is
@@ -1190,7 +1269,9 @@ public struct ScheduleGenerator: Sendable {
         starting start: SemesterIdentity,
         placeholders: [String: PlaceholderSpec] = [:],
         activeProgramTitle: String? = nil,
-        earnedHoursAtStart: Double? = nil
+        earnedHoursAtStart: Double? = nil,
+        standingSemesterOffset: Int = 0,
+        preferenceSemesterOffset: Int = 0
     ) throws -> [SemesterPlan] {
         var remaining = courseIDs
         var completed = completedAtStart
@@ -1203,10 +1284,11 @@ public struct ScheduleGenerator: Sendable {
         let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
 
         while !remaining.isEmpty {
+            try Task.checkCancellation()
             var selected: [String] = []
             var credits = 0.0
             let maxCredits = Double(workload.creditRange.upperBound)
-            let target = targetLevel(for: semesterOffset)
+            let target = targetLevel(for: semesterOffset + preferenceSemesterOffset)
             let labFor = labUnits(in: remaining, labPairing: labPairing)
             let pairedLabs = Set(labFor.values)
 
@@ -1236,13 +1318,13 @@ public struct ScheduleGenerator: Sendable {
                 guard case .satisfied = PrereqEvaluator(
                     completedBefore: completed,
                     scheduledThisTerm: [],
-                    standing: earnedHours.map(ClassStanding.forEarnedCredits) ?? ClassStanding.forSemester(position: semesterOffset + 1, totalSemesters: nil)
+                    standing: earnedHours.map(ClassStanding.forEarnedCredits) ?? ClassStanding.forSemester(position: semesterOffset + standingSemesterOffset + 1, totalSemesters: nil)
                 ).evaluate(prerequisiteExpr, mode: .prereq) else { return nil }
                 if let availability = courseAvailability, !availability.contains(semester.term) { return nil }
                 return ScheduleCandidate(courseID: courseID, credits: courseCredits, variantOrder: order)
             }
             .sorted { lhs, rhs in
-                compare(lhs, rhs, targetLevel: target, semesterOffset: semesterOffset, placeholders: placeholders)
+                compare(lhs, rhs, targetLevel: target, semesterOffset: semesterOffset + preferenceSemesterOffset, placeholders: placeholders)
             }
 
             let readyByID = Dictionary(ready.map { ($0.courseID, $0) }, uniquingKeysWith: { first, _ in first })
@@ -1264,12 +1346,12 @@ public struct ScheduleGenerator: Sendable {
                 guard emptySemesterCount <= 8 else {
                     if !strictPrereqs {
                         let fallbackStart = result.last?.id.next ?? semester
-                        result.append(contentsOf: buildBestEffortSemesters(
+                        result.append(contentsOf: try buildBestEffortSemesters(
                             courseIDs: remaining,
                             workload: workload,
                             starting: fallbackStart,
                             placeholders: placeholders,
-                            baseSemesterOffset: result.count
+                            baseSemesterOffset: standingSemesterOffset == 0 && preferenceSemesterOffset == 0 ? result.count : semesterOffset + preferenceSemesterOffset
                         ))
                         return result
                     }
@@ -1297,7 +1379,7 @@ public struct ScheduleGenerator: Sendable {
         starting start: SemesterIdentity,
         placeholders: [String: PlaceholderSpec],
         baseSemesterOffset: Int
-    ) -> [SemesterPlan] {
+    ) throws -> [SemesterPlan] {
         var remaining = courseIDs
         var semester = start
         var semesterOffset = baseSemesterOffset
@@ -1306,6 +1388,7 @@ public struct ScheduleGenerator: Sendable {
         let labPairing = LabPairing(catalog: catalog)
 
         while !remaining.isEmpty {
+            try Task.checkCancellation()
             var selected: [String] = []
             var selectedCredits = 0.0
             let target = targetLevel(for: semesterOffset)
@@ -1552,7 +1635,8 @@ public struct ScheduleGenerator: Sendable {
     /// to whatever remains. Returns an empty array when `gap` is zero.
     private func openElectivePlaceholders(
         gap: Double,
-        placeholders: inout [String: PlaceholderSpec]
+        placeholders: inout [String: PlaceholderSpec],
+        reservedIDs: Set<String> = []
     ) -> [String] {
         guard gap > 0 else { return [] }
         let slotCredits = 3.0
@@ -1564,7 +1648,7 @@ public struct ScheduleGenerator: Sendable {
         // the full catalog picker on demand.
         var ids: [String] = []
         for slot in 0..<slotCount {
-            let id = PathwayPlaceholder.id(categoryID: Self.openElectiveCategoryID, optionIndex: slot)
+            let id = unusedPlaceholderID(categoryID: Self.openElectiveCategoryID, startingAt: slot, placeholders: placeholders, reservedIDs: reservedIDs)
             let remaining = gap - Double(slot) * slotCredits
             let credits = min(slotCredits, remaining)
             placeholders[id] = PlaceholderSpec(
@@ -1576,6 +1660,14 @@ public struct ScheduleGenerator: Sendable {
             ids.append(id)
         }
         return ids
+    }
+
+    private func unusedPlaceholderID(categoryID: String, startingAt index: Int, placeholders: [String: PlaceholderSpec], reservedIDs: Set<String> = []) -> String {
+        var next = index
+        while placeholders[PathwayPlaceholder.id(categoryID: categoryID, optionIndex: next)] != nil || reservedIDs.contains(PathwayPlaceholder.id(categoryID: categoryID, optionIndex: next)) {
+            next += 1
+        }
+        return PathwayPlaceholder.id(categoryID: categoryID, optionIndex: next)
     }
 
     /// Merge per-program ordered course lists into one list that spreads each

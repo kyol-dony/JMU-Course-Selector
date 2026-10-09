@@ -220,7 +220,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                 parsedRequirements.removeFirst()
             }
             let requirements = adjustedConcentrationRequirements(
-                from: parsedRequirements,
+                from: mergingOptionGroups(parsedRequirements),
                 totalCredits: concentrationTotalCredits(in: run.blocks)
             )
             guard !requirements.isEmpty else { return nil }
@@ -554,6 +554,12 @@ public struct JMUHTMLCatalogParser: Sendable {
         /// mentioned in the block's prose ("complete the 22-24 credit hours
         /// of the education program").
         var tableTotal: Int? = nil
+        /// Set on the blocks of one "Option N:" group, which merge into a
+        /// single requirement named for the option.
+        var optionGroup: String? = nil
+        /// The option's credit hours, from the "Choose one of the following
+        /// options" row that introduces the group.
+        var optionCredits: Int? = nil
     }
 
     private func requirementBlocks(in html: String) -> [RequirementBlock] {
@@ -704,6 +710,69 @@ public struct JMUHTMLCatalogParser: Sendable {
         return blocks
     }
 
+    /// Folds the requirements of one "Option N:" group into a single
+    /// requirement named for the option, so the option reads as the one
+    /// 12-credit choice the catalog describes rather than several pieces.
+    private func mergingOptionGroups(
+        _ parsed: [(block: RequirementBlock, category: RequirementCategory)]
+    ) -> [(block: RequirementBlock, category: RequirementCategory)] {
+        var result: [(block: RequirementBlock, category: RequirementCategory)] = []
+        for entry in parsed {
+            guard let group = entry.block.optionGroup else {
+                result.append(entry)
+                continue
+            }
+            if let last = result.last, last.block.optionGroup == group {
+                var merged = last.category
+                let offset = merged.courseOptions.count
+                merged.courseOptions += entry.category.courseOptions
+                let slots = (merged.electivePoolSlots ?? []) + (entry.category.electivePoolSlots ?? []).map { $0 + offset }
+                merged.electivePoolSlots = slots.isEmpty ? nil : slots
+                merged.requiredCredits = entry.block.optionCredits ?? merged.requiredCredits + entry.category.requiredCredits
+                merged.note = optionNote(merged.note, adding: entry)
+                result[result.count - 1].category = merged
+            } else {
+                var category = entry.category
+                category.id = slug(from: group)
+                category.name = group
+                category.requiredCredits = entry.block.optionCredits ?? category.requiredCredits
+                category.note = optionNote(nil, adding: entry)
+                result.append((entry.block, category))
+            }
+        }
+        return result
+    }
+
+    private func optionNote(_ existing: String?, adding entry: (block: RequirementBlock, category: RequirementCategory)) -> String? {
+        // "Choose two of the following: ... Or take both of the following
+        // courses: MATH 426, MATH 427" can't be expressed as slots; say so.
+        guard HTMLCleaner.clean(entry.block.body).lowercased().contains("or take both") else { return existing }
+        let note = "Instead of choosing two, you can take both courses of the last listed pair. Other mixes may not count, so confirm with an advisor."
+        return [existing, note].compactMap { $0 }.joined(separator: " ")
+    }
+
+    /// "9 credits of MATH electives at MATH 310 or above" (also "or
+    /// higher", "at the 300-level or above").
+    private static let electivePoolPattern = #"(?i)^\s*(\d+)\s+credits?\s+of\s+([A-Z]{2,5})\s+electives?\s+at\s+(?:the\s+)?(?:[A-Z]{2,5}\s+)?(\d{3})(?:-level)?\s+or\s+(?:above|higher)"#
+
+    private func electivePoolCategory(from block: RequirementBlock, usedCategoryIDs: inout Set<String>) -> RequirementCategory? {
+        guard let match = block.heading.firstMatch(for: Self.electivePoolPattern), match.count > 3,
+              let credits = Int(match[1]), let minimum = Int(match[3])
+        else { return nil }
+        let slotCredits = ScheduleGenerator.electivePoolSlotCredits
+        let slots = max(Int(ceil(Double(credits) / Double(slotCredits))), 1)
+        let token = ElectivePool.token(subject: match[2], minimumNumber: minimum)
+        return RequirementCategory(
+            id: uniqueID(slug(from: block.heading), used: &usedCategoryIDs),
+            name: block.heading,
+            requiredCredits: credits,
+            courseOptions: Array(repeating: [token], count: slots),
+            verificationStatus: .partial,
+            note: "Any \(match[2].uppercased()) course numbered \(minimum) or above that isn't already required.",
+            electivePoolSlots: Array(0..<slots)
+        )
+    }
+
     /// "Option 1:", "Option 2:" sub-headings inside a course table.
     private func isOptionHeading(_ block: RequirementBlock) -> Bool {
         !block.isStructuralHeading
@@ -724,14 +793,23 @@ public struct JMUHTMLCatalogParser: Sendable {
                 || lower.hasPrefix("subtotal")
         } ?? blocks.endIndex
 
-        let common = blocks[..<first].filter { !$0.heading.lowercased().contains("one of the following options") }
-            + blocks[groupEnd...]
+        let isIntro: (RequirementBlock) -> Bool = { $0.heading.lowercased().contains("one of the following options") }
+        let optionCredits = blocks[..<first].last(where: isIntro)
+            .flatMap { $0.body.firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>(.*?)</td>"#) }
+            .flatMap { $0.count > 1 ? parseLeadingCredits(HTMLCleaner.clean($0[1])) : nil }
+        let common = blocks[..<first].filter { !isIntro($0) } + blocks[groupEnd...]
         let variants = optionStarts.enumerated().map { offset, start in
             let end = offset + 1 < optionStarts.count ? optionStarts[offset + 1] : groupEnd
             let name = blocks[start].heading
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .trimmingCharacters(in: CharacterSet(charactersIn: ":"))
-            return (name: name, blocks: Array(blocks[start..<end]))
+            let groupBlocks = blocks[start..<end].map { block in
+                var block = block
+                block.optionGroup = name
+                block.optionCredits = optionCredits
+                return block
+            }
+            return (name: name, blocks: groupBlocks)
         }
         return (common, variants)
     }
@@ -1052,6 +1130,9 @@ public struct JMUHTMLCatalogParser: Sendable {
         usedCategoryIDs: inout Set<String>,
         coursesByID: inout [String: Course]
     ) -> RequirementCategory? {
+        if let pool = electivePoolCategory(from: block, usedCategoryIDs: &usedCategoryIDs) {
+            return pool
+        }
         let courseItems = courseItems(in: block.body, catoid: catoid)
         let courses = courseItems.compactMap { item -> Course? in
             if case .course(let course) = item { return course }

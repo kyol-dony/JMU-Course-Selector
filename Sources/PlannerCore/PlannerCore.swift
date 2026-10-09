@@ -178,6 +178,11 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
     public var courseOptions: [[String]]
     public var verificationStatus: VerificationStatus
     public var note: String?
+    /// Indexes of `courseOptions` that are elective-pool slots ("9 credits
+    /// of MATH electives at MATH 310 or above"), filled in by
+    /// `Catalog.resolvingElectivePools()`. A second major or minor's course
+    /// from the pool can stand in for one of these slots.
+    public var electivePoolSlots: [Int]?
 
     public init(
         id: String,
@@ -185,7 +190,8 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         requiredCredits: Int,
         courseOptions: [[String]],
         verificationStatus: VerificationStatus = .verified,
-        note: String? = nil
+        note: String? = nil,
+        electivePoolSlots: [Int]? = nil
     ) {
         self.id = id
         self.name = name
@@ -193,6 +199,7 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         self.courseOptions = courseOptions
         self.verificationStatus = verificationStatus
         self.note = note
+        self.electivePoolSlots = electivePoolSlots
     }
 }
 
@@ -890,7 +897,6 @@ public struct ScheduleGenerator: Sendable {
         // program. Keep its planned ID while walking every selected program so
         // an overlap is scheduled only once, while each program's requirement
         // still treats it as fulfilled.
-        var plannedCourseIDs: Set<String> = []
         // Mandatory concrete work from any declared program can also fulfill
         // a selective pool. Reserve that work before selecting elective slots.
         let anticipatedCourses: Set<String> = source == nil ? [] : Set(([program] + additionalPrograms).flatMap { p in
@@ -899,26 +905,16 @@ public struct ScheduleGenerator: Sendable {
                 return name.contains("required") || !(name.contains("elective") || name.contains("choose") || name.contains("select"))
             }.flatMap { $0.courseOptions.filter { $0.count == 1 }.flatMap { $0 } }
         })
-        var primaryList = requiredCourseIDs(
+        let lists = plannedProgramLists(
             for: program,
+            additionalPrograms: additionalPrograms,
             completed: completed,
-            plannedCourseIDs: &plannedCourseIDs,
             placeholders: &placeholders,
             anchors: reservations,
             anticipatedCourses: anticipatedCourses
         )
-        var extraLists: [[String]] = []
-        for extra in additionalPrograms {
-            try Task.checkCancellation()
-            extraLists.append(requiredCourseIDs(
-                for: extra,
-                completed: completed,
-                plannedCourseIDs: &plannedCourseIDs,
-                placeholders: &placeholders,
-                anchors: reservations,
-                anticipatedCourses: anticipatedCourses
-            ))
-        }
+        var primaryList = lists.primary
+        let extraLists = lists.extras
         // JMU degrees require 120 CRH total. If the primary major's declared
         // requirements fall short, top up with Open Elective placeholders so
         // the schedule reaches 120 (before AP/transfer credits whittle it
@@ -1107,6 +1103,7 @@ public struct ScheduleGenerator: Sendable {
                 || lowerName.contains("select")
             )
             let hasCreditLimit = categoryIsSelective && category.requiredCredits > 0
+            let poolSlots = Set(category.electivePoolSlots ?? [])
             var reservedIDs = Set((anchors?.placeholders ?? [:]).filter { $0.value.categoryID == category.id }.keys)
             for (index, _) in category.courseOptions.enumerated() {
                 let id = PathwayPlaceholder.id(categoryID: category.id, optionIndex: index)
@@ -1114,10 +1111,13 @@ public struct ScheduleGenerator: Sendable {
             }
             let reservedHours = reservedIDs.reduce(0.0) { hours, id in
                 if let spec = anchors?.placeholders[id] { return hours + spec.credits }
-                let option = category.courseOptions.enumerated().first {
+                guard let entry = category.courseOptions.enumerated().first(where: {
                     PathwayPlaceholder.id(categoryID: category.id, optionIndex: $0.offset) == id
-                }?.element ?? []
-                return hours + Double(credits(for: option, fallback: fallbackOptionCredits))
+                }) else { return hours }
+                let slotCredits = poolSlots.contains(entry.offset)
+                    ? Self.electivePoolSlotCredits
+                    : credits(for: entry.element, fallback: fallbackOptionCredits)
+                return hours + Double(slotCredits)
             }
             var plannedCredits = hasCreditLimit ? reservedHours : 0
             // Resolved anchor choices belong to their exact slots in this
@@ -1126,12 +1126,16 @@ public struct ScheduleGenerator: Sendable {
             var consumed = Set((anchors?.resolvedPlaceholders ?? [:]).filter { reservedIDs.contains($0.key) }.values)
             for (idx, option) in category.courseOptions.enumerated() {
                 if hasCreditLimit && plannedCredits >= Double(category.requiredCredits) { break }
-                let optionCredits = credits(for: option, fallback: fallbackOptionCredits)
+                // Pool slots reserve their share of the allowance rather than
+                // the largest course on the menu.
+                let optionCredits = poolSlots.contains(idx)
+                    ? Self.electivePoolSlotCredits
+                    : credits(for: option, fallback: fallbackOptionCredits)
                 let slotID = PathwayPlaceholder.id(categoryID: category.id, optionIndex: idx)
                 if reservedIDs.contains(slotID) { continue }
                 let available = completed.union(seen).union(option.count > 1 ? anticipatedCourses : [])
                 if let match = option.first(where: {
-                    available.contains($0) && (anchors == nil || !consumed.contains($0))
+                    available.contains($0) && !consumed.contains($0)
                 }) {
                     consumed.insert(match)
                     plannedCredits += Double(optionCredits)
@@ -1582,6 +1586,10 @@ public struct ScheduleGenerator: Sendable {
         id.contains("gened") || name.lowercased().contains("general education")
     }
 
+    /// Credits one elective-pool slot stands for: the parser makes N / 3
+    /// slots for "N credits of ... electives".
+    public static let electivePoolSlotCredits = 3
+
     /// Synthetic category id for Open Elective placeholders that pad the
     /// primary major's schedule out to the JMU degree credit minimum.
     public static let openElectiveCategoryID = "open-elective"
@@ -1624,25 +1632,73 @@ public struct ScheduleGenerator: Sendable {
     /// satisfied by AP/transfer still counts toward the degree total.
     public func openElectiveGap(for program: Program, additionalPrograms: [Program]) -> Int {
         guard !additionalPrograms.isEmpty else { return Self.openElectiveGap(for: program) }
-        var plannedCourseIDs: Set<String> = []
         var placeholders: [String: PlaceholderSpec] = [:]
-        _ = requiredCourseIDs(
-            for: program,
-            completed: [],
-            plannedCourseIDs: &plannedCourseIDs,
-            placeholders: &placeholders
-        )
-        var additionalCredits = 0
-        for extra in additionalPrograms {
-            let extraIDs = requiredCourseIDs(
-                for: extra,
-                completed: [],
-                plannedCourseIDs: &plannedCourseIDs,
-                placeholders: &placeholders
-            )
-            additionalCredits += extraIDs.reduce(0) { $0 + Int(credits(for: $1, placeholders: placeholders)) }
-        }
+        let lists = plannedProgramLists(for: program, additionalPrograms: additionalPrograms, completed: [], placeholders: &placeholders)
+        // Courses that also fill one of the primary major's elective-pool
+        // slots count once toward 120, so they don't shrink the gap.
+        let additionalCredits = lists.extras.joined()
+            .filter { !lists.sharedCourseIDs.contains($0) }
+            .reduce(0) { $0 + Int(credits(for: $1, placeholders: placeholders)) }
         return Self.openElectiveGap(for: program, additionalCredits: additionalCredits)
+    }
+
+    /// Each program's still-needed courses, in program order. A course
+    /// already planned for an earlier program fulfills a later program's
+    /// matching requirement without being scheduled twice. And a second
+    /// major's or minor's course that fits one of the primary major's
+    /// elective-pool slots ("MATH electives at MATH 310 or above") fills
+    /// that slot instead of the slot staying open; `sharedCourseIDs` lists
+    /// those courses, one per slot.
+    private func plannedProgramLists(
+        for program: Program,
+        additionalPrograms: [Program],
+        completed: Set<String>,
+        placeholders: inout [String: PlaceholderSpec],
+        anchors: AnchoredScheduleContext? = nil,
+        anticipatedCourses: Set<String> = []
+    ) -> (primary: [String], extras: [[String]], sharedCourseIDs: Set<String>) {
+        var plannedCourseIDs: Set<String> = []
+        var primary = requiredCourseIDs(
+            for: program,
+            completed: completed,
+            plannedCourseIDs: &plannedCourseIDs,
+            placeholders: &placeholders,
+            anchors: anchors,
+            anticipatedCourses: anticipatedCourses
+        )
+        var extras: [[String]] = []
+        for extra in additionalPrograms {
+            if Task.isCancelled { break }
+            extras.append(requiredCourseIDs(
+                for: extra,
+                completed: completed,
+                plannedCourseIDs: &plannedCourseIDs,
+                placeholders: &placeholders,
+                anchors: anchors,
+                anticipatedCourses: anticipatedCourses
+            ))
+        }
+
+        let poolSlotIDs = Set(program.requirements.flatMap { category in
+            (category.electivePoolSlots ?? []).map { PathwayPlaceholder.id(categoryID: category.id, optionIndex: $0) }
+        })
+        // Anticipated courses have already claimed a slot during requirement
+        // selection; do not use that same course to remove a second slot.
+        var available = uniqueCourseIDs(extras.joined().filter {
+            !PathwayPlaceholder.isPlaceholder($0) && !anticipatedCourses.contains($0)
+        })
+        var shared: Set<String> = []
+        primary.removeAll { id in
+            guard poolSlotIDs.contains(id),
+                  let spec = placeholders[id],
+                  let course = available.first(where: spec.alternates.contains)
+            else { return false }
+            available.removeAll { $0 == course }
+            shared.insert(course)
+            placeholders[id] = nil
+            return true
+        }
+        return (primary, extras, shared)
     }
 
     /// Build Open Elective placeholders to cover `gap` CRH — the shortfall
@@ -2208,18 +2264,25 @@ public struct ProgressCalculator: Sendable {
         let coursesByID = catalog.coursesByID
 
         func progressRow(category: RequirementCategory, idPrefix: String = "", namePrefix: String = "") -> CategoryProgress {
-            let completedCredits = category.courseOptions.reduce(0.0) { total, options in
-                if TransferCreditMapper.genEdCreditSatisfies(category: category, completedCourseIDs: completedCourseIDs) {
-                    return total + Double(max(category.requiredCredits / max(category.courseOptions.count, 1), 1))
+            // Each course fills at most one option, so slots sharing a menu
+            // ("choose two", elective pools) need different courses. Options
+            // with the shortest menus claim their course first.
+            var consumed: Set<String> = []
+            let completedCredits = category.courseOptions
+                .sorted { $0.count < $1.count }
+                .reduce(0.0) { total, options in
+                    if TransferCreditMapper.genEdCreditSatisfies(category: category, completedCourseIDs: completedCourseIDs) {
+                        return total + Double(max(category.requiredCredits / max(category.courseOptions.count, 1), 1))
+                    }
+                    guard let completed = options.first(where: { completedCourseIDs.contains($0) && !consumed.contains($0) }),
+                          let course = coursesByID[completed] else {
+                        return total
+                    }
+                    consumed.insert(completed)
+                    let earned = transferCredits.first { $0.courseIDs == [completed] }?.credits
+                    let enrolled = pathway.semesters.first { $0.courseIDs.contains(completed) }?.creditOverrides[completed]
+                    return total + (earned ?? enrolled ?? Double(course.credits))
                 }
-                guard let completed = options.first(where: completedCourseIDs.contains),
-                      let course = coursesByID[completed] else {
-                    return total
-                }
-                let earned = transferCredits.first { $0.courseIDs == [completed] }?.credits
-                let enrolled = pathway.semesters.first { $0.courseIDs.contains(completed) }?.creditOverrides[completed]
-                return total + (earned ?? enrolled ?? Double(course.credits))
-            }
             let id = idPrefix.isEmpty ? category.id : "\(idPrefix)::\(category.id)"
             let name = namePrefix.isEmpty ? category.name : "\(namePrefix): \(category.name)"
             return CategoryProgress(

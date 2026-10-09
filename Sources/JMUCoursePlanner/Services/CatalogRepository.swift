@@ -23,7 +23,7 @@ struct CatalogRepository {
             }
             // Gen Ed cluster credits come from a hand-kept table, not the
             // scraped pages; re-apply it so corrections reach cached catalogs.
-            return attachCurrentPrereqOverlay(to: Self.applyingCurrentGenEdCredits(to: cached))
+            return attachCurrentPrereqOverlay(to: Self.applyingCurrentGenEdCredits(to: cached).resolvingElectivePools())
         }
         return try loadBundledCatalog()
     }
@@ -171,7 +171,9 @@ struct CatalogRepository {
             },
             courses: coursesByID.values.sorted { $0.code < $1.code },
             apCreditRules: seed.apCreditRules
-        ))
+        // Elective pools ("MATH electives at MATH 310 or above") list every
+        // matching course, so they can only be filled once all are known.
+        ).resolvingElectivePools())
 
         try saveHTMLCatalog(catalog)
         return catalog
@@ -242,7 +244,13 @@ struct CatalogRepository {
     /// could use them. v4 handled JMU pages that label their concentration
     /// section "Required Concentration", so older v3 caches may still have
     /// CIS concentrations flattened into the parent major requirements.
-    private static let cacheSchemaVersion = 13
+    /// v14 splits "Students (Not) Seeking ... Licensure" tracks and "Option N:"
+    /// groups into concentrations and groups "or" course rows, so older caches
+    /// still list Mathematics' tracks as one flat set of requirements.
+    /// v15 turns "N credits of MATH electives at MATH 310 or above" into
+    /// elective-pool slots and merges each "Option N:" group into one
+    /// requirement.
+    private static let cacheSchemaVersion = 15
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

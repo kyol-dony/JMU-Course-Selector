@@ -208,21 +208,46 @@ struct SetupStepMajor: View {
     }
 
     private func programPills(_ program: Program, includesConcentration: Bool = true) -> some View {
-        HStack(spacing: DesignTokens.Spacing.s) {
-            if let degree = program.degreeType {
-                StatusPill(text: degree, tone: .info)
+        // Pills never wrap their text. When the row is too narrow for all of
+        // them, the concentration pill drops to its own line instead of
+        // squeezing onto two.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: DesignTokens.Spacing.s) {
+                statusPills(program)
+                concentrationPill(program, includesConcentration: includesConcentration)
             }
-            StatusPill(
-                text: program.requirementDataComplete ? "Verified" : "Partial",
-                tone: program.requirementDataComplete ? .success : .warning
-            )
-            if !includesConcentration {
-                EmptyView()
-            } else if program.concentrationSelectionRequired && !program.concentrations.isEmpty {
-                StatusPill(text: "Concentration required", tone: .warning)
-            } else if !program.concentrations.isEmpty {
-                StatusPill(text: "Optional concentration", tone: .info)
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
+                HStack(spacing: DesignTokens.Spacing.s) {
+                    statusPills(program)
+                }
+                concentrationPill(program, includesConcentration: includesConcentration)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func statusPills(_ program: Program) -> some View {
+        if let degree = program.degreeType {
+            StatusPill(text: degree, tone: .info)
+                .fixedSize()
+        }
+        StatusPill(
+            text: program.requirementDataComplete ? "Verified" : "Partial",
+            tone: program.requirementDataComplete ? .success : .warning
+        )
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private func concentrationPill(_ program: Program, includesConcentration: Bool) -> some View {
+        if !includesConcentration {
+            EmptyView()
+        } else if program.concentrationSelectionRequired && !program.concentrations.isEmpty {
+            StatusPill(text: "Concentration required", tone: .warning)
+                .fixedSize()
+        } else if !program.concentrations.isEmpty {
+            StatusPill(text: "Optional concentration", tone: .info)
+                .fixedSize()
         }
     }
 }

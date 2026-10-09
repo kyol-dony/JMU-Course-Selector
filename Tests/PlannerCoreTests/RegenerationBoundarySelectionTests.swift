@@ -27,4 +27,49 @@ import Testing
         selection.selected = .init(year: 2040, term: .fall)
         #expect(!selection.canConfirm)
     }
+
+    static let f26 = SemesterIdentity(year: 2026, term: .fall)
+    static let s27 = SemesterIdentity(year: 2027, term: .spring)
+    static let f27 = SemesterIdentity(year: 2027, term: .fall)
+
+    static func picking() -> RegenerationBoundarySelection {
+        var selection = RegenerationBoundarySelection(pathway: Pathway(id: "p", name: "P", semesters: [
+            .init(id: f26, courseIDs: []), .init(id: s27, courseIDs: []), .init(id: f27, courseIDs: [])
+        ]))
+        selection.selected = nil
+        return selection
+    }
+
+    @Test func nothingPickedHasNoRolesAndPromptsForAClick() {
+        let selection = Self.picking()
+        #expect(selection.role(of: Self.s27) == nil)
+        #expect(selection.prompt == "Click the last semester to keep")
+    }
+
+    @Test func anchorSplitsSemestersIntoKeptAndRebuilt() {
+        var selection = Self.picking()
+        selection.selected = Self.s27
+        #expect(selection.role(of: Self.f26) == .kept)
+        #expect(selection.role(of: Self.s27) == .anchor)
+        #expect(selection.role(of: Self.f27) == .rebuilt)
+        #expect(selection.prompt == "Keep through Spring 2027 · rebuild Fall 2027 onward")
+    }
+
+    @Test func firstAndLastSemestersCanAnchor() {
+        var selection = Self.picking()
+        selection.selected = Self.f26
+        #expect(selection.role(of: Self.f26) == .anchor)
+        #expect(selection.role(of: Self.s27) == .rebuilt)
+        selection.selected = Self.f27
+        #expect(selection.role(of: Self.f26) == .kept)
+        #expect(selection.role(of: Self.f27) == .anchor)
+        #expect(selection.prompt == "Keep through Fall 2027 · rebuild Spring 2028 onward")
+    }
+
+    @Test func semestersOutsideThePathwayHaveNoRole() {
+        var selection = Self.picking()
+        selection.selected = Self.s27
+        #expect(selection.role(of: SemesterIdentity(year: 2040, term: .fall)) == nil)
+    }
 }
+

@@ -13,7 +13,9 @@ struct ScheduleBoardView: View {
     @State private var highlightedSemester: SemesterIdentity?
     @State private var scrollRequest: ScrollRequest?
 
-    @State private var boundarySheetPresented = false
+    /// Non-nil while the user is clicking a semester to anchor "Regenerate after".
+    @State private var anchorPick: RegenerationBoundarySelection?
+    @State private var hoveredAnchor: SemesterIdentity?
     @State private var regeneration: RegenerationPresentation?
     @State private var regenerationTask: Task<Void, Never>?
     @State private var suffixOpacity = 1.0
@@ -28,7 +30,7 @@ struct ScheduleBoardView: View {
         let cutoff: SemesterIdentity
         var pathway: Pathway
     }
-    private var editingLocked: Bool { !store.canEditSchedule || regeneration != nil }
+    private var editingLocked: Bool { !store.canEditSchedule || regeneration != nil || anchorPick != nil }
     private var displayedPathway: Pathway? { regeneration?.pathway ?? store.activePathway }
 
     private struct ScrollRequest: Equatable {
@@ -56,14 +58,9 @@ struct ScheduleBoardView: View {
         }
         .overlay(alignment: .bottom) { ScheduleToast() }
         .animation(DesignTokens.Motion.hover, value: store.lastScheduleChange)
-        .sheet(isPresented: $boundarySheetPresented) {
-            if let pathway = store.activePathway {
-                RegenerationBoundarySheet(pathway: pathway, onConfirm: beginRegeneration)
-            }
-        }
         .onAppear { store.undoManager = undoManager }
-        .onChange(of: store.plan.id) { _, _ in cancelRegeneration(); retainedBoardSize = .zero }
-        .onChange(of: store.activePathway?.id) { _, _ in cancelRegeneration(); retainedBoardSize = .zero }
+        .onChange(of: store.plan.id) { _, _ in anchorPick = nil; cancelRegeneration(); retainedBoardSize = .zero }
+        .onChange(of: store.activePathway?.id) { _, _ in anchorPick = nil; cancelRegeneration(); retainedBoardSize = .zero }
         .onChange(of: editingLocked) { _, locked in
             if locked { drag.reset(); presentedWarningID = nil }
         }
@@ -132,19 +129,23 @@ struct ScheduleBoardView: View {
                 StatChip(label: "Pathway", value: "\(CreditHoursFormatter.string(total)) cr")
             }
 
-            Button("Regenerate") {
-                Task { await store.generateSchedules() }
+            if let pick = anchorPick {
+                anchorBar(pick)
+            } else {
+                Button("Regenerate") {
+                    Task { await store.generateSchedules() }
+                }
+                    .buttonStyle(.dtSecondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .disabled(editingLocked)
+                Button("Regenerate after…") { startAnchorPick() }
+                    .buttonStyle(.dtSecondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .disabled(editingLocked || store.activePathway?.semesters.isEmpty != false)
+                    .help("Click the last semester to keep; later semesters are rebuilt")
             }
-                .buttonStyle(.dtSecondary)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .disabled(editingLocked)
-            Button("Regenerate after…") { boundarySheetPresented = true }
-                .buttonStyle(.dtSecondary)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .disabled(editingLocked || store.activePathway?.semesters.isEmpty != false)
-                .help("Preserve the selected semester and rebuild the rest of this pathway")
         }
         .padding(.horizontal, DesignTokens.Spacing.xl)
         .padding(.vertical, DesignTokens.Spacing.m)
@@ -180,11 +181,14 @@ struct ScheduleBoardView: View {
                                 classificationSlots: slots,
                                 highlightedCategoryID: store.scheduleCategoryFilter,
                                 onBeginDrag: beginDrag,
-                                onEndDrag: handleEnd
+                                onEndDrag: handleEnd,
+                                anchorPick: anchorContext(for: semester.id)
                             )
                             .id(semester.id)
                             .opacity(isFuture(semester.id) ? suffixOpacity : 1)
-                            .disabled(editingLocked)
+                            // Picking keeps columns clickable; their own overlay
+                            // routes every click to choosing the anchor.
+                            .disabled(editingLocked && anchorPick == nil)
                             .accessibilityHidden(isFuture(semester.id) && suffixOpacity == 0)
                             .overlay(alignment: .topLeading) {
                                 if semester.id == firstDisplayedFuture { regenerationStatus }
@@ -263,6 +267,62 @@ struct ScheduleBoardView: View {
                 onCancel: cancelRegeneration)
         }
     }
+    private func startAnchorPick() {
+        guard let pathway = store.activePathway else { return }
+        var pick = RegenerationBoundarySelection(pathway: pathway)
+        pick.selected = nil
+        hoveredAnchor = nil
+        anchorPick = pick
+    }
+
+    private func confirmAnchor() {
+        guard let pick = anchorPick, let cutoff = pick.selected, pick.canConfirm else { return }
+        anchorPick = nil
+        hoveredAnchor = nil
+        beginRegeneration(after: cutoff)
+    }
+
+    private func anchorContext(for semester: SemesterIdentity) -> SemesterColumnView.AnchorPickContext? {
+        guard let pick = anchorPick else { return nil }
+        return SemesterColumnView.AnchorPickContext(
+            role: pick.role(of: semester),
+            isPreview: hoveredAnchor == semester,
+            onPick: { anchorPick?.selected = semester },
+            onHover: { inside in
+                if inside {
+                    hoveredAnchor = semester
+                } else if hoveredAnchor == semester {
+                    hoveredAnchor = nil
+                }
+            }
+        )
+    }
+
+    /// Replaces the Regenerate buttons while picking the anchor semester.
+    private func anchorBar(_ pick: RegenerationBoundarySelection) -> some View {
+        HStack(spacing: DesignTokens.Spacing.s) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(pick.canConfirm ? DesignTokens.Colors.success : DesignTokens.Colors.textTertiary)
+            Text(pick.prompt)
+                .font(DesignTokens.Typography.label)
+                .foregroundStyle(DesignTokens.Colors.textPrimary)
+                .lineLimit(1)
+                .fixedSize()
+            Button("Cancel") {
+                anchorPick = nil
+                hoveredAnchor = nil
+            }
+                .buttonStyle(.dtSecondary)
+                .keyboardShortcut(.cancelAction)
+            Button("Rebuild") { confirmAnchor() }
+                .buttonStyle(.dtPrimary)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!pick.canConfirm)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
     private func beginRegeneration(after cutoff: SemesterIdentity) {
         guard !editingLocked, let source = store.activePathway else { return }
         let originalPlan = store.plan
@@ -330,7 +390,7 @@ struct ScheduleBoardView: View {
                 scrollRequest = ScrollRequest(semester: semester)
             }
         }
-        .opacity(drag.isDragging ? 0.35 : 1)
+        .opacity(drag.isDragging || anchorPick != nil ? 0.35 : 1)
         .allowsHitTesting(!drag.isDragging && !editingLocked)
         .disabled(editingLocked)
         .transition(.opacity)

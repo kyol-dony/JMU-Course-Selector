@@ -37,6 +37,17 @@ struct SemesterColumnView: View {
     var highlightedCategoryID: String?
     var onBeginDrag: (_ itemID: String, _ semester: SemesterIdentity, _ index: Int, _ start: CGPoint) -> Void
     var onEndDrag: (ScheduleDragController.EndResult) -> Void
+    /// Set while the board is picking the anchor for "Regenerate after".
+    var anchorPick: AnchorPickContext? = nil
+
+    struct AnchorPickContext {
+        /// Nil until an anchor is picked.
+        var role: RegenerationBoundarySelection.Role?
+        /// The pointer is over this column.
+        var isPreview: Bool
+        var onPick: () -> Void
+        var onHover: (Bool) -> Void
+    }
 
     private var totalCredits: Double {
         semester.courseIDs.reduce(0.0) { total, id in
@@ -78,7 +89,10 @@ struct SemesterColumnView: View {
         }
         .frame(width: 280)
         .frame(minHeight: 540, alignment: .top)
+        .opacity(anchorPick?.role == .rebuilt ? 0.45 : 1)
         .overlay { verdictOverlay }
+        .overlay { anchorPreviewOverlay }
+        .overlay { anchorPickTarget }
         .shadow(color: isTarget ? DesignTokens.Colors.targetShadow : .clear, radius: 9, x: 0, y: 6)
         .background(
             GeometryReader { proxy in
@@ -93,6 +107,8 @@ struct SemesterColumnView: View {
         .animation(DesignTokens.Motion.hover, value: drag.isDragging)
         .animation(reduceMotion ? nil : DesignTokens.Motion.hover, value: issues.worstActive(in: semester.id))
         .animation(reduceMotion ? nil : DesignTokens.Motion.hover, value: isHighlighted)
+        .animation(reduceMotion ? nil : DesignTokens.Motion.hover, value: anchorPick?.role)
+        .animation(reduceMotion ? nil : DesignTokens.Motion.hover, value: anchorPick?.isPreview)
         .sheet(item: $coursePickerRequest) { request in
             CoursePickerSheet(title: request.title, courses: request.courses) { course in
                 switch request.action {
@@ -146,7 +162,13 @@ struct SemesterColumnView: View {
 
     @ViewBuilder
     private var headerPill: some View {
-        if isOriginColumn {
+        if anchorPick?.role == .anchor {
+            StatusPill(text: "Keep through", tone: .success, systemImage: "lock.fill")
+        } else if anchorPick?.role == .rebuilt {
+            StatusPill(text: "Rebuild", tone: .neutral, systemImage: "arrow.triangle.2.circlepath")
+        } else if anchorPick != nil {
+            StatusPill(text: "\(semester.courseIDs.count)", tone: .neutral)
+        } else if isOriginColumn {
             StatusPill(text: "Current spot", tone: .neutral)
         } else if let verdict, let headline = verdict.headline {
             StatusPill(text: headline, tone: Self.tone(for: verdict), systemImage: Self.icon(for: verdict))
@@ -185,7 +207,7 @@ struct SemesterColumnView: View {
             let shape = RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
             ZStack {
                 shape.fill(style.color.opacity(style.fill))
-                shape.strokeBorder(style.color.opacity(style.stroke), lineWidth: isTarget ? 2 : 1)
+                shape.strokeBorder(style.color.opacity(style.stroke), lineWidth: isTarget || anchorPick?.role == .anchor ? 2 : 1)
             }
             .allowsHitTesting(false)
             .transition(.opacity)
@@ -193,6 +215,14 @@ struct SemesterColumnView: View {
     }
 
     private var overlayStyle: (color: Color, stroke: Double, fill: Double)? {
+        if let anchorPick {
+            // Keep/rebuild picture only; warning outlines are hidden while picking.
+            switch anchorPick.role {
+            case .anchor: return (DesignTokens.Colors.success, 0.9, 0.06)
+            case .kept: return (DesignTokens.Colors.success, 0.4, 0)
+            case .rebuilt, nil: return nil
+            }
+        }
         guard drag.isDragging else {
             if isHighlighted { return (DesignTokens.Colors.brandPurple, 0.6, 0) }
             switch issues.worstActive(in: semester.id) {
@@ -209,6 +239,33 @@ struct SemesterColumnView: View {
         case .caution: return (DesignTokens.Colors.warning, 0.45, 0.04)
         case .clear: return (DesignTokens.Colors.success, 0.4, 0)
         case nil: return nil
+        }
+    }
+
+    /// Dashed green preview of the anchor under the pointer.
+    @ViewBuilder
+    private var anchorPreviewOverlay: some View {
+        if let anchorPick, anchorPick.isPreview, anchorPick.role != .anchor {
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
+                .strokeBorder(DesignTokens.Colors.success.opacity(0.75), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        }
+    }
+
+    /// While picking, the whole column is one click target, so clicking a
+    /// course inside it picks the semester instead of opening the course.
+    @ViewBuilder
+    private var anchorPickTarget: some View {
+        if let anchorPick {
+            Color.clear
+                .contentShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous))
+                .onTapGesture(perform: anchorPick.onPick)
+                .onHover(perform: anchorPick.onHover)
+                .accessibilityElement()
+                .accessibilityLabel("Keep through \(semester.id.displayName)")
+                .accessibilityAddTraits(anchorPick.role == .anchor ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAction { anchorPick.onPick() }
         }
     }
 

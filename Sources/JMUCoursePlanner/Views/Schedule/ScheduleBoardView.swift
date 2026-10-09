@@ -287,7 +287,7 @@ struct ScheduleBoardView: View {
         return SemesterColumnView.AnchorPickContext(
             role: pick.role(of: semester),
             isPreview: hoveredAnchor == semester,
-            onPick: { anchorPick?.selected = semester },
+            onPick: { anchorPick?.toggle(semester) },
             onHover: { inside in
                 if inside {
                     hoveredAnchor = semester

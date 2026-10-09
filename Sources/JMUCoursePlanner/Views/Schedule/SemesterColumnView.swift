@@ -263,7 +263,9 @@ struct SemesterColumnView: View {
                 .onTapGesture(perform: anchorPick.onPick)
                 .onHover(perform: anchorPick.onHover)
                 .accessibilityElement()
-                .accessibilityLabel("Keep through \(semester.id.displayName)")
+                .accessibilityLabel(anchorPick.role == .anchor
+                    ? "Clear Keep through \(semester.id.displayName)"
+                    : "Keep through \(semester.id.displayName)")
                 .accessibilityAddTraits(anchorPick.role == .anchor ? [.isButton, .isSelected] : .isButton)
                 .accessibilityAction { anchorPick.onPick() }
         }

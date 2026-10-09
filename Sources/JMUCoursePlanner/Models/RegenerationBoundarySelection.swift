@@ -14,6 +14,13 @@ struct RegenerationBoundarySelection: Equatable {
         return "Keep everything through \(selected.displayName). Rebuild \(selected.next.displayName) onward."
     }
 
+    /// A click on the board: picks a semester, swaps to it from another, or
+    /// clears it when it is already the anchor. Ignores unknown semesters.
+    mutating func toggle(_ semester: SemesterIdentity) {
+        guard semesters.contains(semester) else { return }
+        selected = selected == semester ? nil : semester
+    }
+
     /// How a semester reads on the board while picking the anchor.
     enum Role: Equatable {
         /// The last semester kept as-is.

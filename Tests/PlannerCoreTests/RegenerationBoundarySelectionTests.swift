@@ -71,5 +71,23 @@ import Testing
         selection.selected = Self.s27
         #expect(selection.role(of: SemesterIdentity(year: 2040, term: .fall)) == nil)
     }
+
+    @Test func clickingTheAnchorAgainClearsItAndOtherSemestersSwap() {
+        var selection = Self.picking()
+        selection.toggle(Self.s27)
+        #expect(selection.selected == Self.s27)
+        selection.toggle(Self.f27)
+        #expect(selection.selected == Self.f27)
+        selection.toggle(Self.f27)
+        #expect(selection.selected == nil)
+        #expect(selection.prompt == "Click the last semester to keep")
+    }
+
+    @Test func togglingASemesterOutsideThePathwayChangesNothing() {
+        var selection = Self.picking()
+        selection.toggle(Self.s27)
+        selection.toggle(SemesterIdentity(year: 2040, term: .fall))
+        #expect(selection.selected == Self.s27)
+    }
 }
 

@@ -1878,9 +1878,13 @@ public enum ConflictKind: String, Codable, Hashable, Sendable {
     case heavyLoad
     case lightLoad
     case labNotPaired
+    /// An unresolved placeholder whose choice a later course is counting on
+    /// for a prerequisite. A derived explanation, never kept or fixed.
+    case pendingPrerequisiteChoice
 
     public var displayName: String {
         switch self {
+        case .pendingPrerequisiteChoice: "Prerequisite choice needed"
         case .missingPrerequisite: "Prerequisite warning"
         case .missingCorequisite: "Corequisite warning"
         case .labNotPaired: "Lab pairing warning"
@@ -1894,7 +1898,7 @@ public enum ConflictKind: String, Codable, Hashable, Sendable {
     public var severity: ConflictSeverity {
         switch self {
         case .missingPrerequisite, .unavailableSemester, .labNotPaired: .mustFix
-        case .missingCorequisite, .heavyLoad, .lightLoad: .worthALook
+        case .missingCorequisite, .heavyLoad, .lightLoad, .pendingPrerequisiteChoice: .worthALook
         case .unknownAvailability: .hidden
         }
     }
@@ -1904,6 +1908,7 @@ public enum ConflictKind: String, Codable, Hashable, Sendable {
         case .missingPrerequisite: "Missing prerequisite"
         case .missingCorequisite: "Missing corequisite"
         case .labNotPaired: "Lab not paired"
+        case .pendingPrerequisiteChoice: "Prerequisite choice needed"
         case .unavailableSemester: "Not offered this term"
         case .unknownAvailability: "Availability unknown"
         case .heavyLoad: "Heavy load"
@@ -2052,7 +2057,8 @@ public struct ConflictDetector: Sendable {
         activeProgramTitle: String? = nil,
         completedAtStart: Set<String> = [],
         workload: WorkloadPreference? = nil,
-        earnedHoursAtStart: Double? = nil
+        earnedHoursAtStart: Double? = nil,
+        prerequisiteAnalysis: PlaceholderPrerequisiteAnalysis? = nil
     ) -> [ConflictWarning] {
         let coursesByID = catalog.coursesByID
         // Seed with courses already banked before the first semester — AP and
@@ -2060,9 +2066,6 @@ public struct ConflictDetector: Sendable {
         // false prereq warnings for chains the student already started in
         // high school (e.g., AP Calculus awarding MATH 231/232).
         var completedBefore = completedAtStart
-        var creditContext = earnedHoursAtStart.map {
-            PlannedCreditAccumulator(hours: $0, completedCourseIDs: completedAtStart)
-        }
         var warnings: [ConflictWarning] = []
         let resolver = PrereqRuleResolver(catalog: catalog)
         let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
@@ -2072,9 +2075,22 @@ public struct ConflictDetector: Sendable {
         // deleted semester is one the student doesn't attend. Trailing empty
         // semesters aren't part of the plan yet and don't lengthen it.
         let planLength = (orderedSemesters.lastIndex { !$0.courseIDs.isEmpty } ?? -1) + 1
+        let standings = Self.standings(
+            for: pathway, catalog: catalog, completedAtStart: completedAtStart, earnedHoursAtStart: earnedHoursAtStart
+        )
+        // Which unresolved slots can supply what courses still need. A
+        // dependency only stops being a conflict when its route is proven.
+        let analysis = prerequisiteAnalysis ?? placeholderPrerequisiteAnalysis(
+            for: pathway, activeProgramTitle: activeProgramTitle, completedAtStart: completedAtStart,
+            workload: workload, earnedHoursAtStart: earnedHoursAtStart
+        ) ?? .empty
+        func status(_ courseID: String, _ semester: SemesterIdentity, _ kind: ConditionalDependencyKind) -> ConditionalPrerequisiteStatus? {
+            analysis.statusByDependency[ConditionalDependencyKey(courseID: courseID, semester: semester, kind: kind)]
+        }
+        let unconfirmedNote = "A placeholder choice might supply this, but the planner couldn't confirm it. Choose a course for an earlier placeholder or regenerate the schedule."
         for (index, semester) in orderedSemesters.enumerated() {
             let realInThisTerm = Set(semester.courseIDs.filter { !PathwayPlaceholder.isPlaceholder($0) })
-            let standing = creditContext.map { ClassStanding.forEarnedCredits($0.hours) } ?? ClassStanding.forSemester(position: index + 1, totalSemesters: planLength)
+            let standing = standings[semester.id] ?? ClassStanding.forSemester(position: index + 1, totalSemesters: planLength)
             let evaluator = PrereqEvaluator(completedBefore: completedBefore, scheduledThisTerm: realInThisTerm, standing: standing)
 
             for courseID in semester.courseIDs where !PathwayPlaceholder.isPlaceholder(courseID) {
@@ -2106,8 +2122,9 @@ public struct ConflictDetector: Sendable {
                 // A lecture and its lab are taken together, so neither is the
                 // other's prerequisite; the lab-pairing check covers them.
                 let pairedCourses = Set(labs + lectures)
-                if case .unmet(let missing, let original) = evaluator.evaluate(resolvedRule.prerequisiteExpr.treatingAsSatisfied(pairedCourses), mode: .prereq) {
-                    let text = Self.prereqText(
+                if case .unmet(let missing, let original) = evaluator.evaluate(resolvedRule.prerequisiteExpr.treatingAsSatisfied(pairedCourses), mode: .prereq),
+                   status(courseID, semester.id, .prerequisite) != .conditional {
+                    var text = Self.prereqText(
                         original: original,
                         missing: missing,
                         hasUnknown: resolvedRule.hasUnknownTokens,
@@ -2117,6 +2134,9 @@ public struct ConflictDetector: Sendable {
                         satisfied: completedBefore,
                         standingNote: "\(semester.id.displayName) counts as \(standing.displayName) standing (semester \(index + 1) of \(planLength))."
                     )
+                    if status(courseID, semester.id, .prerequisite) == .unconfirmed {
+                        text.notes.append(unconfirmedNote)
+                    }
                     warnings.append(warning(
                         courseID: courseID,
                         semester: semester.id,
@@ -2133,9 +2153,12 @@ public struct ConflictDetector: Sendable {
                 // "alongside or before" coreq check would let slide; the
                 // lab-pairing check below covers them instead.
                 let itemsThisTerm = Set(semester.courseIDs)
+                let labStatus = status(courseID, semester.id, .labPairing)
+                let labNotes = labStatus == .unconfirmed ? [unconfirmedNote] : []
                 if !labs.isEmpty,
                    !labs.contains(where: itemsThisTerm.contains),
-                   !itemsThisTerm.contains(LabPairing.labPlaceholderID(forLecture: courseID)) {
+                   !itemsThisTerm.contains(LabPairing.labPlaceholderID(forLecture: courseID)),
+                   labStatus != .conditional {
                     let names = labs.map { coursesByID[$0]?.code ?? $0 }.joined(separator: " or ")
                     warnings.append(warning(
                         courseID: courseID,
@@ -2143,11 +2166,12 @@ public struct ConflictDetector: Sendable {
                         kind: .labNotPaired,
                         summary: "Needs \(names) this term",
                         detail: "Take \(names) in \(semester.id.displayName), the same semester as \(course.code).",
+                        notes: labNotes,
                         missingCourseIDs: labs,
                         overrides: overrides
                     ))
                 }
-                if !lectures.isEmpty, !lectures.contains(where: itemsThisTerm.contains) {
+                if !lectures.isEmpty, !lectures.contains(where: itemsThisTerm.contains), labStatus != .conditional {
                     let names = lectures.map { coursesByID[$0]?.code ?? $0 }.joined(separator: " or ")
                     warnings.append(warning(
                         courseID: courseID,
@@ -2155,13 +2179,15 @@ public struct ConflictDetector: Sendable {
                         kind: .labNotPaired,
                         summary: "Take with \(names)",
                         detail: "Take \(course.code) in the same semester as \(names).",
+                        notes: labNotes,
                         missingCourseIDs: lectures,
                         overrides: overrides
                     ))
                 }
                 let corequisites = resolvedRule.corequisiteExpr.treatingAsSatisfied(pairedCourses)
 
-                if case .unmet(let missing, _) = evaluator.evaluate(corequisites, mode: .coreq) {
+                if case .unmet(let missing, _) = evaluator.evaluate(corequisites, mode: .coreq),
+                   status(courseID, semester.id, .corequisite) != .conditional {
                     let rendered = missing.displayString(coursesByID: coursesByID)
                     warnings.append(warning(
                         courseID: courseID,
@@ -2169,14 +2195,15 @@ public struct ConflictDetector: Sendable {
                         kind: .missingCorequisite,
                         summary: "Take with \(rendered)",
                         detail: "Take alongside or before this course: \(rendered).",
+                        notes: status(courseID, semester.id, .corequisite) == .unconfirmed ? [unconfirmedNote] : [],
                         missingCourseIDs: Self.collectCourseLeaves(missing),
                         overrides: overrides
                     ))
                 }
             }
             completedBefore.formUnion(realInThisTerm)
-            creditContext?.include(semester, placeholders: pathway.placeholders, catalog: catalog)
         }
+        warnings += pendingChoiceNotices(for: pathway, analysis: analysis, orderedSemesters: orderedSemesters)
 
         if let workload {
             warnings += loadWarnings(for: pathway, workload: workload, overrides: overrides)
@@ -2185,6 +2212,109 @@ public struct ConflictDetector: Sendable {
     }
 
     public static let fullTimeCredits = 12
+
+    /// The conditional placeholder analysis these warnings use, with the
+    /// same standing and history context. Nil when it can't finish (for
+    /// example, when cancelled); callers then keep ordinary conflicts.
+    public func placeholderPrerequisiteAnalysis(
+        for pathway: Pathway,
+        activeProgramTitle: String? = nil,
+        completedAtStart: Set<String> = [],
+        workload: WorkloadPreference? = nil,
+        earnedHoursAtStart: Double? = nil
+    ) -> PlaceholderPrerequisiteAnalysis? {
+        let hasOpenSlot = pathway.semesters.contains { semester in
+            semester.courseIDs.contains { PathwayPlaceholder.isPlaceholder($0) && pathway.placeholders[$0] != nil }
+        }
+        guard hasOpenSlot else { return .empty }
+        let input = ConditionalPrerequisiteInput(
+            pathway: pathway,
+            completedAtStart: completedAtStart,
+            standingBySemester: Self.standings(for: pathway, catalog: catalog, completedAtStart: completedAtStart, earnedHoursAtStart: earnedHoursAtStart),
+            workload: workload,
+            activeProgramTitle: activeProgramTitle
+        )
+        return try? PlaceholderPrerequisiteAnalyzer(catalog: catalog).analyze(input)
+    }
+
+    /// Each semester's class standing: from earned hours when known,
+    /// otherwise from its place in the plan.
+    static func standings(
+        for pathway: Pathway,
+        catalog: Catalog,
+        completedAtStart: Set<String>,
+        earnedHoursAtStart: Double?
+    ) -> [SemesterIdentity: ClassStanding] {
+        let ordered = pathway.semesters.sorted { $0.id < $1.id }
+        let planLength = (ordered.lastIndex { !$0.courseIDs.isEmpty } ?? -1) + 1
+        var credits = earnedHoursAtStart.map { PlannedCreditAccumulator(hours: $0, completedCourseIDs: completedAtStart) }
+        var result: [SemesterIdentity: ClassStanding] = [:]
+        for (index, semester) in ordered.enumerated() {
+            result[semester.id] = credits.map { ClassStanding.forEarnedCredits($0.hours) }
+                ?? ClassStanding.forSemester(position: index + 1, totalSemesters: planLength)
+            credits?.include(semester, placeholders: pathway.placeholders, catalog: catalog)
+        }
+        return result
+    }
+
+    /// One notice per unresolved slot later courses count on, naming the
+    /// choices that would support them. Never kept: it explains, it isn't a
+    /// conflict.
+    private func pendingChoiceNotices(
+        for pathway: Pathway,
+        analysis: PlaceholderPrerequisiteAnalysis,
+        orderedSemesters: [SemesterPlan]
+    ) -> [ConflictWarning] {
+        let coursesByID = catalog.coursesByID
+        func code(_ courseID: String) -> String { coursesByID[courseID]?.code ?? courseID }
+        var notices: [ConflictWarning] = []
+        for semester in orderedSemesters {
+            for slot in semester.courseIDs where PathwayPlaceholder.isPlaceholder(slot) {
+                guard let supports = analysis.supportsByPlaceholder[slot], !supports.isEmpty else { continue }
+                // Choices supporting the same courses read as one sentence.
+                var choicesByDependents: [[String]: [String]] = [:]
+                for (option, keys) in supports {
+                    let dependents = Self.dependentPhrases(keys, code: code)
+                    choicesByDependents[dependents, default: []].append(option)
+                }
+                let sentences = choicesByDependents
+                    .map { dependents, options in (options.map(code).sorted(), dependents) }
+                    .sorted { $0.0.lexicographicallyPrecedes($1.0) }
+                    .map { options, dependents in
+                        "Choose \(options.joined(separator: " or ")) here to support \(Self.list(dependents))."
+                    }
+                notices.append(ConflictWarning(
+                    courseID: slot,
+                    semester: semester.id,
+                    kind: .pendingPrerequisiteChoice,
+                    summary: ConflictKind.pendingPrerequisiteChoice.title,
+                    detail: sentences.joined(separator: " "),
+                    isOverridden: false
+                ))
+            }
+        }
+        return notices
+    }
+
+    /// "MATH 410 in Spring 2027", one per course and semester, in schedule
+    /// then code order.
+    static func dependentPhrases(_ keys: Set<ConditionalDependencyKey>, code: (String) -> String) -> [String] {
+        var seen: Set<String> = []
+        return keys
+            .sorted { ($0.semester, code($0.courseID)) < ($1.semester, code($1.courseID)) }
+            .map { "\(code($0.courseID)) in \($0.semester.displayName)" }
+            .filter { seen.insert($0).inserted }
+    }
+
+    /// "A", "A and B", "A, B, and C".
+    static func list(_ items: [String]) -> String {
+        switch items.count {
+        case 0: ""
+        case 1: items[0]
+        case 2: "\(items[0]) and \(items[1])"
+        default: items.dropLast().joined(separator: ", ") + ", and " + items[items.count - 1]
+        }
+    }
 
     private func loadWarnings(for pathway: Pathway, workload: WorkloadPreference, overrides: [ConflictOverride]) -> [ConflictWarning] {
         let semesters = pathway.semesters.sorted { $0.id < $1.id }

@@ -101,10 +101,9 @@ public struct DropVerdictCalculator: Sendable {
         workload: WorkloadPreference? = nil,
         earnedHoursAtStart: Double? = nil
     ) -> [SemesterIdentity: DropVerdict] {
+        // Placeholders are simulated too: moving one can give or take away
+        // the prerequisite support later courses count on.
         let semesterIDs = pathway.semesters.map(\.id)
-        guard !PathwayPlaceholder.isPlaceholder(itemID) else {
-            return Dictionary(uniqueKeysWithValues: semesterIDs.map { ($0, DropVerdict.neutral) })
-        }
 
         let detector = ConflictDetector(catalog: catalog)
         let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
@@ -210,6 +209,7 @@ public struct DropVerdictCalculator: Sendable {
         case .missingPrerequisite: "loses its prereq"
         case .missingCorequisite: "loses its coreq"
         case .labNotPaired: "loses its lab pairing"
+        case .pendingPrerequisiteChoice: "needs a prerequisite choice"
         case .unavailableSemester: "is not offered that term"
         case .unknownAvailability: "has unknown availability"
         case .heavyLoad: "is overloaded"
@@ -222,6 +222,7 @@ public struct DropVerdictCalculator: Sendable {
         case .missingPrerequisite: "Missing prereq"
         case .missingCorequisite: "Coreq not in place"
         case .labNotPaired: "Lab not paired"
+        case .pendingPrerequisiteChoice: "Prerequisite choice needed"
         case .unavailableSemester: "Not offered in \(warning.semester.term.rawValue)"
         case .unknownAvailability: "Availability unknown"
         case .heavyLoad: "Heavy load"
@@ -235,7 +236,7 @@ public struct DropVerdictCalculator: Sendable {
             return firstSentence(of: warning.detail)
         case .missingCorequisite, .labNotPaired:
             return warning.summary
-        case .unavailableSemester, .unknownAvailability, .heavyLoad, .lightLoad:
+        case .unavailableSemester, .unknownAvailability, .heavyLoad, .lightLoad, .pendingPrerequisiteChoice:
             return nil
         }
     }

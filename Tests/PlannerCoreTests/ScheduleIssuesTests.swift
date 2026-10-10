@@ -29,6 +29,16 @@ struct ScheduleIssuesTests {
 
     static let issues = ScheduleIssues([aUnavailable, bCoreq, load, hidden, aKept, bPrereq], catalog: catalog)
 
+    @Test("a pending prerequisite choice is a worth-a-look issue on its placeholder")
+    func pendingChoiceOnItsSlot() {
+        let slot = PathwayPlaceholder.id(categoryID: "choice", optionIndex: 0)
+        let notice = Self.w(slot, Self.fall26, .pendingPrerequisiteChoice)
+        let issues = ScheduleIssues([notice, Self.bPrereq], catalog: Self.catalog)
+        #expect(issues.worthALook == [notice])
+        #expect(issues.mustFix == [Self.bPrereq])
+        #expect(issues.warnings(for: slot, in: Self.fall26) == [notice])
+    }
+
     @Test("groups by severity, drops hidden, orders by semester then course code")
     func grouping() {
         #expect(Self.issues.mustFix == [Self.bPrereq, Self.aUnavailable])

@@ -16,9 +16,10 @@ struct WarningPopover: View {
         var revision: UUID
     }
 
-    /// The worst active course-level warning gets the fix row.
+    /// The worst active course-level warning gets the fix row. A pending
+    /// prerequisite choice is settled in the picker, not by a move.
     private var fixTarget: ConflictWarning? {
-        warnings.first { !$0.isSemesterLevel && !$0.isOverridden }
+        warnings.first { !$0.isSemesterLevel && !$0.isOverridden && $0.kind != .pendingPrerequisiteChoice }
     }
 
     var body: some View {
@@ -68,21 +69,30 @@ struct WarningPopover: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            HStack(spacing: DesignTokens.Spacing.m) {
-                if warning.isOverridden {
-                    Button("Stop keeping") { store.removeOverride(warning) }
-                        .buttonStyle(.dtTertiary)
-                } else {
-                    Button("Keep anyway") { store.override(warning) }
-                        .buttonStyle(.dtTertiary)
-                }
-                if !warning.isSemesterLevel {
-                    Button("View course") {
-                        onClose()
-                        store.showCourse(warning.courseID)
-                    }
+            // A pending choice belongs to a placeholder, not a course, and is
+            // an explanation rather than a conflict to keep.
+            if warning.kind != .pendingPrerequisiteChoice {
+                actions(for: warning)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func actions(for warning: ConflictWarning) -> some View {
+        HStack(spacing: DesignTokens.Spacing.m) {
+            if warning.isOverridden {
+                Button("Stop keeping") { store.removeOverride(warning) }
                     .buttonStyle(.dtTertiary)
+            } else {
+                Button("Keep anyway") { store.override(warning) }
+                    .buttonStyle(.dtTertiary)
+            }
+            if !warning.isSemesterLevel {
+                Button("View course") {
+                    onClose()
+                    store.showCourse(warning.courseID)
                 }
+                .buttonStyle(.dtTertiary)
             }
         }
     }

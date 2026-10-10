@@ -54,6 +54,8 @@ final class PlanStore: ObservableObject {
     private let detailService = CourseDetailService()
     private var courseDetailCache: [String: CourseDetail] = [:]
     private var cachedWarnings: [ConflictWarning]?
+    private var cachedAnalysis: PlaceholderPrerequisiteAnalysis?
+    private var analysisCacheIsValid = false
     private var cachedProgress: GraduationProgress?
     private var progressCacheIsValid = false
     private var verdictCache: [String: [SemesterIdentity: DropVerdict]] = [:]
@@ -155,10 +157,40 @@ final class PlanStore: ObservableObject {
             // generator does.
             completedAtStart: effectiveAcademicHistory.completedCourseIDs,
             workload: plan.workload,
-            earnedHoursAtStart: earnedHoursContext
+            earnedHoursAtStart: earnedHoursContext,
+            prerequisiteAnalysis: placeholderPrerequisiteAnalysis ?? .empty
         )
         cachedWarnings = result
         return result
+    }
+
+    /// Which unresolved slots later courses count on, for the current plan.
+    /// Computed once per plan/catalog revision and shared by the warnings
+    /// and the placeholder pickers; nil when it couldn't finish, which
+    /// leaves ordinary conflicts in place.
+    var placeholderPrerequisiteAnalysis: PlaceholderPrerequisiteAnalysis? {
+        if analysisCacheIsValid { return cachedAnalysis }
+        let result: PlaceholderPrerequisiteAnalysis?
+        if let catalog, let activePathway {
+            result = ConflictDetector(catalog: catalog).placeholderPrerequisiteAnalysis(
+                for: activePathway,
+                activeProgramTitle: effectiveActiveProgram?.title,
+                completedAtStart: effectiveAcademicHistory.completedCourseIDs,
+                workload: plan.workload,
+                earnedHoursAtStart: earnedHoursContext
+            )
+        } else {
+            result = nil
+        }
+        cachedAnalysis = result
+        analysisCacheIsValid = true
+        return result
+    }
+
+    /// A slot's supporting choices and the courses each supports, from the
+    /// current analysis.
+    func placeholderDependencies(for placeholderID: String) -> [String: Set<ConditionalDependencyKey>] {
+        placeholderPrerequisiteAnalysis?.supportsByPlaceholder[placeholderID] ?? [:]
     }
 
     var progress: GraduationProgress? {
@@ -183,6 +215,8 @@ final class PlanStore: ObservableObject {
     }
 
     private func invalidateDerivedState() {
+        cachedAnalysis = nil
+        analysisCacheIsValid = false
         cachedWarnings = nil
         cachedProgress = nil
         progressCacheIsValid = false
@@ -946,7 +980,9 @@ final class PlanStore: ObservableObject {
     }
 
     func override(_ warning: ConflictWarning) {
-        guard canEditSchedule else { return }
+        // A pending prerequisite choice is an explanation, not a conflict
+        // to keep.
+        guard canEditSchedule, warning.kind != .pendingPrerequisiteChoice else { return }
         let override = ConflictOverride(courseID: warning.courseID, semester: warning.semester, kind: warning.kind)
         if !plan.overrides.contains(override) {
             plan.overrides.append(override)

@@ -21,7 +21,9 @@ public struct FixSuggester: Sendable {
         verdicts: [SemesterIdentity: DropVerdict],
         in pathway: Pathway
     ) -> [FixSuggestion] {
-        guard !warning.isSemesterLevel, warning.kind.severity != .hidden else { return [] }
+        // A pending prerequisite choice is resolved by picking a course, not
+        // by moving one.
+        guard !warning.isSemesterLevel, warning.kind.severity != .hidden, warning.kind != .pendingPrerequisiteChoice else { return [] }
         let key = WarningKey(warning)
         let ordered = pathway.semesters.map(\.id).sorted()
         guard let currentIndex = ordered.firstIndex(of: warning.semester) else { return [] }

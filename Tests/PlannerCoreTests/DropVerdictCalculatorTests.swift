@@ -172,7 +172,7 @@ struct DropVerdictCalculatorTests {
         #expect(verdicts(moving: "MATH232", in: pathway, completedAtStart: ["MATH231"])[Self.fall26] == .neutral)
     }
 
-    @Test("placeholders are neutral everywhere")
+    @Test("a placeholder nothing depends on is neutral everywhere")
     func placeholdersNeutral() {
         let placeholderID = PathwayPlaceholder.id(categoryID: "gened", optionIndex: 0)
         var pathway = Self.basePathway

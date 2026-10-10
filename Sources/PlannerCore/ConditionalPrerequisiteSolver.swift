@@ -33,8 +33,22 @@ public struct ConditionalPrerequisiteSolver: Sendable {
         forcedChoices: [String: String] = [:],
         budget: inout ConditionalSearchBudget
     ) throws -> ConditionalFeasibility {
+        try solve(requests, in: input, forcedChoices: forcedChoices, focus: nil, budget: &budget)
+    }
+
+    /// `focus` limits the search to the connected groups holding those
+    /// requests or a forced slot; the rest are taken as already proven. The
+    /// analyzer uses it so admitting one request doesn't re-spend other
+    /// groups' budgets.
+    func solve(
+        _ requests: [ConditionalPrerequisiteRequest],
+        in input: ConditionalPrerequisiteInput,
+        forcedChoices: [String: String],
+        focus: Set<ConditionalDependencyKey>?,
+        budget: inout ConditionalSearchBudget
+    ) throws -> ConditionalFeasibility {
         let context = SolverContext(catalog: catalog, input: input)
-        return try context.solve(requests, forcedChoices: forcedChoices, budget: &budget)
+        return try context.solve(requests, forcedChoices: forcedChoices, focus: focus, budget: &budget)
     }
 }
 
@@ -66,11 +80,15 @@ private struct SearchGoal: Hashable {
 private struct SearchState {
     var assignments: [String: String] = [:]
     var uses: Set<ConditionalProviderUse> = []
+    /// Forced slots whose own needs are checked when a request first draws
+    /// on them, so the chain is credited to that request.
+    var unvalidated: Set<String> = []
 }
 
 private struct FailureKey: Hashable {
     var goals: [SearchGoal]
     var assignments: [String: String]
+    var unvalidated: Set<String>
 }
 
 private struct BudgetExhausted: Error {}
@@ -126,10 +144,10 @@ private final class SolverContext {
     func solve(
         _ requests: [ConditionalPrerequisiteRequest],
         forcedChoices: [String: String],
+        focus: Set<ConditionalDependencyKey>?,
         budget: inout ConditionalSearchBudget
     ) throws -> ConditionalFeasibility {
         var start = SearchState()
-        var forcedGoals: [String: [SearchGoal]] = [:]
         for (slot, course) in forcedChoices.sorted(by: { $0.key < $1.key }) {
             guard let semester = slotSemester[slot],
                   domain(of: slot).contains(course),
@@ -138,8 +156,7 @@ private final class SolverContext {
                   locallyFeasible(course, at: semester, adding: [slot: course], to: start)
             else { return .impossible }
             start.assignments[slot] = course
-            let root = ConditionalDependencyKey(courseID: course, semester: semesters[semester].id, kind: .prerequisite)
-            forcedGoals[slot] = providerGoals(for: course, at: semester, root: root, state: start)
+            start.unvalidated.insert(slot)
         }
 
         let goals = requests.map(goal)
@@ -148,8 +165,12 @@ private final class SolverContext {
         var unconfirmed = false
         for group in groups {
             try Task.checkCancellation()
+            if let focus,
+               !group.goalIndices.contains(where: { focus.contains(requests[$0].key) }),
+               group.slots.isDisjoint(with: forcedChoices.keys) {
+                continue
+            }
             let groupGoals = group.goalIndices.map { goals[$0] }
-                + group.slots.sorted().flatMap { forcedGoals[$0] ?? [] }
             do {
                 guard let solved = try search(groupGoals, start, group: group.id, budget: &budget) else {
                     return .impossible
@@ -184,7 +205,7 @@ private final class SolverContext {
         try Task.checkCancellation()
         guard budget.spend(group) else { throw BudgetExhausted() }
         guard let goal = goals.first else { return state }
-        let failure = FailureKey(goals: goals, assignments: state.assignments)
+        let failure = FailureKey(goals: goals, assignments: state.assignments, unvalidated: state.unvalidated)
         if failures.contains(failure) { return nil }
         let rest = Array(goals.dropFirst())
 
@@ -246,7 +267,11 @@ private final class SolverContext {
             guard let semester = slotSemester[bound], goal.window.admits(semester) else { return nil }
             var next = state
             next.uses.insert(ConditionalProviderUse(placeholderID: bound, supportingCourseID: courseID, dependent: goal.root))
-            return try search(rest, next, group: group, budget: &budget)
+            var needs: [SearchGoal] = []
+            if next.unvalidated.remove(bound) != nil {
+                needs = providerGoals(for: courseID, at: semester, root: goal.root, state: next)
+            }
+            return try search(needs + rest, next, group: group, budget: &budget)
         }
         guard !allReal.contains(courseID) else { return nil }
         for slot in slots where goal.window.admits(slot.semester) && state.assignments[slot.id] == nil {

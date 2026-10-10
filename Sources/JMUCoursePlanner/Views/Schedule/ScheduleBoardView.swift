@@ -118,7 +118,7 @@ struct ScheduleBoardView: View {
 
             Spacer()
 
-            IssuesButton(issues: issues, catalog: catalog) { warning in
+            IssuesButton(issues: issues, catalog: catalog, placeholders: store.activePathway?.placeholders ?? [:]) { warning in
                 focus(semester: warning.semester, openingTag: issues.tagID(for: warning))
             }
 

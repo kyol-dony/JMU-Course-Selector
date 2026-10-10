@@ -6,6 +6,9 @@ import SwiftUI
 struct IssuesButton: View {
     var issues: ScheduleIssues
     var catalog: Catalog
+    /// The pathway's placeholder definitions, so a placeholder's issue reads
+    /// as its requirement rather than its internal ID.
+    var placeholders: [String: PlaceholderSpec] = [:]
     var onSelect: (ConflictWarning) -> Void
 
     @State private var isPresented = false
@@ -135,9 +138,11 @@ struct IssuesButton: View {
     }
 
     private func subject(for warning: ConflictWarning) -> String {
-        warning.isSemesterLevel
-            ? warning.semester.displayName
-            : (catalog.coursesByID[warning.courseID]?.code ?? warning.courseID)
+        if warning.isSemesterLevel { return warning.semester.displayName }
+        if PathwayPlaceholder.isPlaceholder(warning.courseID) {
+            return placeholders[warning.courseID]?.categoryName ?? "Placeholder"
+        }
+        return catalog.coursesByID[warning.courseID]?.code ?? warning.courseID
     }
 
     private func color(for warning: ConflictWarning) -> Color {

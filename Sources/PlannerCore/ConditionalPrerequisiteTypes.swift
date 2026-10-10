@@ -151,3 +151,47 @@ public struct ConditionalSearchBudget: Sendable {
         used[group, default: 0] >= limitPerGroup
     }
 }
+
+/// Wording shared by the board's pending-choice notice and the placeholder
+/// picker, so both explain a slot the same way.
+public enum PlaceholderDependencyText {
+    /// "MATH 410 in Spring 2027", once per course and semester, in schedule
+    /// then course-code order.
+    public static func dependentPhrases(_ keys: Set<ConditionalDependencyKey>, code: (String) -> String) -> [String] {
+        var seen: Set<String> = []
+        return keys
+            .sorted { ($0.semester, code($0.courseID)) < ($1.semester, code($1.courseID)) }
+            .map { "\(code($0.courseID)) in \($0.semester.displayName)" }
+            .filter { seen.insert($0).inserted }
+    }
+
+    /// "A", "A and B", "A, B, and C".
+    public static func list(_ items: [String]) -> String {
+        switch items.count {
+        case 0: ""
+        case 1: items[0]
+        case 2: "\(items[0]) and \(items[1])"
+        default: items.dropLast().joined(separator: ", ") + ", and " + items[items.count - 1]
+        }
+    }
+
+    /// "Choose MATH 300 here to support MATH 410 in Spring 2027." Choices
+    /// supporting the same courses share one sentence.
+    public static func choiceSentences(_ supports: [String: Set<ConditionalDependencyKey>], code: (String) -> String) -> [String] {
+        var choicesByDependents: [[String]: [String]] = [:]
+        for (option, keys) in supports {
+            choicesByDependents[dependentPhrases(keys, code: code), default: []].append(option)
+        }
+        return choicesByDependents
+            .map { dependents, options in (options.map(code).sorted(), dependents) }
+            .sorted { $0.0.lexicographicallyPrecedes($1.0) }
+            .map { options, dependents in
+                "Choose \(options.joined(separator: " or ")) here to support \(list(dependents))."
+            }
+    }
+
+    /// "Supports MATH 410 in Spring 2027", for one choice's picker row.
+    public static func supportLabel(_ keys: Set<ConditionalDependencyKey>, code: (String) -> String) -> String {
+        "Supports \(list(dependentPhrases(keys, code: code)))"
+    }
+}

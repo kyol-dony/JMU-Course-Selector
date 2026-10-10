@@ -193,6 +193,15 @@ final class PlanStore: ObservableObject {
         placeholderPrerequisiteAnalysis?.supportsByPlaceholder[placeholderID] ?? [:]
     }
 
+    /// The picker's explanation for a slot right now; nil when nothing
+    /// counts on it (or it's gone). Read at render time, so an open picker
+    /// follows edits instead of keeping the labels it opened with.
+    func placeholderDependencyPresentation(for placeholderID: String) -> PlaceholderDependencyPresentation? {
+        let supports = placeholderDependencies(for: placeholderID)
+        guard !supports.isEmpty, let catalog else { return nil }
+        return PlaceholderDependencyPresentation(supports: supports, coursesByID: catalog.coursesByID)
+    }
+
     var progress: GraduationProgress? {
         if progressCacheIsValid {
             return cachedProgress

@@ -6,6 +6,9 @@ import SwiftUI
 struct PlaceholderChip: View {
     var spec: PlaceholderSpec
     var appearance: CourseChip.Appearance = .normal
+    /// A warning tag under the category, as on course chips (e.g. a pending
+    /// prerequisite choice). Nil for lifted and ghost copies.
+    var accessory: AnyView? = nil
 
     @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -31,6 +34,9 @@ struct PlaceholderChip: View {
                     .font(DesignTokens.Typography.caption)
                     .foregroundStyle(DesignTokens.Colors.textSecondary)
                     .lineLimit(2)
+                if let accessory {
+                    accessory.padding(.top, 3)
+                }
             }
             Spacer(minLength: 0)
             Text("\(CreditHoursFormatter.string(spec.credits)) cr")

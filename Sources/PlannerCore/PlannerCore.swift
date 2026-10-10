@@ -2271,18 +2271,7 @@ public struct ConflictDetector: Sendable {
         for semester in orderedSemesters {
             for slot in semester.courseIDs where PathwayPlaceholder.isPlaceholder(slot) {
                 guard let supports = analysis.supportsByPlaceholder[slot], !supports.isEmpty else { continue }
-                // Choices supporting the same courses read as one sentence.
-                var choicesByDependents: [[String]: [String]] = [:]
-                for (option, keys) in supports {
-                    let dependents = Self.dependentPhrases(keys, code: code)
-                    choicesByDependents[dependents, default: []].append(option)
-                }
-                let sentences = choicesByDependents
-                    .map { dependents, options in (options.map(code).sorted(), dependents) }
-                    .sorted { $0.0.lexicographicallyPrecedes($1.0) }
-                    .map { options, dependents in
-                        "Choose \(options.joined(separator: " or ")) here to support \(Self.list(dependents))."
-                    }
+                let sentences = PlaceholderDependencyText.choiceSentences(supports, code: code)
                 notices.append(ConflictWarning(
                     courseID: slot,
                     semester: semester.id,
@@ -2294,26 +2283,6 @@ public struct ConflictDetector: Sendable {
             }
         }
         return notices
-    }
-
-    /// "MATH 410 in Spring 2027", one per course and semester, in schedule
-    /// then code order.
-    static func dependentPhrases(_ keys: Set<ConditionalDependencyKey>, code: (String) -> String) -> [String] {
-        var seen: Set<String> = []
-        return keys
-            .sorted { ($0.semester, code($0.courseID)) < ($1.semester, code($1.courseID)) }
-            .map { "\(code($0.courseID)) in \($0.semester.displayName)" }
-            .filter { seen.insert($0).inserted }
-    }
-
-    /// "A", "A and B", "A, B, and C".
-    static func list(_ items: [String]) -> String {
-        switch items.count {
-        case 0: ""
-        case 1: items[0]
-        case 2: "\(items[0]) and \(items[1])"
-        default: items.dropLast().joined(separator: ", ") + ", and " + items[items.count - 1]
-        }
     }
 
     private func loadWarnings(for pathway: Pathway, workload: WorkloadPreference, overrides: [ConflictOverride]) -> [ConflictWarning] {

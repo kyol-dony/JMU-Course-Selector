@@ -60,11 +60,20 @@ struct CoursePickerSheet: View {
     @State private var index: CoursePickerIndex
 
     private let title: String
+    /// Why this placeholder matters to later courses, and which choices
+    /// support them. Marks rows only; every course stays selectable.
+    private let dependencyPresentation: PlaceholderDependencyPresentation?
     private let onSelect: (Course) -> Void
 
-    init(title: String, courses: [Course], onSelect: @escaping (Course) -> Void) {
+    init(
+        title: String,
+        courses: [Course],
+        dependencyPresentation: PlaceholderDependencyPresentation? = nil,
+        onSelect: @escaping (Course) -> Void
+    ) {
         self.title = title
         _index = State(initialValue: CoursePickerIndex(courses: courses))
+        self.dependencyPresentation = dependencyPresentation
         self.onSelect = onSelect
     }
 
@@ -100,6 +109,10 @@ struct CoursePickerSheet: View {
                 .help("Close")
             }
 
+            if let dependencyPresentation {
+                dependencyNotice(dependencyPresentation)
+            }
+
             HStack(spacing: DesignTokens.Spacing.s) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(DesignTokens.Colors.textSecondary)
@@ -117,6 +130,30 @@ struct CoursePickerSheet: View {
         .padding(DesignTokens.Spacing.l)
     }
 
+    private func dependencyNotice(_ presentation: PlaceholderDependencyPresentation) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(DesignTokens.Colors.warning)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(presentation.summary)
+                    .font(DesignTokens.Typography.bodyEmphasized)
+                    .foregroundStyle(DesignTokens.Colors.textPrimary)
+                Text(presentation.detail + " Any course here can still be chosen.")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(DesignTokens.Spacing.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+                .fill(DesignTokens.Colors.warning.opacity(0.13))
+        )
+        .accessibilityElement(children: .combine)
+    }
+
     @ViewBuilder
     private func courseList(results: [CoursePickerEntry]) -> some View {
         if results.isEmpty {
@@ -132,10 +169,18 @@ struct CoursePickerSheet: View {
                             .font(DesignTokens.Typography.bodyEmphasized)
                             .foregroundStyle(DesignTokens.Colors.brandPurple)
                             .frame(width: 90, alignment: .leading)
-                        Text(entry.course.title)
-                            .font(DesignTokens.Typography.body)
-                            .foregroundStyle(DesignTokens.Colors.textPrimary)
-                            .lineLimit(2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.course.title)
+                                .font(DesignTokens.Typography.body)
+                                .foregroundStyle(DesignTokens.Colors.textPrimary)
+                                .lineLimit(2)
+                            if let support = dependencyPresentation?.labelsByCourseID[entry.course.id] {
+                                Label(support, systemImage: "arrow.turn.down.right")
+                                    .font(DesignTokens.Typography.caption)
+                                    .foregroundStyle(DesignTokens.Colors.textSecondary)
+                                    .lineLimit(2)
+                            }
+                        }
                         Spacer(minLength: DesignTokens.Spacing.m)
                         Text("\(entry.course.credits) cr")
                             .font(DesignTokens.Typography.caption)
@@ -146,9 +191,15 @@ struct CoursePickerSheet: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(entry.course.code), \(entry.course.title), \(entry.course.credits) credits")
+                .accessibilityLabel(rowAccessibilityLabel(entry.course))
             }
             .listStyle(.inset)
         }
+    }
+
+    private func rowAccessibilityLabel(_ course: Course) -> String {
+        let base = "\(course.code), \(course.title), \(course.credits) credits"
+        guard let support = dependencyPresentation?.labelsByCourseID[course.id] else { return base }
+        return "\(base). \(support)"
     }
 }

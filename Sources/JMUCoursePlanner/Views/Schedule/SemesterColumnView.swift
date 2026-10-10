@@ -109,8 +109,22 @@ struct SemesterColumnView: View {
         .animation(reduceMotion ? nil : DesignTokens.Motion.hover, value: isHighlighted)
         .animation(reduceMotion ? nil : DesignTokens.Motion.hover, value: anchorPick?.role)
         .animation(reduceMotion ? nil : DesignTokens.Motion.hover, value: anchorPick?.isPreview)
+        .onChange(of: store.activePathway) { _, pathway in
+            // A slot that's been chosen, removed or replaced elsewhere (undo,
+            // regeneration) closes its picker instead of offering stale advice.
+            guard let slot = coursePickerRequest?.placeholderID,
+                  !(pathway?.semesters.contains { $0.courseIDs.contains(slot) } ?? false)
+            else { return }
+            coursePickerRequest = nil
+        }
         .sheet(item: $coursePickerRequest) { request in
-            CoursePickerSheet(title: request.title, courses: request.courses) { course in
+            CoursePickerSheet(
+                title: request.title,
+                courses: request.courses,
+                // Read from the store on every render, so an open picker
+                // follows edits rather than the labels it opened with.
+                dependencyPresentation: request.placeholderID.flatMap(store.placeholderDependencyPresentation(for:))
+            ) { course in
                 switch request.action {
                 case .resolvePlaceholder(let placeholderID):
                     store.resolvePlaceholder(placeholderID, with: course.id)
@@ -351,7 +365,7 @@ struct SemesterColumnView: View {
         let appearance: CourseChip.Appearance = session?.itemID == id ? .ghost : .normal
         if PathwayPlaceholder.isPlaceholder(id) {
             let spec = ScheduleItemLookup.placeholderSpec(for: id, in: store.activePathway)
-            PlaceholderChip(spec: spec, appearance: appearance)
+            PlaceholderChip(spec: spec, appearance: appearance, accessory: chipTag(for: id))
                 .modifier(dragModifier(id: id, index: index) { openPlaceholderPicker(id: id, spec: spec) })
                 .contextMenu { MoveToMenu(itemID: id, currentSemester: semester.id) }
                 .accessibilityActions { moveActions(for: id) }
@@ -490,4 +504,9 @@ private struct CoursePickerRequest: Identifiable {
     let title: String
     let courses: [Course]
     let action: Action
+
+    var placeholderID: String? {
+        if case .resolvePlaceholder(let id) = action { return id }
+        return nil
+    }
 }

@@ -31,9 +31,16 @@ struct WarningTag<PopoverContent: View>: View {
         }
         .buttonStyle(.plain)
         .fixedSize(horizontal: false, vertical: true)
-        .help(model.primary.summary)
-        .accessibilityLabel(model.tone == .kept ? "Kept warning: \(model.primary.summary)" : "Warning: \(model.primary.summary)")
+        .help(helpText)
+        .accessibilityLabel(model.tone == .kept ? "Kept warning: \(model.primary.summary)" : "Warning: \(helpText)")
         .popover(isPresented: $isPresented, arrowEdge: .trailing, content: popover)
+    }
+
+    /// A pending prerequisite choice explains itself on hover: which
+    /// choices support which later courses.
+    private var helpText: String {
+        guard model.primary.kind == .pendingPrerequisiteChoice else { return model.primary.summary }
+        return "\(model.primary.summary). \(model.primary.detail)"
     }
 
     private var iconColor: Color {

@@ -30,6 +30,13 @@ After each rebuild, verify by hand:
 - Concentrations/tracks are supported for catalog pages where JMU exposes course-bearing concentration sections. The setup flow requires selecting one concentration for those majors, and generated plans include the shared major core plus the selected concentration only.
 - Concentration sections that are prose-only or cannot be safely split remain partially verified; the parser does not infer advisor-selected or unofficial tracks.
 
+## Prerequisites through unresolved placeholders
+
+- An unresolved placeholder (a requirement choice, Gen Ed slot or Open Elective) can conditionally supply a later course's prerequisite when one of its menu choices would, checked together with everything else the plan relies on: one slot holds one course, the choice must itself fit its own semester (prerequisites, standing, known availability, lab partner, credit load), and no slot stands in for a course already in the plan. Generation places dependent courses on that basis, and the Schedule board shows a yellow **Prerequisite choice needed** notice on the slot instead of a red missing-prerequisite warning on the dependent course.
+- These are pending choices, not completed requirements. The slot stays unresolved; no supporting choice is recorded, counted toward requirement progress or contributions, exported, or saved. Its reserved credit hours remain the planning estimate until the student picks a course. Choosing an incompatible course keeps every placement and brings back the ordinary conflict.
+- The search behind this is bounded (10,000 explored states per group of related slots and courses). When a route can't be confirmed within that limit, the planner keeps the ordinary conflict and notes that a placeholder choice might supply it; picking a course for an earlier placeholder or regenerating resolves it. An unconfirmed route is never shown as satisfied.
+- Generation enforces prerequisites (and keeps lecture/lab pairs together); corequisites remain warnings the board reports, as before.
+
 ## Course availability
 
 - The official catalog PDF used here did not provide reliable Fall/Spring offering patterns for each course.

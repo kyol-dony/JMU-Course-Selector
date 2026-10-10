@@ -46,13 +46,11 @@ struct CoursePickerIndex {
 }
 
 enum PlaceholderCoursePickerPolicy {
+    /// The slot's menu, from the same domain prerequisite analysis reasons
+    /// over, so a highlighted choice is always one the picker offers.
     static func eligibleCourses(for spec: PlaceholderSpec, catalog: Catalog) -> [Course] {
-        if spec.alternates.isEmpty {
-            return catalog.courses
-        }
-
         let coursesByID = catalog.coursesByID
-        return spec.alternates.compactMap { coursesByID[$0] }
+        return PlaceholderCourseDomain.eligibleCourseIDs(for: spec, catalog: catalog).compactMap { coursesByID[$0] }
     }
 }
 

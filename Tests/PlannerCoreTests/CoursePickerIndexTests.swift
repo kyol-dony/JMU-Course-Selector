@@ -83,6 +83,26 @@ struct CoursePickerIndexTests {
         #expect(!eligible.contains { $0.id == "cs-149" })
     }
 
+    @Test("a placeholder picker lists each eligible course once, like prerequisite analysis")
+    func pickerSharesThePrerequisiteDomain() {
+        let courses = [
+            course(id: "cis-330", code: "CIS 330", title: "Database Design"),
+            course(id: "cis-331", code: "CIS 331", title: "Intermediate Computer Programming")
+        ]
+        let spec = PlaceholderSpec(
+            categoryID: "cis-elective",
+            categoryName: "CIS Elective",
+            alternates: ["cis-331", "cis-330", "cis-331"],
+            credits: 3
+        )
+        let catalog = catalog(courses: courses)
+
+        let eligible = PlaceholderCoursePickerPolicy.eligibleCourses(for: spec, catalog: catalog)
+
+        #expect(eligible.map(\.id) == ["cis-331", "cis-330"])
+        #expect(eligible.map(\.id) == PlaceholderCourseDomain.eligibleCourseIDs(for: spec, catalog: catalog))
+    }
+
     @Test("open electives still expose the full catalog")
     func openElectiveUsesFullCatalog() throws {
         let courses = [

@@ -166,6 +166,112 @@ public final class PlaceholderPrerequisiteAnalyzer {
         return leaves
     }
 
+    // MARK: Generation support
+
+    /// The prerequisite request `courseID` would make in `semester` when
+    /// unresolved earlier slots can conditionally satisfy it alongside
+    /// `admitted`; nil when nothing can (or the search can't decide).
+    func conditionalPrerequisite(
+        for courseID: String,
+        in semester: SemesterIdentity,
+        input: ConditionalPrerequisiteInput,
+        admitted: [ConditionalPrerequisiteRequest],
+        budget: inout ConditionalSearchBudget
+    ) throws -> ConditionalPrerequisiteRequest? {
+        guard let course = coursesByID[courseID] else { return nil }
+        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: input.activeProgramTitle)
+        let expression = resolver.rule(for: course, activeProgramTitle: input.activeProgramTitle).prerequisiteExpr
+            .treatingAsSatisfied(labPairing.pairedCourses(of: courseID))
+        let request = ConditionalPrerequisiteRequest(
+            key: ConditionalDependencyKey(courseID: courseID, semester: semester, kind: .prerequisite),
+            expression: expression
+        )
+        // Each course still missing must come from an earlier slot's menu;
+        // when no slot offers any of them, skip the search.
+        guard case .unmet(let missing, _) = PrereqEvaluator(
+            completedBefore: realBefore(semester, in: input),
+            scheduledThisTerm: [],
+            standing: input.standingBySemester[semester]
+        ).evaluate(expression, mode: .prereq) else { return nil }
+        let earlierSlots = openSlots(in: input.pathway).filter { slot in
+            input.pathway.semesters.contains { $0.id < semester && $0.courseIDs.contains(slot) }
+        }
+        let offered = missing.courseLeaves.contains { leaf in
+            earlierSlots.contains { slot in
+                input.pathway.placeholders[slot].map { menu(of: $0).contains(leaf) } ?? false
+            }
+        }
+        guard offered else { return nil }
+        let result = try ConditionalPrerequisiteSolver(catalog: catalog)
+            .solve(admitted + [request], in: input, forcedChoices: [:], focus: [request.key], budget: &budget)
+        if case .feasible = result { return request }
+        return nil
+    }
+
+    /// Whether a needed slot should wait: none of the courses pending work
+    /// needs from its menu could sit in `semester` yet, but a later term
+    /// would offer one, or another pending slot could supply what they lack
+    /// once placed. Placing it now would put the course in a term it isn't
+    /// offered, or before its own prerequisite.
+    func slotShouldWait(
+        _ slot: String,
+        in semester: SemesterIdentity,
+        input: ConditionalPrerequisiteInput,
+        admitted: [ConditionalPrerequisiteRequest],
+        pendingCourseIDs: [String],
+        completedCourseIDs: Set<String>,
+        placeholders: [String: PlaceholderSpec],
+        budget: inout ConditionalSearchBudget
+    ) throws -> Bool {
+        guard let spec = placeholders[slot] else { return false }
+        let needed = neededCourses(pendingCourseIDs: pendingCourseIDs, completedCourseIDs: completedCourseIDs, activeProgramTitle: input.activeProgramTitle)
+        let options = Array(PlaceholderCourseDomain.eligibleCourseIDs(for: spec, catalog: catalog).filter(needed.contains).prefix(25))
+        guard !options.isEmpty else { return false }
+        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: input.activeProgramTitle)
+        let pool = realBefore(semester, in: input)
+        var lacking: Set<String> = []
+        var offeredInAnotherTerm = false
+        for option in options {
+            guard let course = coursesByID[option] else { continue }
+            if let availability = course.availability, !availability.contains(semester.term) {
+                offeredInAnotherTerm = offeredInAnotherTerm || !availability.isEmpty
+                continue
+            }
+            let expression = resolver.rule(for: course, activeProgramTitle: input.activeProgramTitle).prerequisiteExpr
+                .treatingAsSatisfied(labPairing.pairedCourses(of: option))
+            guard case .unmet(let missing, _) = PrereqEvaluator(
+                completedBefore: pool, scheduledThisTerm: [], standing: input.standingBySemester[semester]
+            ).evaluate(expression, mode: .prereq) else { return false }
+            let request = ConditionalPrerequisiteRequest(
+                key: ConditionalDependencyKey(courseID: option, semester: semester, kind: .prerequisite),
+                expression: expression
+            )
+            if case .feasible = try ConditionalPrerequisiteSolver(catalog: catalog)
+                .solve(admitted + [request], in: input, forcedChoices: [:], focus: [request.key], budget: &budget) {
+                return false
+            }
+            lacking.formUnion(missing.courseLeaves)
+        }
+        if offeredInAnotherTerm { return true }
+        let otherSlots = pendingCourseIDs.filter { $0 != slot && PathwayPlaceholder.isPlaceholder($0) }.compactMap { placeholders[$0] }
+        return lacking.contains { leaf in otherSlots.contains { menu(of: $0).contains(leaf) } }
+    }
+
+    private func realBefore(_ semester: SemesterIdentity, in input: ConditionalPrerequisiteInput) -> Set<String> {
+        input.completedAtStart.union(
+            input.pathway.semesters.filter { $0.id < semester }.flatMap(\.courseIDs).filter { !PathwayPlaceholder.isPlaceholder($0) }
+        )
+    }
+
+    private var menus: [PlaceholderSpec: Set<String>] = [:]
+
+    private func menu(of spec: PlaceholderSpec) -> Set<String> {
+        if let cached = menus[spec] { return cached }
+        let menu = Set(PlaceholderCourseDomain.eligibleCourseIDs(for: spec, catalog: catalog))
+        menus[spec] = menu
+        return menu
+    }
+
     // MARK: Generation urgency
 
     /// Scheduling urgency for `itemID` while `pendingCourseIDs` still wait

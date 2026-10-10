@@ -52,19 +52,24 @@ public struct ConditionalPrerequisiteInput: Sendable {
     /// the check.
     public let workload: WorkloadPreference?
     public let activeProgramTitle: String?
+    /// Real courses planned but not yet placed (during generation). A slot
+    /// never stands in for one, which would invent a duplicate enrollment.
+    public let unscheduledCourseIDs: Set<String>
 
     public init(
         pathway: Pathway,
         completedAtStart: Set<String>,
         standingBySemester: [SemesterIdentity: ClassStanding],
         workload: WorkloadPreference?,
-        activeProgramTitle: String?
+        activeProgramTitle: String?,
+        unscheduledCourseIDs: Set<String> = []
     ) {
         self.pathway = pathway
         self.completedAtStart = completedAtStart
         self.standingBySemester = standingBySemester
         self.workload = workload
         self.activeProgramTitle = activeProgramTitle
+        self.unscheduledCourseIDs = unscheduledCourseIDs
     }
 }
 

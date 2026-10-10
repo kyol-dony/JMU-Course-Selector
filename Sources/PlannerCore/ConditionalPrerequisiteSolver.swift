@@ -134,7 +134,7 @@ private final class SolverContext {
         }
         self.slots = slots
         slotSemester = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, $0.semester) })
-        allReal = input.completedAtStart.union(
+        allReal = input.completedAtStart.union(input.unscheduledCourseIDs).union(
             semesters.flatMap(\.courseIDs).filter { !PathwayPlaceholder.isPlaceholder($0) }
         )
     }

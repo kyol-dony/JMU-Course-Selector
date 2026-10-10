@@ -19,7 +19,11 @@ public enum AnchoredRegenerationError: Error, LocalizedError {
 }
 
 /// An immutable prefix. Planned concrete courses are eligibility input only;
-/// unresolved slots reserve requirements and hours without granting equivalences.
+/// unresolved slots reserve requirements and hours without granting
+/// equivalences or completion. They can still conditionally supply a
+/// regenerated course's prerequisite when a compatible choice would (see
+/// `PlaceholderPrerequisiteAnalyzer`), but the prefix itself never changes
+/// and no choice is recorded.
 public struct AnchoredScheduleContext: Sendable {
     public let semesters: [SemesterPlan]
     public let placeholders: [String: PlaceholderSpec]

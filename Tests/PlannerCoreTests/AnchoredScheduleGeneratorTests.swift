@@ -39,12 +39,16 @@ import Testing
         c.programs[0].requirements[0].courseOptions[0] = ["CS149", "ALT"]
         let p = Pathway(id: "p", name: "P", semesters: [.init(id: fall, courseIDs: [slot])],
                         placeholders: [slot: .init(categoryID: "core", categoryName: "Core", alternates: ["CS149", "ALT"], credits: 3)])
-        #expect(throws: PlannerError.self) { try regenerate(p, catalog: c, strict: true) }
-        let result = try regenerate(p, catalog: c)
+        // The unresolved prefix slot can conditionally supply CS 149, so even
+        // strict regeneration places CS 159 after it...
+        let result = try regenerate(p, catalog: c, strict: true)
         #expect(result.semesters.first == p.semesters.first)
         #expect(result.semesters.dropFirst().flatMap(\.courseIDs) == ["CS159"])
         #expect(result.semesters.flatMap(\.courseIDs).filter { $0 == slot }.count == 1)
-        #expect(ConflictDetector(catalog: c).warnings(for: result, overrides: []).contains { $0.courseID == "CS159" && $0.kind == .missingPrerequisite })
+        #expect(result.resolvedPlaceholders.isEmpty)
+        // ...without granting the slot's choice any completion.
+        let progress = try ProgressCalculator(catalog: c).progress(programID: "cs", pathway: result, transferCredits: [])
+        #expect(progress.categories.first { $0.id == "core" }?.completedCredits == 3)
     }
     @Test func resolvedAndSharedElectiveReservations() throws {
         let courses = (1...5).map { Course(id: "EL\($0)", code: "EL 10\($0)", title: "Elective", credits: 3, availability: [.fall, .spring], prerequisites: []) }

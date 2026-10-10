@@ -998,7 +998,8 @@ public struct ScheduleGenerator: Sendable {
                     initial + AcademicCreditCalculator.projectedHours(in: prefix, placeholders: placeholders, transferCredits: transferCredits, catalog: catalog) - transferCredits.reduce(0.0) { $0 + $1.credits }
                 },
                 standingSemesterOffset: source == nil ? 0 : context?.standingSemesterOffset ?? 0,
-                preferenceSemesterOffset: source == nil ? 0 : context?.preferenceSemesterOffset ?? 0
+                preferenceSemesterOffset: source == nil ? 0 : context?.preferenceSemesterOffset ?? 0,
+                preservedSemesters: prefix
             )
             pathways.append(Pathway(
                 id: source?.id ?? "path-\(index + 1)",
@@ -1291,7 +1292,8 @@ public struct ScheduleGenerator: Sendable {
         activeProgramTitle: String? = nil,
         earnedHoursAtStart: Double? = nil,
         standingSemesterOffset: Int = 0,
-        preferenceSemesterOffset: Int = 0
+        preferenceSemesterOffset: Int = 0,
+        preservedSemesters: [SemesterPlan] = []
     ) throws -> [SemesterPlan] {
         var remaining = courseIDs
         var completed = completedAtStart
@@ -1302,6 +1304,29 @@ public struct ScheduleGenerator: Sendable {
         var emptySemesterCount = 0
         let resolver = PrereqRuleResolver(catalog: catalog)
         let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
+        // Unresolved slots already placed (here or in the preserved prefix)
+        // can conditionally supply a later course's prerequisite. Courses
+        // admitted that way stay constraints for the rest of the build, but
+        // no slot is ever resolved: the witnesses are only proofs.
+        let analyzer = PlaceholderPrerequisiteAnalyzer(catalog: catalog)
+        var admitted: [ConditionalPrerequisiteRequest] = []
+        var budget = ConditionalSearchBudget()
+        var placedStanding = Dictionary(
+            preservedSemesters.enumerated().map { ($1.id, ClassStanding.forSemester(position: $0 + 1, totalSemesters: nil)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        func probeInput(_ items: [String], at semester: SemesterIdentity, standing: ClassStanding) -> ConditionalPrerequisiteInput {
+            var standings = placedStanding
+            standings[semester] = standing
+            return ConditionalPrerequisiteInput(
+                pathway: Pathway(id: "", name: "", semesters: preservedSemesters + result + [SemesterPlan(id: semester, courseIDs: items)], placeholders: placeholders),
+                completedAtStart: completedAtStart,
+                standingBySemester: standings,
+                workload: workload,
+                activeProgramTitle: activeProgramTitle,
+                unscheduledCourseIDs: Set(remaining.filter { !PathwayPlaceholder.isPlaceholder($0) }).subtracting(items)
+            )
+        }
 
         while !remaining.isEmpty {
             try Task.checkCancellation()
@@ -1311,12 +1336,33 @@ public struct ScheduleGenerator: Sendable {
             let target = targetLevel(for: semesterOffset + preferenceSemesterOffset)
             let labFor = labUnits(in: remaining, labPairing: labPairing)
             let pairedLabs = Set(labFor.values)
+            // Plan length isn't known while building, so standing uses the
+            // four-year position rule alone; the conflict detector, which
+            // also credits shorter plans, has the final say. Terms skipped
+            // because nothing fit still advance the offset so a lone
+            // standing-gated course can't stall generation.
+            let termStanding = earnedHours.map(ClassStanding.forEarnedCredits) ?? ClassStanding.forSemester(position: semesterOffset + standingSemesterOffset + 1, totalSemesters: nil)
+            // A slot that can supply a pending course's prerequisite goes
+            // ahead of preferences like its menu's median level.
+            let urgency = Dictionary(remaining.map { item in
+                (item, analyzer.providerPriority(itemID: item, pendingCourseIDs: remaining, completedCourseIDs: completed, placeholders: placeholders, activeProgramTitle: activeProgramTitle))
+            }, uniquingKeysWith: { first, _ in first })
+            var conditional: [String: ConditionalPrerequisiteRequest] = [:]
 
-            let ready = remaining.enumerated().compactMap { order, courseID -> ScheduleCandidate? in
+            let ready = try remaining.enumerated().compactMap { order, courseID -> ScheduleCandidate? in
                 let courseCredits: Double
                 let courseAvailability: Set<SemesterTerm>?
                 let prerequisiteExpr: PrereqExpr
                 if let spec = placeholders[courseID] {
+                    // A needed slot holds off while its needed choices still
+                    // lack prerequisites another pending slot would supply.
+                    if urgency[courseID] == 0, try analyzer.slotShouldWait(
+                        courseID, in: semester, input: probeInput([courseID], at: semester, standing: termStanding),
+                        admitted: admitted, pendingCourseIDs: remaining, completedCourseIDs: completed,
+                        placeholders: placeholders, budget: &budget
+                    ) {
+                        return nil
+                    }
                     courseCredits = spec.credits
                     courseAvailability = nil
                     prerequisiteExpr = .empty
@@ -1330,21 +1376,21 @@ public struct ScheduleGenerator: Sendable {
                 } else {
                     return nil
                 }
-                // Plan length isn't known while building, so standing uses the
-                // four-year position rule alone; the conflict detector, which
-                // also credits shorter plans, has the final say. Terms skipped
-                // because nothing fit still advance the offset so a lone
-                // standing-gated course can't stall generation.
-                guard case .satisfied = PrereqEvaluator(
-                    completedBefore: completed,
-                    scheduledThisTerm: [],
-                    standing: earnedHours.map(ClassStanding.forEarnedCredits) ?? ClassStanding.forSemester(position: semesterOffset + standingSemesterOffset + 1, totalSemesters: nil)
-                ).evaluate(prerequisiteExpr, mode: .prereq) else { return nil }
                 if let availability = courseAvailability, !availability.contains(semester.term) { return nil }
+                if case .unmet = PrereqEvaluator(completedBefore: completed, scheduledThisTerm: [], standing: termStanding)
+                    .evaluate(prerequisiteExpr, mode: .prereq) {
+                    // Not ready on real work; an earlier unresolved slot may
+                    // still supply what's missing.
+                    guard let request = try analyzer.conditionalPrerequisite(
+                        for: courseID, in: semester, input: probeInput([courseID], at: semester, standing: termStanding),
+                        admitted: admitted, budget: &budget
+                    ) else { return nil }
+                    conditional[courseID] = request
+                }
                 return ScheduleCandidate(courseID: courseID, credits: courseCredits, variantOrder: order)
             }
             .sorted { lhs, rhs in
-                compare(lhs, rhs, targetLevel: target, semesterOffset: semesterOffset + preferenceSemesterOffset, placeholders: placeholders)
+                compare(lhs, rhs, targetLevel: target, semesterOffset: semesterOffset + preferenceSemesterOffset, placeholders: placeholders, urgency: urgency)
             }
 
             let readyByID = Dictionary(ready.map { ($0.courseID, $0) }, uniquingKeysWith: { first, _ in first })
@@ -1357,6 +1403,24 @@ public struct ScheduleGenerator: Sendable {
                 }
                 let unitCredits = unit.reduce(0) { $0 + $1.credits }
                 guard credits + unitCredits <= maxCredits else { continue }
+                // Re-check conditional members together with everything
+                // admitted so far, including this term's earlier picks: one
+                // slot can't supply incompatible choices to two courses.
+                var unitRequests: [ConditionalPrerequisiteRequest] = []
+                var compatible = true
+                for member in unit where conditional[member.courseID] != nil {
+                    guard let request = try analyzer.conditionalPrerequisite(
+                        for: member.courseID, in: semester,
+                        input: probeInput(selected + unit.map(\.courseID), at: semester, standing: termStanding),
+                        admitted: admitted + unitRequests, budget: &budget
+                    ) else {
+                        compatible = false
+                        break
+                    }
+                    unitRequests.append(request)
+                }
+                guard compatible else { continue }
+                admitted += unitRequests
                 selected.append(contentsOf: unit.map(\.courseID))
                 credits += unitCredits
             }
@@ -1382,6 +1446,7 @@ public struct ScheduleGenerator: Sendable {
                 continue
             }
 
+            placedStanding[semester] = termStanding
             result.append(SemesterPlan(id: semester, courseIDs: selected))
             remaining.removeAll { selected.contains($0) }
             completed.formUnion(selected)
@@ -1390,6 +1455,21 @@ public struct ScheduleGenerator: Sendable {
             semesterOffset += 1
         }
 
+        // Every conditionally admitted course must still have a compatible
+        // route in the finished schedule.
+        if strictPrereqs, !admitted.isEmpty {
+            let finished = ConditionalPrerequisiteInput(
+                pathway: Pathway(id: "", name: "", semesters: preservedSemesters + result, placeholders: placeholders),
+                completedAtStart: completedAtStart,
+                standingBySemester: placedStanding,
+                workload: workload,
+                activeProgramTitle: activeProgramTitle
+            )
+            var check = ConditionalSearchBudget()
+            guard case .feasible = try ConditionalPrerequisiteSolver(catalog: catalog).solve(admitted, in: finished, budget: &check) else {
+                throw PlannerError.impossibleSchedule("Could not confirm the placeholder choices this schedule relies on for prerequisites.")
+            }
+        }
         return result
     }
 
@@ -1458,8 +1538,14 @@ public struct ScheduleGenerator: Sendable {
         _ rhs: ScheduleCandidate,
         targetLevel: Int,
         semesterOffset: Int,
-        placeholders: [String: PlaceholderSpec]
+        placeholders: [String: PlaceholderSpec],
+        urgency: [String: Int] = [:]
     ) -> Bool {
+        let lhsUrgency = urgency[lhs.courseID] ?? 1
+        let rhsUrgency = urgency[rhs.courseID] ?? 1
+        if lhsUrgency != rhsUrgency {
+            return lhsUrgency < rhsUrgency
+        }
         let lhsTimingPriority = genEdTimingPriority(for: lhs.courseID, semesterOffset: semesterOffset, placeholders: placeholders)
         let rhsTimingPriority = genEdTimingPriority(for: rhs.courseID, semesterOffset: semesterOffset, placeholders: placeholders)
         if lhsTimingPriority != rhsTimingPriority {

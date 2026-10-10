@@ -159,5 +159,28 @@ struct PlaceholderPrerequisiteAnalyzerTests {
         #expect(priority(F.slotID(0)) < priority(F.slotID(1)))
         #expect(analyzer.providerPriority(itemID: "D0", pendingCourseIDs: ["D0"], completedCourseIDs: [], placeholders: [:], activeProgramTitle: nil) == 1)
     }
+
+    @Test func onlyTheBestSlotForANeedIsUrgent() throws {
+        // A restricted slot offering A is preferred over Open Electives,
+        // which offer every course.
+        let f = F.makeInput(slots: [["A", "Z"], [], []], dependencies: [.course("A")], extraCourses: [F.course("Z", code: "ENG 101")])
+        let analyzer = PlaceholderPrerequisiteAnalyzer(catalog: f.catalog)
+        let pending = ["D0", F.slotID(0), F.slotID(1), F.slotID(2)]
+        func priority(_ slot: String) -> Int {
+            analyzer.providerPriority(itemID: slot, pendingCourseIDs: pending, completedCourseIDs: [], placeholders: f.input.pathway.placeholders, activeProgramTitle: nil)
+        }
+        #expect(priority(F.slotID(0)) == 0)
+        #expect(priority(F.slotID(1)) == 1)
+        #expect(priority(F.slotID(2)) == 1)
+
+        // With no restricted slot offering it, one Open Elective is enough.
+        let open = F.makeInput(slots: [[], []], dependencies: [.course("A")])
+        let openAnalyzer = PlaceholderPrerequisiteAnalyzer(catalog: open.catalog)
+        let openPending = ["D0", F.slotID(0), F.slotID(1)]
+        let priorities = [F.slotID(0), F.slotID(1)].map {
+            openAnalyzer.providerPriority(itemID: $0, pendingCourseIDs: openPending, completedCourseIDs: [], placeholders: open.input.pathway.placeholders, activeProgramTitle: nil)
+        }
+        #expect(priorities == [0, 1])
+    }
 }
 

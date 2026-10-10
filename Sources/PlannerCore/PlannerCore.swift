@@ -1342,8 +1342,8 @@ public struct ScheduleGenerator: Sendable {
             // because nothing fit still advance the offset so a lone
             // standing-gated course can't stall generation.
             let termStanding = earnedHours.map(ClassStanding.forEarnedCredits) ?? ClassStanding.forSemester(position: semesterOffset + standingSemesterOffset + 1, totalSemesters: nil)
-            // A slot that can supply a pending course's prerequisite goes
-            // ahead of preferences like its menu's median level.
+            // A slot that can supply a pending course's prerequisite isn't
+            // held back by preferences like its menu's median level.
             let urgency = Dictionary(remaining.map { item in
                 (item, analyzer.providerPriority(itemID: item, pendingCourseIDs: remaining, completedCourseIDs: completed, placeholders: placeholders, activeProgramTitle: activeProgramTitle))
             }, uniquingKeysWith: { first, _ in first })
@@ -1541,19 +1541,17 @@ public struct ScheduleGenerator: Sendable {
         placeholders: [String: PlaceholderSpec],
         urgency: [String: Int] = [:]
     ) -> Bool {
-        let lhsUrgency = urgency[lhs.courseID] ?? 1
-        let rhsUrgency = urgency[rhs.courseID] ?? 1
-        if lhsUrgency != rhsUrgency {
-            return lhsUrgency < rhsUrgency
-        }
         let lhsTimingPriority = genEdTimingPriority(for: lhs.courseID, semesterOffset: semesterOffset, placeholders: placeholders)
         let rhsTimingPriority = genEdTimingPriority(for: rhs.courseID, semesterOffset: semesterOffset, placeholders: placeholders)
         if lhsTimingPriority != rhsTimingPriority {
             return lhsTimingPriority < rhsTimingPriority
         }
 
-        let lhsLevel = courseLevel(for: lhs.courseID, placeholders: placeholders)
-        let rhsLevel = courseLevel(for: rhs.courseID, placeholders: placeholders)
+        // A slot designated to supply a pending course's prerequisite isn't
+        // held back by its menu's median level: it ranks as on-level work,
+        // alongside (not ahead of) real courses at this semester's level.
+        let lhsLevel = urgency[lhs.courseID] == 0 ? targetLevel : courseLevel(for: lhs.courseID, placeholders: placeholders)
+        let rhsLevel = urgency[rhs.courseID] == 0 ? targetLevel : courseLevel(for: rhs.courseID, placeholders: placeholders)
         let lhsDistance = abs(lhsLevel - targetLevel)
         let rhsDistance = abs(rhsLevel - targetLevel)
         if lhsDistance != rhsDistance {

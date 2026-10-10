@@ -176,5 +176,29 @@ struct PlaceholderScheduleGeneratorTests {
         }
         await #expect(throws: CancellationError.self) { try await task.value }
     }
+
+    @Test func openElectivesDontCrowdOutEarlyRequirements() throws {
+        // Four 100-level requirements, four Open Electives (which offer every
+        // course) and one restricted slot offering the A that D0 needs. Only
+        // that restricted slot should be pulled forward.
+        let fillers = (1...4).map { F.course("F\($0)", code: "ENG 1\($0)0") }
+        var catalog = catalog(
+            slots: [["A", "Z"]],
+            dependencies: [.course("A")],
+            extraCourses: fillers + [F.course("Z", code: "ENG 101")],
+            required: fillers.map(\.id)
+        )
+        // Open Electives come from padding a major to 120 credits.
+        catalog.programs[0].requirements.append(RequirementCategory(
+            id: "bulk", name: "Required Bulk", requiredCredits: 51,
+            courseOptions: (1...17).map { ["G\($0)"] }
+        ))
+        catalog.courses += (1...17).map { F.course("G\($0)", code: "HIST 3\($0 + 10)") }
+        let path = try #require(try generate(catalog).first)
+        let first = path.semesters[0].courseIDs
+        #expect(first.contains(F.slotID(0)))
+        #expect(first.filter { $0.hasPrefix("F") }.count == 3)
+        #expect(!first.contains { $0.contains("open-elective") })
+    }
 }
 

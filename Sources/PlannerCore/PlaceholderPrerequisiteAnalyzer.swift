@@ -19,7 +19,10 @@ public final class PlaceholderPrerequisiteAnalyzer {
     public let workLimitPerGroup: Int
     private let coursesByID: [String: Course]
     private let resolver: PrereqRuleResolver
-    private var leafCache: [String: Set<String>] = [:]
+    /// Shared with this analyzer's solves so rules are parsed and menus built
+    /// once per pass or build, not per solve.
+    private let cache: ConditionalSearchCache
+    private let solver: ConditionalPrerequisiteSolver
     private var priorityCache: (key: Int, needed: Set<String>)?
 
     public init(catalog: Catalog, workLimitPerGroup: Int = 10_000) {
@@ -27,11 +30,12 @@ public final class PlaceholderPrerequisiteAnalyzer {
         self.workLimitPerGroup = workLimitPerGroup
         coursesByID = catalog.coursesByID
         resolver = PrereqRuleResolver(catalog: catalog)
+        cache = ConditionalSearchCache(catalog: catalog)
+        solver = ConditionalPrerequisiteSolver(catalog: catalog, cache: cache)
     }
 
     public func analyze(_ input: ConditionalPrerequisiteInput) throws -> PlaceholderPrerequisiteAnalysis {
-        let solver = ConditionalPrerequisiteSolver(catalog: catalog)
-        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: input.activeProgramTitle)
+        let labPairing = cache.labPairing(input.activeProgramTitle)
         var budget = ConditionalSearchBudget(limitPerGroup: workLimitPerGroup)
         var status: [ConditionalDependencyKey: ConditionalPrerequisiteStatus] = [:]
         var admitted: [ConditionalPrerequisiteRequest] = []
@@ -57,7 +61,12 @@ public final class PlaceholderPrerequisiteAnalyzer {
 
         var supports: [String: [String: Set<ConditionalDependencyKey>]] = [:]
         if !admitted.isEmpty {
-            let relevant = closure(of: admitted.flatMap(\.expression.courseLeaves), labPairing: labPairing, activeProgramTitle: input.activeProgramTitle)
+            // Only a course no real work already covers can be a slot's
+            // supporting choice; those are the options worth probing.
+            let planned = input.completedAtStart.union(input.unscheduledCourseIDs).union(
+                input.pathway.semesters.flatMap(\.courseIDs).filter { !PathwayPlaceholder.isPlaceholder($0) }
+            )
+            let relevant = closure(of: admitted.flatMap(\.expression.courseLeaves), excluding: planned, activeProgramTitle: input.activeProgramTitle)
             for slot in openSlots(in: input.pathway) {
                 guard let spec = input.pathway.placeholders[slot] else { continue }
                 for option in PlaceholderCourseDomain.eligibleCourseIDs(for: spec, catalog: catalog) where relevant.contains(option) {
@@ -141,29 +150,17 @@ public final class PlaceholderPrerequisiteAnalyzer {
     }
 
     /// `courseIDs` plus the courses they need in turn (prerequisites,
-    /// corequisites, lab partners), cycle-safe and bounded.
-    private func closure(of courseIDs: [String], labPairing: LabPairing, activeProgramTitle: String?) -> Set<String> {
+    /// corequisites, lab partners), cycle-safe and bounded. Courses in
+    /// `excluding` are already real work: dropped, and not followed further.
+    private func closure(of courseIDs: [String], excluding planned: Set<String>, activeProgramTitle: String?) -> Set<String> {
         var pending = Array(Set(courseIDs)).sorted()
         var visited: Set<String> = []
         while let courseID = pending.popLast(), visited.count < 2_000 {
-            guard visited.insert(courseID).inserted else { continue }
-            pending.append(contentsOf: leavesNeeded(by: courseID, labPairing: labPairing, activeProgramTitle: activeProgramTitle).subtracting(visited).sorted())
+            guard !planned.contains(courseID), visited.insert(courseID).inserted else { continue }
+            let upstream = cache.needs(of: courseID, activeProgramTitle: activeProgramTitle)?.leaves ?? []
+            pending.append(contentsOf: upstream.subtracting(visited).sorted())
         }
         return visited
-    }
-
-    private func leavesNeeded(by courseID: String, labPairing: LabPairing, activeProgramTitle: String?) -> Set<String> {
-        if let cached = leafCache[courseID] { return cached }
-        var leaves: Set<String> = []
-        if let course = coursesByID[courseID] {
-            let rule = resolver.rule(for: course, activeProgramTitle: activeProgramTitle)
-            leaves.formUnion(rule.prerequisiteExpr.courseLeaves)
-            leaves.formUnion(rule.corequisiteExpr.courseLeaves)
-            leaves.formUnion(labPairing.labOptions(forLecture: courseID))
-            leaves.formUnion(labPairing.lectures(forLab: courseID))
-        }
-        leafCache[courseID] = leaves
-        return leaves
     }
 
     // MARK: Generation support
@@ -179,7 +176,7 @@ public final class PlaceholderPrerequisiteAnalyzer {
         budget: inout ConditionalSearchBudget
     ) throws -> ConditionalPrerequisiteRequest? {
         guard let course = coursesByID[courseID] else { return nil }
-        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: input.activeProgramTitle)
+        let labPairing = cache.labPairing(input.activeProgramTitle)
         let expression = resolver.rule(for: course, activeProgramTitle: input.activeProgramTitle).prerequisiteExpr
             .treatingAsSatisfied(labPairing.pairedCourses(of: courseID))
         let request = ConditionalPrerequisiteRequest(
@@ -198,11 +195,11 @@ public final class PlaceholderPrerequisiteAnalyzer {
         }
         let offered = missing.courseLeaves.contains { leaf in
             earlierSlots.contains { slot in
-                input.pathway.placeholders[slot].map { menu(of: $0).contains(leaf) } ?? false
+                input.pathway.placeholders[slot].map { cache.offers($0, leaf) } ?? false
             }
         }
         guard offered else { return nil }
-        let result = try ConditionalPrerequisiteSolver(catalog: catalog)
+        let result = try solver
             .solve(admitted + [request], in: input, forcedChoices: [:], focus: [request.key], budget: &budget)
         if case .feasible = result { return request }
         return nil
@@ -225,9 +222,9 @@ public final class PlaceholderPrerequisiteAnalyzer {
     ) throws -> Bool {
         guard let spec = placeholders[slot] else { return false }
         let needed = neededCourses(pendingCourseIDs: pendingCourseIDs, completedCourseIDs: completedCourseIDs, activeProgramTitle: input.activeProgramTitle)
-        let options = Array(PlaceholderCourseDomain.eligibleCourseIDs(for: spec, catalog: catalog).filter(needed.contains).prefix(25))
+        let options = Array(needed.sorted().filter { cache.offers(spec, $0) }.prefix(25))
         guard !options.isEmpty else { return false }
-        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: input.activeProgramTitle)
+        let labPairing = cache.labPairing(input.activeProgramTitle)
         let pool = realBefore(semester, in: input)
         var lacking: Set<String> = []
         var offeredInAnotherTerm = false
@@ -246,7 +243,7 @@ public final class PlaceholderPrerequisiteAnalyzer {
                 key: ConditionalDependencyKey(courseID: option, semester: semester, kind: .prerequisite),
                 expression: expression
             )
-            if case .feasible = try ConditionalPrerequisiteSolver(catalog: catalog)
+            if case .feasible = try solver
                 .solve(admitted + [request], in: input, forcedChoices: [:], focus: [request.key], budget: &budget) {
                 return false
             }
@@ -254,7 +251,7 @@ public final class PlaceholderPrerequisiteAnalyzer {
         }
         if offeredInAnotherTerm { return true }
         let otherSlots = pendingCourseIDs.filter { $0 != slot && PathwayPlaceholder.isPlaceholder($0) }.compactMap { placeholders[$0] }
-        return lacking.contains { leaf in otherSlots.contains { menu(of: $0).contains(leaf) } }
+        return lacking.contains { leaf in otherSlots.contains { cache.offers($0, leaf) } }
     }
 
     private func realBefore(_ semester: SemesterIdentity, in input: ConditionalPrerequisiteInput) -> Set<String> {
@@ -263,21 +260,18 @@ public final class PlaceholderPrerequisiteAnalyzer {
         )
     }
 
-    private var menus: [PlaceholderSpec: Set<String>] = [:]
-
-    private func menu(of spec: PlaceholderSpec) -> Set<String> {
-        if let cached = menus[spec] { return cached }
-        let menu = Set(PlaceholderCourseDomain.eligibleCourseIDs(for: spec, catalog: catalog))
-        menus[spec] = menu
-        return menu
-    }
 
     // MARK: Generation urgency
 
     /// Scheduling urgency for `itemID` while `pendingCourseIDs` still wait
-    /// to be placed: 0 for an unresolved slot whose menu offers a course
-    /// the pending courses still need (directly or through a chain), 1 for
+    /// to be placed: 0 for the slot designated to supply a course the
+    /// pending courses still need (directly or through a chain), 1 for
     /// everything else. Lower values go earlier.
+    ///
+    /// Each needed course designates one slot: the first pending slot with
+    /// a restricted menu offering it that isn't already designated, or else
+    /// one Open Elective. Open Electives offer every course, so letting all
+    /// of them rank urgent would crowd real requirements out of early terms.
     public func providerPriority(
         itemID: String,
         pendingCourseIDs: [String],
@@ -285,12 +279,42 @@ public final class PlaceholderPrerequisiteAnalyzer {
         placeholders: [String: PlaceholderSpec],
         activeProgramTitle: String?
     ) -> Int {
-        guard PathwayPlaceholder.isPlaceholder(itemID), let spec = placeholders[itemID] else { return 1 }
+        guard PathwayPlaceholder.isPlaceholder(itemID), placeholders[itemID] != nil else { return 1 }
+        let urgent = urgentSlots(pendingCourseIDs: pendingCourseIDs, completedCourseIDs: completedCourseIDs, placeholders: placeholders, activeProgramTitle: activeProgramTitle)
+        return urgent.contains(itemID) ? 0 : 1
+    }
+
+    private var urgencyCache: (key: Int, urgent: Set<String>)?
+
+    private func urgentSlots(
+        pendingCourseIDs: [String],
+        completedCourseIDs: Set<String>,
+        placeholders: [String: PlaceholderSpec],
+        activeProgramTitle: String?
+    ) -> Set<String> {
+        var hasher = Hasher()
+        hasher.combine(pendingCourseIDs)
+        hasher.combine(completedCourseIDs)
+        hasher.combine(placeholders)
+        hasher.combine(activeProgramTitle)
+        let key = hasher.finalize()
+        if let cached = urgencyCache, cached.key == key { return cached.urgent }
+
         let needed = neededCourses(pendingCourseIDs: pendingCourseIDs, completedCourseIDs: completedCourseIDs, activeProgramTitle: activeProgramTitle)
-        guard !needed.isEmpty else { return 1 }
-        // Open Electives (empty menus) offer everything; any need counts.
-        if spec.alternates.isEmpty { return 0 }
-        return spec.alternates.contains(where: needed.contains) ? 0 : 1
+        let slots = pendingCourseIDs.filter { PathwayPlaceholder.isPlaceholder($0) && placeholders[$0] != nil }
+        let restricted = slots.filter { !(placeholders[$0]?.alternates.isEmpty ?? true) }
+        let open = slots.filter { placeholders[$0]?.alternates.isEmpty ?? false }
+        var urgent: Set<String> = []
+        for course in needed.sorted() {
+            let offering = restricted.filter { cache.offers(placeholders[$0]!, course) }
+            if let slot = offering.first(where: { !urgent.contains($0) }) ?? offering.first {
+                urgent.insert(slot)
+            } else if let slot = open.first(where: { !urgent.contains($0) }) {
+                urgent.insert(slot)
+            }
+        }
+        urgencyCache = (key, urgent)
+        return urgent
     }
 
     /// Courses the pending real courses still need and don't have, followed
@@ -303,7 +327,7 @@ public final class PlaceholderPrerequisiteAnalyzer {
         let key = hasher.finalize()
         if let cached = priorityCache, cached.key == key { return cached.needed }
 
-        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
+        let labPairing = cache.labPairing(activeProgramTitle)
         let pending = Set(pendingCourseIDs)
         var missing: [String] = []
         for courseID in pendingCourseIDs where !PathwayPlaceholder.isPlaceholder(courseID) {
@@ -317,7 +341,7 @@ public final class PlaceholderPrerequisiteAnalyzer {
         var queue = Array(Set(missing)).sorted()
         while let courseID = queue.popLast(), needed.count < 2_000 {
             guard needed.insert(courseID).inserted else { continue }
-            let upstream = leavesNeeded(by: courseID, labPairing: labPairing, activeProgramTitle: activeProgramTitle)
+            let upstream = (cache.needs(of: courseID, activeProgramTitle: activeProgramTitle)?.leaves ?? [])
                 .filter { !completedCourseIDs.contains($0) && !pending.contains($0) && !needed.contains($0) }
             queue.append(contentsOf: upstream.sorted())
         }

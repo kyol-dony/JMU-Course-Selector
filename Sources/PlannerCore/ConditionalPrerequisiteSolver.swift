@@ -20,11 +20,19 @@ import Foundation
 /// group of slots and requests independently, against that group's share
 /// of the budget; running out makes the result `.unconfirmed`, never
 /// feasible or impossible.
-public struct ConditionalPrerequisiteSolver: Sendable {
+public struct ConditionalPrerequisiteSolver: @unchecked Sendable {
     public let catalog: Catalog
+    /// Parsed course needs and slot menus, reused across this solver's
+    /// solves. Not shared between threads.
+    let cache: ConditionalSearchCache
 
     public init(catalog: Catalog) {
+        self.init(catalog: catalog, cache: ConditionalSearchCache(catalog: catalog))
+    }
+
+    init(catalog: Catalog, cache: ConditionalSearchCache) {
         self.catalog = catalog
+        self.cache = cache
     }
 
     public func solve(
@@ -47,8 +55,93 @@ public struct ConditionalPrerequisiteSolver: Sendable {
         focus: Set<ConditionalDependencyKey>?,
         budget: inout ConditionalSearchBudget
     ) throws -> ConditionalFeasibility {
-        let context = SolverContext(catalog: catalog, input: input)
+        let context = SolverContext(catalog: catalog, input: input, cache: cache)
         return try context.solve(requests, forcedChoices: forcedChoices, focus: focus, budget: &budget)
+    }
+}
+
+/// What a course needs in turn, parsed once.
+struct ConditionalCourseNeeds {
+    let prerequisite: PrereqExpr
+    let corequisite: PrereqExpr
+    let labs: [String]
+    let lectures: [String]
+    /// Every course the needs name: prerequisites, corequisites, lab partners.
+    let leaves: Set<String>
+}
+
+/// Parsed course needs, slot menus and upstream reach, reused across the
+/// many solves of one analysis pass or schedule build. Parsing rules and
+/// building 2,700-course Open Elective menus per solve made each one cost
+/// tens of milliseconds. Not thread-safe: one owner at a time.
+final class ConditionalSearchCache {
+    let catalog: Catalog
+    let coursesByID: [String: Course]
+    private let resolver: PrereqRuleResolver
+    private var labPairings: [String?: LabPairing] = [:]
+    private var needsByCourse: [String?: [String: ConditionalCourseNeeds?]] = [:]
+    private var menus: [PlaceholderSpec: Set<String>] = [:]
+    /// Upstream slot reach for one schedule, keyed by course.
+    private var reachKey: Int?
+    private var reachByCourse: [String: Set<String>] = [:]
+
+    init(catalog: Catalog) {
+        self.catalog = catalog
+        coursesByID = catalog.coursesByID
+        resolver = PrereqRuleResolver(catalog: catalog)
+    }
+
+    func labPairing(_ activeProgramTitle: String?) -> LabPairing {
+        if let cached = labPairings[activeProgramTitle] { return cached }
+        let pairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
+        labPairings[activeProgramTitle] = pairing
+        return pairing
+    }
+
+    func needs(of courseID: String, activeProgramTitle: String?) -> ConditionalCourseNeeds? {
+        if let cached = needsByCourse[activeProgramTitle]?[courseID] { return cached }
+        var result: ConditionalCourseNeeds?
+        if let course = coursesByID[courseID] {
+            let rule = resolver.rule(for: course, activeProgramTitle: activeProgramTitle)
+            let pairing = labPairing(activeProgramTitle)
+            let paired = pairing.pairedCourses(of: courseID)
+            let labs = pairing.labOptions(forLecture: courseID)
+            let lectures = pairing.lectures(forLab: courseID)
+            result = ConditionalCourseNeeds(
+                prerequisite: rule.prerequisiteExpr.treatingAsSatisfied(paired),
+                corequisite: rule.corequisiteExpr.treatingAsSatisfied(paired),
+                labs: labs,
+                lectures: lectures,
+                leaves: Set(rule.prerequisiteExpr.courseLeaves + rule.corequisiteExpr.courseLeaves + labs + lectures)
+            )
+        }
+        needsByCourse[activeProgramTitle, default: [:]][courseID] = .some(result)
+        return result
+    }
+
+    /// Whether the slot's menu offers `courseID`. Empty menus (Open
+    /// Electives) offer any catalog course without building the set.
+    func offers(_ spec: PlaceholderSpec, _ courseID: String) -> Bool {
+        if spec.alternates.isEmpty { return coursesByID[courseID] != nil }
+        return menu(of: spec).contains(courseID)
+    }
+
+    func menu(of spec: PlaceholderSpec) -> Set<String> {
+        if let cached = menus[spec] { return cached }
+        let menu = Set(PlaceholderCourseDomain.eligibleCourseIDs(for: spec, catalog: catalog))
+        menus[spec] = menu
+        return menu
+    }
+
+    func reach(_ courseID: String, schedule key: Int, compute: () -> Set<String>) -> Set<String> {
+        if reachKey != key {
+            reachKey = key
+            reachByCourse = [:]
+        }
+        if let cached = reachByCourse[courseID] { return cached }
+        let result = compute()
+        reachByCourse[courseID] = result
+        return result
     }
 }
 
@@ -97,8 +190,7 @@ private final class SolverContext {
     let catalog: Catalog
     let input: ConditionalPrerequisiteInput
     let coursesByID: [String: Course]
-    let resolver: PrereqRuleResolver
-    let labPairing: LabPairing
+    let cache: ConditionalSearchCache
     let semesters: [SemesterPlan]
     let semesterIndex: [SemesterIdentity: Int]
     /// Open slots in chronological, then in-semester, order.
@@ -106,16 +198,22 @@ private final class SolverContext {
     let slotSemester: [String: Int]
     /// Real courses anywhere in the plan or earned before it.
     let allReal: Set<String>
-    private var domains: [String: Set<String>] = [:]
     private var failures: Set<FailureKey> = []
-    private var dependencyLeaves: [String: Set<String>] = [:]
+    /// The slots the current group's search may bind.
+    private var groupSlots: Set<String> = []
+    private let scheduleKey: Int
 
-    init(catalog: Catalog, input: ConditionalPrerequisiteInput) {
+    init(catalog: Catalog, input: ConditionalPrerequisiteInput, cache: ConditionalSearchCache) {
         self.catalog = catalog
         self.input = input
-        coursesByID = catalog.coursesByID
-        resolver = PrereqRuleResolver(catalog: catalog)
-        labPairing = LabPairing(catalog: catalog, activeProgramTitle: input.activeProgramTitle)
+        self.cache = cache
+        coursesByID = cache.coursesByID
+        var hasher = Hasher()
+        hasher.combine(input.pathway)
+        hasher.combine(input.completedAtStart)
+        hasher.combine(input.unscheduledCourseIDs)
+        hasher.combine(input.activeProgramTitle)
+        scheduleKey = hasher.finalize()
         semesters = input.pathway.semesters.sorted { $0.id < $1.id }
         semesterIndex = Dictionary(uniqueKeysWithValues: semesters.enumerated().map { ($1.id, $0) })
         // Only placeholders still in the schedule are open: a resolved slot
@@ -150,7 +248,7 @@ private final class SolverContext {
         var start = SearchState()
         for (slot, course) in forcedChoices.sorted(by: { $0.key < $1.key }) {
             guard let semester = slotSemester[slot],
-                  domain(of: slot).contains(course),
+                  offers(slot, course),
                   !allReal.contains(course),
                   !start.assignments.values.contains(course),
                   locallyFeasible(course, at: semester, adding: [slot: course], to: start)
@@ -160,7 +258,7 @@ private final class SolverContext {
         }
 
         let goals = requests.map(goal)
-        let groups = partition(goals, forcedSlots: Set(forcedChoices.keys))
+        let groups = partition(goals, forcedChoices: forcedChoices)
         var merged = start
         var unconfirmed = false
         for group in groups {
@@ -171,6 +269,9 @@ private final class SolverContext {
                 continue
             }
             let groupGoals = group.goalIndices.map { goals[$0] }
+            // A group binds only its own slots, so independently solved
+            // groups can't hand the same slot two different courses.
+            groupSlots = group.slots.union(forcedChoices.keys.filter { group.slots.contains($0) })
             do {
                 guard let solved = try search(groupGoals, start, group: group.id, budget: &budget) else {
                     return .impossible
@@ -274,8 +375,8 @@ private final class SolverContext {
             return try search(needs + rest, next, group: group, budget: &budget)
         }
         guard !allReal.contains(courseID) else { return nil }
-        for slot in slots where goal.window.admits(slot.semester) && state.assignments[slot.id] == nil {
-            guard domain(of: slot.id).contains(courseID),
+        for slot in slots where goal.window.admits(slot.semester) && state.assignments[slot.id] == nil && groupSlots.contains(slot.id) {
+            guard offers(slot.id, courseID),
                   locallyFeasible(courseID, at: slot.semester, adding: [slot.id: courseID], to: state)
             else { continue }
             var next = state
@@ -293,24 +394,20 @@ private final class SolverContext {
 
     /// What a hypothetical `courseID` in semester `index` needs in turn.
     private func providerGoals(for courseID: String, at index: Int, root: ConditionalDependencyKey, state: SearchState) -> [SearchGoal] {
-        guard let course = coursesByID[courseID] else { return [] }
-        let rule = resolver.rule(for: course, activeProgramTitle: input.activeProgramTitle)
-        let paired = labPairing.pairedCourses(of: courseID)
+        guard let needs = cache.needs(of: courseID, activeProgramTitle: input.activeProgramTitle) else { return [] }
         let standing = input.standingBySemester[semesters[index].id]
         var goals = [
-            SearchGoal(expression: rule.prerequisiteExpr.treatingAsSatisfied(paired), window: .before(index), standing: standing, root: root),
-            SearchGoal(expression: rule.corequisiteExpr.treatingAsSatisfied(paired), window: .through(index), standing: standing, root: root)
+            SearchGoal(expression: needs.prerequisite, window: .before(index), standing: standing, root: root),
+            SearchGoal(expression: needs.corequisite, window: .through(index), standing: standing, root: root)
         ]
         // A lecture needs its lab beside it, and a lab its lecture: real
         // work, the lecture's lab placeholder, or another slot there.
         let items = Set(semesters[index].courseIDs)
-        let labs = labPairing.labOptions(forLecture: courseID)
-        if !labs.isEmpty, !items.contains(LabPairing.labPlaceholderID(forLecture: courseID)) {
-            goals.append(SearchGoal(expression: .any(labs.map(PrereqExpr.course)), window: .same(index), standing: nil, root: root))
+        if !needs.labs.isEmpty, !items.contains(LabPairing.labPlaceholderID(forLecture: courseID)) {
+            goals.append(SearchGoal(expression: .any(needs.labs.map(PrereqExpr.course)), window: .same(index), standing: nil, root: root))
         }
-        let lectures = labPairing.lectures(forLab: courseID)
-        if !lectures.isEmpty {
-            goals.append(SearchGoal(expression: .any(lectures.map(PrereqExpr.course)), window: .same(index), standing: nil, root: root))
+        if !needs.lectures.isEmpty {
+            goals.append(SearchGoal(expression: .any(needs.lectures.map(PrereqExpr.course)), window: .same(index), standing: nil, root: root))
         }
         return goals
     }
@@ -356,12 +453,9 @@ private final class SolverContext {
         return pool
     }
 
-    func domain(of slot: String) -> Set<String> {
-        if let cached = domains[slot] { return cached }
-        guard let spec = input.pathway.placeholders[slot] else { return [] }
-        let domain = Set(PlaceholderCourseDomain.eligibleCourseIDs(for: spec, catalog: catalog))
-        domains[slot] = domain
-        return domain
+    func offers(_ slot: String, _ courseID: String) -> Bool {
+        guard let spec = input.pathway.placeholders[slot] else { return false }
+        return cache.offers(spec, courseID)
     }
 
     // MARK: Connected groups
@@ -374,9 +468,16 @@ private final class SolverContext {
 
     /// Requests that could draw on the same slots, directly or through a
     /// provider chain, are searched together; the rest independently.
-    private func partition(_ goals: [SearchGoal], forcedSlots: Set<String>) -> [Group] {
+    private func partition(_ goals: [SearchGoal], forcedChoices: [String: String]) -> [Group] {
+        // A forced choice draws on whatever its own course needs, too.
+        let forced = forcedChoices.sorted { $0.key < $1.key }
         let relevant = goals.map { goal in relevantSlots(for: goal.expression) }
-        var groupOf = Array(goals.indices)
+            + forced.map { slot, course in
+                relevantSlots(for: .all((cache.needs(of: course, activeProgramTitle: input.activeProgramTitle)?.leaves ?? []).sorted().map(PrereqExpr.course)))
+                    .union([slot])
+            }
+        let forcedSlots = Set(forcedChoices.keys)
+        var groupOf = Array(relevant.indices)
         func find(_ index: Int) -> Int {
             var index = index
             while groupOf[index] != index { index = groupOf[index] }
@@ -394,13 +495,15 @@ private final class SolverContext {
         }
         var groups: [Int: Group] = [:]
         var order: [Int] = []
-        for index in goals.indices {
+        for index in relevant.indices {
             let root = find(index)
             if groups[root] == nil {
                 groups[root] = Group(id: "", goalIndices: [], slots: [])
                 order.append(root)
             }
-            groups[root]!.goalIndices.append(index)
+            if index < goals.count {
+                groups[root]!.goalIndices.append(index)
+            }
             groups[root]!.slots.formUnion(relevant[index])
         }
         var result = order.map { groups[$0]! }
@@ -418,32 +521,27 @@ private final class SolverContext {
     }
 
     /// Open slots whose menus hold a course the expression names, or a
-    /// course those courses need in turn (bounded).
+    /// course those courses need in turn (bounded). Only a course a slot
+    /// could supply leads further upstream: a planned or earned course
+    /// never comes from a slot, so its own needs don't matter here.
     private func relevantSlots(for expression: PrereqExpr) -> Set<String> {
-        var pending = Array(Set(expression.courseLeaves)).sorted()
-        var visited: Set<String> = []
-        var result: Set<String> = []
-        while let courseID = pending.popLast(), visited.count < 2_000 {
-            guard visited.insert(courseID).inserted else { continue }
-            let holders = slots.filter { domain(of: $0.id).contains(courseID) }.map(\.id)
-            guard !holders.isEmpty else { continue }
-            result.formUnion(holders)
-            pending.append(contentsOf: leavesNeeded(by: courseID).subtracting(visited).sorted())
+        Set(expression.courseLeaves).reduce(into: Set<String>()) { result, leaf in
+            result.formUnion(cache.reach(leaf, schedule: scheduleKey) { reach(from: leaf) })
         }
-        return result
     }
 
-    private func leavesNeeded(by courseID: String) -> Set<String> {
-        if let cached = dependencyLeaves[courseID] { return cached }
-        var leaves: Set<String> = []
-        if let course = coursesByID[courseID] {
-            let rule = resolver.rule(for: course, activeProgramTitle: input.activeProgramTitle)
-            leaves.formUnion(rule.prerequisiteExpr.courseLeaves)
-            leaves.formUnion(rule.corequisiteExpr.courseLeaves)
-            leaves.formUnion(labPairing.labOptions(forLecture: courseID))
-            leaves.formUnion(labPairing.lectures(forLab: courseID))
+    private func reach(from courseID: String) -> Set<String> {
+        var pending = [courseID]
+        var visited: Set<String> = []
+        var result: Set<String> = []
+        while let current = pending.popLast(), visited.count < 2_000 {
+            guard visited.insert(current).inserted, !allReal.contains(current) else { continue }
+            let holders = slots.filter { offers($0.id, current) }.map(\.id)
+            guard !holders.isEmpty else { continue }
+            result.formUnion(holders)
+            let upstream = cache.needs(of: current, activeProgramTitle: input.activeProgramTitle)?.leaves ?? []
+            pending.append(contentsOf: upstream.subtracting(visited).sorted())
         }
-        dependencyLeaves[courseID] = leaves
-        return leaves
+        return result
     }
 }

@@ -45,6 +45,11 @@ struct RuleBasedGeneratorTests {
         #expect(try scheduled([requirement("SS Content Core", .chooseCourses(3), [["A"], ["B"], ["C"], ["D"]], credits: 9)]).count == 3)
     }
 
+    @Test func chooseCoursesIsCountedNotCappedByLowCredits() throws {
+        // Biology: "Choose at least two laboratory courses: 2-8" reads 2 credits
+        #expect(try scheduled([requirement("Labs", .chooseCourses(2), [["A"], ["B"], ["C"]], credits: 2)]).count == 2)
+    }
+
     @Test func allRequiredSchedulesEverything() throws {
         #expect(Set(try scheduled([requirement("Biopsychology", .allRequired, [["A"], ["B"]], credits: 6)])) == ["A", "B"])
     }

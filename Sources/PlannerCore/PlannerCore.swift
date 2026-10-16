@@ -1089,7 +1089,9 @@ public struct ScheduleGenerator: Sendable {
     /// The returned list is deduplicated: if the same course is the default
     /// pick for more than one option (e.g., MATH 220 appearing as both the
     /// QR cluster default and a major's stats requirement default), it is
-    /// scheduled once and counts toward both options.
+    /// scheduled once and counts toward both options. `reusedCredits` grows
+    /// by the credits such options declare, capped at each category's
+    /// requirement, so the Open Elective gap can count that course once.
     ///
     /// `completed` may also contain JMU GNED placeholder course IDs (e.g.,
     /// `GNED123` awarded by AP Lit). Those satisfy any option in a Gen Ed
@@ -1099,6 +1101,7 @@ public struct ScheduleGenerator: Sendable {
         for program: Program,
         completed: Set<String>,
         plannedCourseIDs: inout Set<String>,
+        reusedCredits: inout Int,
         placeholders: inout [String: PlaceholderSpec],
         anchors: AnchoredScheduleContext? = nil,
         anticipatedCourses: Set<String> = []
@@ -1128,6 +1131,11 @@ public struct ScheduleGenerator: Sendable {
             let categorySatisfiedByCluster = completedClusterTags.contains(where: category.name.contains)
             if !categoryIsRequired && categorySatisfiedByCluster { continue }
 
+            // Credits of this category met by a course already scheduled for
+            // an earlier one.
+            var categoryReusedCredits = 0
+            defer { reusedCredits += min(categoryReusedCredits, category.requiredCredits) }
+
             if case .groups(let count) = rule,
                appendCourseGroups(
                 count,
@@ -1135,6 +1143,7 @@ public struct ScheduleGenerator: Sendable {
                 completed: completed,
                 anticipatedCourses: anticipatedCourses,
                 seen: &seen,
+                reusedCredits: &categoryReusedCredits,
                 result: &result,
                 anchors: anchors
             ) {
@@ -1171,7 +1180,11 @@ public struct ScheduleGenerator: Sendable {
                     || lowerName.contains("select")
                 )
             }
-            let hasCreditLimit = categoryIsSelective && category.requiredCredits > 0
+            // A choose-N-courses rule is already limited by its N slots; its
+            // credits can read low ("two lab courses: 2-8"), so no cap.
+            let isCountedRule: Bool
+            if case .chooseCourses = category.selection { isCountedRule = true } else { isCountedRule = false }
+            let hasCreditLimit = categoryIsSelective && !isCountedRule && category.requiredCredits > 0
             let poolSlots = Set(category.electivePoolSlots ?? [])
             var reservedIDs = Set((anchors?.placeholders ?? [:]).filter { $0.value.categoryID == category.id }.keys)
             for (index, _) in category.courseOptions.enumerated() {
@@ -1207,6 +1220,9 @@ public struct ScheduleGenerator: Sendable {
                     available.contains($0) && !consumed.contains($0)
                 }) {
                     consumed.insert(match)
+                    if seen.contains(match) && !completed.contains(match) {
+                        categoryReusedCredits += optionCredits
+                    }
                     plannedCredits += Double(optionCredits)
                     continue
                 }
@@ -1329,6 +1345,7 @@ public struct ScheduleGenerator: Sendable {
         completed: Set<String>,
         anticipatedCourses: Set<String>,
         seen: inout Set<String>,
+        reusedCredits: inout Int,
         result: inout [String],
         anchors: AnchoredScheduleContext?
     ) -> Bool {
@@ -1341,8 +1358,12 @@ public struct ScheduleGenerator: Sendable {
         let ordered = category.choices.filter { $0.contains(where: started.contains) }
             + category.choices.filter { !$0.contains(where: started.contains) }
         for group in ordered.prefix(max(count, 1)) {
-            for courseID in group where !completed.contains(courseID) && seen.insert(courseID).inserted {
-                result.append(courseID)
+            for courseID in group where !completed.contains(courseID) {
+                if seen.insert(courseID).inserted {
+                    result.append(courseID)
+                } else {
+                    reusedCredits += catalog.coursesByID[courseID]?.credits ?? 0
+                }
             }
         }
         return true
@@ -1819,8 +1840,22 @@ public struct ScheduleGenerator: Sendable {
     ///
     /// `additionalCredits` are degree credits contributed outside the
     /// primary major's requirements (minor / second-major courses) and
-    /// reduce the gap one-for-one.
-    public static func openElectiveGap(for program: Program, additionalCredits: Int = 0) -> Int {
+    /// reduce the gap one-for-one. `reusedCredits` are declared credits met
+    /// by a course already counted for another requirement (MATH 220 for
+    /// both a major requirement and the [C3QR] cluster); that course is
+    /// scheduled once, so they widen the gap one-for-one.
+    ///
+    /// `scheduledCredits` are the hours the generator schedules for these
+    /// requirements. When they exceed the declared tally (4-credit courses in
+    /// 3-credit slots, labs) the gap shrinks to what still reaches 120, as
+    /// regeneration tops up. Declared credits that no scheduled course stands
+    /// for still count, so the gap never grows past the declared view.
+    public static func openElectiveGap(
+        for program: Program,
+        additionalCredits: Int = 0,
+        reusedCredits: Int = 0,
+        scheduledCredits: Int = 0
+    ) -> Int {
         guard program.kind == .major else { return 0 }
         let declared = program.requirements
             .filter { !$0.courseOptions.isEmpty }
@@ -1831,19 +1866,22 @@ public struct ScheduleGenerator: Sendable {
         // merged into the effective program. Requirements without a course
         // list count toward the gate; their credits are left to the gap.
         guard program.requirements.reduce(0, { $0 + $1.requiredCredits }) >= 60 else { return 0 }
-        return max(0, 120 - declared - additionalCredits)
+        let counted = max(declared - reusedCredits + additionalCredits, scheduledCredits)
+        return max(0, 120 - counted)
     }
 
     /// Open Elective gap for `program` once `additionalPrograms` (minors,
     /// second majors) claim their share of the 120 CRH. Only credits unique
     /// to the additional programs count: a course that already fulfills a
     /// primary-major requirement is scheduled once and adds nothing new.
+    /// Likewise a course filling two of the primary major's own requirements
+    /// counts once toward 120.
     ///
     /// Deliberately ignores transfer credit so the schedule generator and
     /// progress calculator always agree on the same gap — a minor course
     /// satisfied by AP/transfer still counts toward the degree total.
     public func openElectiveGap(for program: Program, additionalPrograms: [Program]) -> Int {
-        guard !additionalPrograms.isEmpty else { return Self.openElectiveGap(for: program) }
+        guard program.kind == .major else { return 0 }
         var placeholders: [String: PlaceholderSpec] = [:]
         let lists = plannedProgramLists(for: program, additionalPrograms: additionalPrograms, completed: [], placeholders: &placeholders)
         // Courses that also fill one of the primary major's elective-pool
@@ -1851,7 +1889,20 @@ public struct ScheduleGenerator: Sendable {
         let additionalCredits = lists.extras.joined()
             .filter { !lists.sharedCourseIDs.contains($0) }
             .reduce(0) { $0 + Int(credits(for: $1, placeholders: placeholders)) }
-        return Self.openElectiveGap(for: program, additionalCredits: additionalCredits)
+        // What the generator schedules for these programs, labs included.
+        // A course that fills two requirements appears here once.
+        let scheduled = withLabs(
+            Self.interleaveByProportion([lists.primary] + lists.extras), completed: [],
+            placeholders: &placeholders,
+            labPairing: LabPairing(catalog: catalog, activeProgramTitle: program.title)
+        )
+        let scheduledCredits = Set(scheduled).reduce(0.0) { $0 + credits(for: $1, placeholders: placeholders) }
+        return Self.openElectiveGap(
+            for: program,
+            additionalCredits: additionalCredits,
+            reusedCredits: lists.reusedCredits,
+            scheduledCredits: Int(scheduledCredits)
+        )
     }
 
     /// Each program's still-needed courses, in program order. A course
@@ -1860,7 +1911,9 @@ public struct ScheduleGenerator: Sendable {
     /// major's or minor's course that fits one of the primary major's
     /// elective-pool slots ("MATH electives at MATH 310 or above") fills
     /// that slot instead of the slot staying open; `sharedCourseIDs` lists
-    /// those courses, one per slot.
+    /// those courses, one per slot. `reusedCredits` are the primary major's
+    /// requirement credits met by a course it already schedules for another
+    /// requirement.
     private func plannedProgramLists(
         for program: Program,
         additionalPrograms: [Program],
@@ -1868,12 +1921,14 @@ public struct ScheduleGenerator: Sendable {
         placeholders: inout [String: PlaceholderSpec],
         anchors: AnchoredScheduleContext? = nil,
         anticipatedCourses: Set<String> = []
-    ) -> (primary: [String], extras: [[String]], sharedCourseIDs: Set<String>) {
+    ) -> (primary: [String], extras: [[String]], sharedCourseIDs: Set<String>, reusedCredits: Int) {
         var plannedCourseIDs: Set<String> = []
+        var reusedCredits = 0
         var primary = requiredCourseIDs(
             for: program,
             completed: completed,
             plannedCourseIDs: &plannedCourseIDs,
+            reusedCredits: &reusedCredits,
             placeholders: &placeholders,
             anchors: anchors,
             anticipatedCourses: anticipatedCourses
@@ -1881,10 +1936,14 @@ public struct ScheduleGenerator: Sendable {
         var extras: [[String]] = []
         for extra in additionalPrograms {
             if Task.isCancelled { break }
+            // Extras are counted by the courses they add, which already
+            // leaves out overlaps; their reuse needs no correction.
+            var extraReusedCredits = 0
             extras.append(requiredCourseIDs(
                 for: extra,
                 completed: completed,
                 plannedCourseIDs: &plannedCourseIDs,
+                reusedCredits: &extraReusedCredits,
                 placeholders: &placeholders,
                 anchors: anchors,
                 anticipatedCourses: anticipatedCourses
@@ -1910,7 +1969,7 @@ public struct ScheduleGenerator: Sendable {
             placeholders[id] = nil
             return true
         }
-        return (primary, extras, shared)
+        return (primary, extras, shared, reusedCredits)
     }
 
     /// Build Open Elective placeholders to cover `gap` CRH — the shortfall

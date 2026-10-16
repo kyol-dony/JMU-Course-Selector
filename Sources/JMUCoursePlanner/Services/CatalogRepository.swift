@@ -250,7 +250,10 @@ struct CatalogRepository {
     /// v15 turns "N credits of MATH electives at MATH 310 or above" into
     /// elective-pool slots and merges each "Option N:" group into one
     /// requirement.
-    private static let cacheSchemaVersion = 15
+    /// v16 names requirements after their catalog section, reads row credit
+    /// hours, keeps paired courses together as groups with a selection rule,
+    /// and strips footnote markers from course titles into remarks.
+    private static let cacheSchemaVersion = 16
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

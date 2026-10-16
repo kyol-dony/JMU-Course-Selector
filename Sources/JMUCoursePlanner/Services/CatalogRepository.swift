@@ -253,7 +253,9 @@ struct CatalogRepository {
     /// v16 names requirements after their catalog section, reads row credit
     /// hours, keeps paired courses together as groups with a selection rule,
     /// and strips footnote markers from course titles into remarks.
-    private static let cacheSchemaVersion = 16
+    /// v17 reads hour ranges ("0-3"), ignores 0-credit milestone rows, and
+    /// drops "choose one" rows that only list a program's concentrations.
+    private static let cacheSchemaVersion = 17
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

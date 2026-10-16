@@ -199,6 +199,18 @@ struct CatalogRequirementStructureTests {
         #expect(categories.isEmpty, "\(categories.map { "\($0.name) \($0.requiredCredits)" })")
     }
 
+    @Test func idPrefersTheChoiceLineOverProseWithHours() throws {
+        // Anthropology B.A. archaeology concentration: prose with hours, then the choice line
+        let category = try #require(parseSnippet(
+            Self.header("Electives")
+            + Self.comment("Upper-division courses in cultural and biological anthropology:", hours: "3")
+            + Self.comment("Choose one of the following:")
+            + Self.course("ANTH 313", "Ethnographic Methods") + Self.course("ANTH 325", "Primate Behavior")
+        ).first)
+        #expect(category.id == "choose-one-of-the-following")
+        #expect(category.name == "Electives")
+    }
+
     @Test func moreInstructionPhrasingsHaveRules() {
         func rule(_ text: String) -> RequirementSelection? {
             JMUHTMLCatalogParser.selectionRule(text: text, hasMultiCourseGroups: false)

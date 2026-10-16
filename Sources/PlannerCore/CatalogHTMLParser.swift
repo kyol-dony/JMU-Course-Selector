@@ -656,6 +656,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                 var currentLines: [String] = []
                 var currentMarks: [String] = []
                 var currentIDSource: String?
+                var currentIDSourceIsChoice = false
                 var currentRowHours: Int?
                 var currentSubtotal: Int?
                 // An instruction under a concentration heading with no course
@@ -697,6 +698,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                     currentLines = []
                     currentMarks = []
                     currentIDSource = nil
+                    currentIDSourceIsChoice = false
                     currentRowHours = nil
                     currentSubtotal = nil
                     currentIsConcentrationChooser = false
@@ -760,7 +762,12 @@ public struct JMUHTMLCatalogParser: Sendable {
                             if !currentHasCourses {
                                 currentLines.append(commentHeading)
                                 currentMarks += commentMarks
-                                if currentIDSource == nil, hours?.isEmpty == false || isChoiceLine {
+                                // The ID keeps today's slug: the choice line when there
+                                // is one, else the first line with hours.
+                                if isChoiceLine, !currentIDSourceIsChoice {
+                                    currentIDSource = commentHeading
+                                    currentIDSourceIsChoice = true
+                                } else if currentIDSource == nil, hours?.isEmpty == false {
                                     currentIDSource = commentHeading
                                 }
                                 if let rowCredits { currentRowHours = rowCredits }
@@ -776,6 +783,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                                 currentLines = [commentHeading]
                                 currentMarks = commentMarks
                                 currentIDSource = commentHeading
+                                currentIDSourceIsChoice = isChoiceLine
                                 currentRowHours = rowCredits
                                 currentCommentBody = rowHTML
                                 continue

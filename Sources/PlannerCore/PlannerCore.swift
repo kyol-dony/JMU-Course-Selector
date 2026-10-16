@@ -183,6 +183,15 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
     /// `Catalog.resolvingElectivePools()`. A second major or minor's course
     /// from the pool can stand in for one of these slots.
     public var electivePoolSlots: [Int]?
+    /// What the catalog asks for. `.unknown` keeps legacy, name-based behavior.
+    public var selection: RequirementSelection
+    /// The catalog's course groups, in order; one inner list is courses taken
+    /// together ("PSYC 210 & PSYC 211"). Empty for legacy categories.
+    public var choices: [[String]]
+    /// The catalog's instruction line, prose, and requirement-level footnotes.
+    public var catalogDescription: String?
+    /// Catalog remarks and footnotes per course ID, within this requirement.
+    public var courseRemarks: [String: [String]]
 
     public init(
         id: String,
@@ -191,7 +200,11 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         courseOptions: [[String]],
         verificationStatus: VerificationStatus = .verified,
         note: String? = nil,
-        electivePoolSlots: [Int]? = nil
+        electivePoolSlots: [Int]? = nil,
+        selection: RequirementSelection = .unknown,
+        choices: [[String]] = [],
+        catalogDescription: String? = nil,
+        courseRemarks: [String: [String]] = [:]
     ) {
         self.id = id
         self.name = name
@@ -200,6 +213,30 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         self.verificationStatus = verificationStatus
         self.note = note
         self.electivePoolSlots = electivePoolSlots
+        self.selection = selection
+        self.choices = choices
+        self.catalogDescription = catalogDescription
+        self.courseRemarks = courseRemarks
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, requiredCredits, courseOptions, verificationStatus, note, electivePoolSlots
+        case selection, choices, catalogDescription, courseRemarks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        requiredCredits = try c.decode(Int.self, forKey: .requiredCredits)
+        courseOptions = try c.decode([[String]].self, forKey: .courseOptions)
+        verificationStatus = try c.decodeIfPresent(VerificationStatus.self, forKey: .verificationStatus) ?? .verified
+        note = try c.decodeIfPresent(String.self, forKey: .note)
+        electivePoolSlots = try c.decodeIfPresent([Int].self, forKey: .electivePoolSlots)
+        selection = try c.decodeIfPresent(RequirementSelection.self, forKey: .selection) ?? .unknown
+        choices = try c.decodeIfPresent([[String]].self, forKey: .choices) ?? []
+        catalogDescription = try c.decodeIfPresent(String.self, forKey: .catalogDescription)
+        courseRemarks = try c.decodeIfPresent([String: [String]].self, forKey: .courseRemarks) ?? [:]
     }
 }
 

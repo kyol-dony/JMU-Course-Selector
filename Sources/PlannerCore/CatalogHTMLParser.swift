@@ -562,6 +562,21 @@ public struct JMUHTMLCatalogParser: Sendable {
         /// The option's credit hours, from the "Choose one of the following
         /// options" row that introduces the group.
         var optionCredits: Int? = nil
+        /// The table's area-header row this requirement sits under ("Methodology Core").
+        var areaHeader: String? = nil
+        /// The text the requirement's ID and legacy calculations come from: the
+        /// instruction line that used to be the heading, so IDs stay stable.
+        var idSource: String? = nil
+        /// Instruction and prose rows under the area header, in order.
+        var descriptionLines: [String] = []
+        /// Footnote numbers attached to those rows.
+        var instructionMarks: [String] = []
+        /// Credits from the hours column of the instruction or header row.
+        var rowHours: Int? = nil
+        /// Credits from the section's "Subtotal" row.
+        var subtotal: Int? = nil
+        /// The page heading the table sits under, for naming prose-only rows.
+        var enclosingHeading: String? = nil
     }
 
     private func requirementBlocks(in html: String) -> [RequirementBlock] {
@@ -636,6 +651,13 @@ public struct JMUHTMLCatalogParser: Sendable {
                 let firstCommentBlock = commentBlocks.count
                 var currentCommentHeading: String?
                 var currentCommentBody = ""
+                var currentAreaHeader: String?
+                var currentHasCourses = false
+                var currentLines: [String] = []
+                var currentMarks: [String] = []
+                var currentIDSource: String?
+                var currentRowHours: Int?
+                var currentSubtotal: Int?
                 // "9 credits of MATH electives" rows stand alone, but the
                 // course rows after them still belong to the requirement
                 // above ("Option 1:"); emit them right after it.
@@ -643,17 +665,32 @@ public struct JMUHTMLCatalogParser: Sendable {
 
                 func flushComment() {
                     if let heading = currentCommentHeading {
-                        commentBlocks.append(RequirementBlock(
+                        var block = RequirementBlock(
                             level: min(level + 1, 5),
                             heading: heading,
                             body: currentCommentBody,
                             isStructuralHeading: false
-                        ))
+                        )
+                        block.areaHeader = currentAreaHeader
+                        block.idSource = currentIDSource
+                        block.descriptionLines = currentLines
+                        block.instructionMarks = currentMarks
+                        block.rowHours = currentRowHours
+                        block.subtotal = currentSubtotal
+                        block.enclosingHeading = heading == rawHeading ? nil : rawHeading
+                        commentBlocks.append(block)
                     }
                     commentBlocks.append(contentsOf: pendingAllowances)
                     pendingAllowances = []
                     currentCommentHeading = nil
                     currentCommentBody = ""
+                    currentAreaHeader = nil
+                    currentHasCourses = false
+                    currentLines = []
+                    currentMarks = []
+                    currentIDSource = nil
+                    currentRowHours = nil
+                    currentSubtotal = nil
                 }
 
                 for row in table.match.matches(for: #"(?is)<tr\b[^>]*>(.*?)</tr>"#) {
@@ -674,11 +711,62 @@ public struct JMUHTMLCatalogParser: Sendable {
                     }
                     if let comment = rowHTML.firstMatch(for: #"(?is)<span\b[^>]*class="[^"]*\bcourselistcomment\b[^"]*"[^>]*>(.*?)</span>"#),
                        comment.count > 1 {
-                        let commentHeading = HTMLCleaner.clean(comment[1])
+                        // The marker can sit inside or just after the comment span.
+                        let commentMarks = rowHTML.matches(for: #"(?is)<sup\b[^>]*>(.*?)</sup>"#)
+                            .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]).split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } : [] }
+                            .filter { !$0.isEmpty }
+                        let commentHeading = HTMLCleaner.clean(
+                            comment[1].replacingOccurrences(of: #"(?is)<sup\b[^>]*>.*?</sup>"#, with: " ", options: .regularExpression)
+                        )
                         let hours = rowHTML
                             .firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>(.*?)</td>"#)
                             .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
                         let isSectionHeader = rowHTML.contains("areaheader") || rowHTML.contains("areasubheader")
+                        let rowCredits = hours.flatMap(parseLeadingCredits)
+                        let isChoiceLine = choiceSelectionCount(heading: commentHeading, body: "") != nil
+                            || Self.selectionRule(text: commentHeading, hasMultiCourseGroups: false) != nil
+                        // "Subtotal" rows carry the section's real credits.
+                        if commentHeading.lowercased().hasPrefix("subtotal") {
+                            if currentCommentHeading != nil { currentSubtotal = rowCredits }
+                            flushComment()
+                            continue
+                        }
+                        // An area header ("Methodology Core") names the requirement;
+                        // the instruction rows under it become its description.
+                        if isSectionHeader, canNameRequirement(areaHeader: commentHeading) {
+                            flushComment()
+                            hasCommentRequirements = true
+                            currentCommentHeading = commentHeading
+                            currentAreaHeader = commentHeading
+                            currentCommentBody = rowHTML
+                            currentRowHours = rowCredits
+                            continue
+                        }
+                        if let areaHeader = currentAreaHeader, !isSectionHeader, !Self.isCreditAllowanceText(commentHeading) {
+                            if !currentHasCourses {
+                                currentLines.append(commentHeading)
+                                currentMarks += commentMarks
+                                if currentIDSource == nil, rowCredits != nil || isChoiceLine {
+                                    currentIDSource = commentHeading
+                                }
+                                if let rowCredits { currentRowHours = rowCredits }
+                                currentCommentBody += rowHTML
+                                continue
+                            }
+                            if rowCredits != nil || isChoiceLine {
+                                // A second instruction under the same header is its own requirement.
+                                flushComment()
+                                hasCommentRequirements = true
+                                currentCommentHeading = "\(areaHeader): \(commentHeading)"
+                                currentAreaHeader = areaHeader
+                                currentLines = [commentHeading]
+                                currentMarks = commentMarks
+                                currentIDSource = commentHeading
+                                currentRowHours = rowCredits
+                                currentCommentBody = rowHTML
+                                continue
+                            }
+                        }
                         let startsRequirement = isSectionHeader
                             || hours?.isEmpty == false
                             || choiceSelectionCount(heading: commentHeading, body: "") != nil
@@ -701,6 +789,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                         }
                     } else if currentCommentHeading != nil {
                         currentCommentBody += rowHTML
+                        if rowHTML.contains("codecol") { currentHasCourses = true }
                     } else {
                         baseBody += rowHTML
                     }
@@ -1168,12 +1257,16 @@ public struct JMUHTMLCatalogParser: Sendable {
         let courseItems = courseItems(in: block.body, catoid: catoid)
         let annotated = annotatedCourses(courseItems)
         let courses = annotated.map(\.course)
+        // Everything the parser used to derive from the heading keeps using the
+        // text that was the heading (the instruction line), so IDs, drops and
+        // credit fallbacks are unchanged; only the displayed name moves.
+        let legacyHeading = block.idSource ?? block.heading
 
         // Skip non-requirement sections (descriptions, totals, admission, etc).
         // Umbrella headings like "Major Requirements" are skipped ONLY when their
         // body has no course rows — some catalog pages place the core required
         // courses directly under the umbrella heading with no child acalog-core div.
-        guard !shouldIgnoreRequirementHeading(block.heading, hasCourses: !courses.isEmpty) else {
+        guard !shouldIgnoreRequirementHeading(legacyHeading, hasCourses: !courses.isEmpty) else {
             return nil
         }
 
@@ -1181,23 +1274,52 @@ public struct JMUHTMLCatalogParser: Sendable {
             coursesByID[course.id] = course
         }
 
-        let selectedCreditHours = choiceCreditHours(heading: block.heading, body: block.body)
+        let groups = courseGroups(courseItems)
+        let hasMultiCourseGroups = groups.contains { $0.count > 1 }
+        let ruleText = block.areaHeader != nil ? block.descriptionLines.joined(separator: " ") : legacyHeading
+        let selection: RequirementSelection
+        if let rule = Self.selectionRule(text: ruleText, hasMultiCourseGroups: hasMultiCourseGroups) {
+            selection = rule
+        } else if !courses.isEmpty,
+                  (block.areaHeader != nil && block.descriptionLines.isEmpty) || legacyHeading.lowercased().contains("required") {
+            selection = .allRequired
+        } else {
+            selection = .unknown
+        }
+
+        let selectedCreditHours = choiceCreditHours(heading: legacyHeading, body: block.body)
         let selectionCount = selectedCreditHours.map { creditHours in
             choiceCourseCount(for: creditHours, courses: courses)
-        } ?? choiceSelectionCount(heading: block.heading, body: block.body)
-        let requiredCredits = selectedCreditHours
-            ?? parseCredits(from: block.heading)
+        } ?? choiceSelectionCount(heading: legacyHeading, body: block.body)
+        let ruleCredits: Int? = {
+            switch selection {
+            case .chooseCredits(let credits): return credits
+            case .chooseCourses(let count): return inferredCredits(for: courseItems, selectionCount: count)
+            default: return nil
+            }
+        }()
+        let requiredCredits = block.rowHours
+            ?? block.subtotal
+            ?? selectedCreditHours
+            ?? ruleCredits
+            ?? parseCredits(from: legacyHeading)
             ?? block.tableTotal
             ?? parseTotalCreditsFromBody(block.body)
             ?? inferredCredits(for: courseItems, selectionCount: selectionCount)
 
         guard requiredCredits > 0 || !courses.isEmpty else { return nil }
 
-        let options = courseOptions(
-            from: courseItems,
-            selectionCount: selectionCount
-        )
-        let categoryID = uniqueID(slug(from: block.heading), used: &usedCategoryIDs)
+        let creditsByID = Dictionary(courses.map { ($0.id, $0.credits) }, uniquingKeysWith: { first, _ in first })
+        let isChoice: Bool = {
+            switch selection {
+            case .chooseCourses, .chooseCredits, .chooseGroups: return true
+            case .allRequired, .unknown: return false
+            }
+        }()
+        let options = isChoice
+            ? RequirementSelection.slots(choices: groups, selection: selection, credits: { creditsByID[$0] ?? 3 }) ?? []
+            : courseOptions(from: courseItems, selectionCount: selectionCount)
+        let categoryID = uniqueID(slug(from: legacyHeading), used: &usedCategoryIDs)
         let note = note(for: block, options: options, courses: courses)
         var remarks: [String: [String]] = [:]
         for (course, annotation) in annotated {
@@ -1205,15 +1327,86 @@ public struct JMUHTMLCatalogParser: Sendable {
             if !notes.isEmpty { remarks[course.id, default: []].append(contentsOf: notes) }
         }
 
+        // A paragraph that the catalog put where a heading goes reads as the
+        // requirement's description, under the heading it sits beneath.
+        var name = block.heading
+        var descriptionLines = block.descriptionLines
+        if block.areaHeader == nil, Self.isProse(block.heading), let enclosing = block.enclosingHeading {
+            name = enclosing
+            descriptionLines = [block.heading]
+        }
+        descriptionLines += block.instructionMarks.compactMap { block.footnotes[$0] }
+        let description = descriptionLines.isEmpty ? nil : descriptionLines.joined(separator: " ")
+
         return RequirementCategory(
             id: categoryID,
-            name: block.heading,
+            name: name,
             requiredCredits: requiredCredits,
             courseOptions: options,
             verificationStatus: .partial,
             note: note,
+            selection: selection,
+            choices: groups,
+            catalogDescription: description,
             courseRemarks: remarks
         )
+    }
+
+    /// Course groups in catalog order: one per row, a pair row as one group.
+    private func courseGroups(_ items: [CourseItem]) -> [[String]] {
+        var seen: Set<String> = []
+        return items.compactMap { item -> [String]? in
+            switch item {
+            case .course(let course, _):
+                return seen.insert(course.id).inserted ? [course.id] : nil
+            case .pair(let courses, _):
+                let ids = courses.map(\.id)
+                return seen.insert(ids.joined(separator: "&")).inserted ? ids : nil
+            case .marker:
+                return nil
+            }
+        }
+    }
+
+    /// A sentence or paragraph rather than a heading.
+    private static func isProse(_ text: String) -> Bool {
+        text.count > 120 || text.range(of: #"[.!?]\s+[A-Z]"#, options: .regularExpression) != nil
+    }
+
+    /// Area headers that start concentrations, tracks or options keep their
+    /// own block so concentration and option splitting see them as before.
+    private func canNameRequirement(areaHeader: String) -> Bool {
+        let lower = areaHeader.lowercased()
+        guard !lower.contains("option"), !lower.contains("concentration"),
+              !lower.contains("track"), !lower.contains("emphasis"), !lower.contains("specialization")
+        else { return false }
+        return !isConcreteConcentrationHeading(areaHeader)
+    }
+
+    private static let numberWords: [String: Int] = [
+        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+        "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15, "eighteen": 18
+    ]
+
+    /// The catalog's selection rule from an instruction line, or nil when the
+    /// text does not state one.
+    static func selectionRule(text: String, hasMultiCourseGroups: Bool) -> RequirementSelection? {
+        let lower = text.lowercased()
+        let number = #"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|eighteen)"#
+        func value(_ token: String) -> Int? { Int(token) ?? numberWords[token] }
+
+        if let match = lower.firstMatch(for: #"(?:choose|select|complete|take)\s+(?:at\s+least\s+)?"# + number + #"\s+(?:additional\s+)?credit"#),
+           match.count > 1, let credits = value(match[1]) {
+            return .chooseCredits(credits)
+        }
+        if lower.contains("one of the following") || lower.range(of: #"\bselect one\b"#, options: .regularExpression) != nil {
+            return hasMultiCourseGroups ? .chooseGroups(1) : .chooseCourses(1)
+        }
+        if let match = lower.firstMatch(for: #"(?:choose|select)\s+(?:at\s+least\s+)?"# + number + #"\b"#),
+           match.count > 1, let count = value(match[1]) {
+            return hasMultiCourseGroups ? .chooseGroups(count) : .chooseCourses(count)
+        }
+        return nil
     }
 
     private func shouldIgnoreRequirementHeading(_ heading: String, hasCourses: Bool) -> Bool {
@@ -1363,7 +1556,8 @@ public struct JMUHTMLCatalogParser: Sendable {
             var rowAnnotations: [CourseAnnotation] = []
             for (position, link) in links.enumerated() where link.count >= 3 {
                 let code = HTMLCleaner.clean(link[2])
-                guard let parsedCode = code.firstMatch(for: #"^([A-Z]{2,5})\s+(\d{3}[A-Z]?)$"#), parsedCode.count >= 3 else { continue }
+                // Cross-listed codes ("PSYC/BIO 385") are the first subject's course.
+                guard let parsedCode = code.firstMatch(for: #"^([A-Z]{2,5})(?:/[A-Z]{2,5})*\s+(\d{3}[A-Z]?)$"#), parsedCode.count >= 3 else { continue }
                 let subject = parsedCode[1]
                 let number = parsedCode[2]
                 let url = URL(string: HTMLCleaner.decodeEntities(in: link[1]), relativeTo: baseURL)?.absoluteURL

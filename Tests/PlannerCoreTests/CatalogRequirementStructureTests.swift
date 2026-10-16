@@ -304,6 +304,53 @@ struct CatalogRequirementStructureTests {
         #expect(rule("Students must complete the following courses.") == nil)
     }
 
+    @Test func shortLabCodeInAPairRowIsItsOwnCourse() throws {
+        // Biology B.S. "Core Requirements": "BIO 150 & 150L", 4 credits.
+        let row = #"<tr><td class="codecol"><a href="/search/?P=BIO%20150" title="BIO 150" class="bubblelink code">BIO 150</a><br/><span style="margin-left:20px;" class="blockindent">&amp; <a href="/search/?P=BIO%20150L" title="BIO 150L" class="bubblelink code">150L</a></span></td><td>Foundations of Biology II<br/><span style="margin-left:20px;" class="blockindent">and Foundations of Biology II Laboratory</span></td><td class="hourscol">4</td></tr>"#
+        let html = """
+        <h1>Example, B.S.</h1><h2>Major Requirements</h2>
+        <table class="sc_courselist"><tbody>\(Self.header("Core Requirements"))\(row)</tbody></table>
+        """
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(
+            html, kind: .major, sourceURL: URL(string: "https://catalog.jmu.edu/programs/x/")!
+        )
+        let courses = Dictionary(parsed.courses.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // The lab takes 1 of the row's credits, the lecture the rest.
+        #expect(courses["BIO150"]?.credits == 3)
+        #expect(courses["BIO150L"]?.credits == 1)
+        #expect(courses["BIO150L"]?.title == "Foundations of Biology II Laboratory")
+        let core = try #require(parsed.requirements.first)
+        #expect(core.courseOptions.flatMap { $0 }.contains("BIO150L"))
+    }
+
+    @Test func subjectElectiveProseBecomesAPoolWithTheUpToOneList() throws {
+        // Finance B.B.A. "Electives or Concentration": 12 credits of any
+        // 300- or 400-level FIN course, up to one of them from a short list.
+        let categories = parseSnippet(
+            Self.header("Finance Major Core Courses")
+            + Self.course("FIN 360", "Analytical Methods in Finance")
+            + Self.comment("Subtotal", hours: "12")
+            + Self.header("Electives or Concentration")
+            + Self.comment("In addition to these core courses, the student majoring in finance must successfully complete 12 credit hours of finance elective courses. Finance electives include any 300- level or 400-level finance course.", hours: "12")
+            + Self.comment("A student may choose up to one of the following courses to satisfy the finance elective credit hours: ")
+            + Self.course("ACTG 313", "Accounting Information Systems") + Self.course("BLAW 360", "Legal Analysis")
+        )
+        #expect(!categories.contains { $0.name.lowercased().contains("up to one") })
+        let electives = try #require(categories.first { $0.electivePoolSlots != nil })
+        #expect(electives.requiredCredits == 12)
+        #expect(electives.courseOptions.count == 4)
+        #expect(electives.courseOptions.allSatisfy { $0 == [ElectivePool.token(subject: "FIN", minimumNumber: 300), "ACTG313", "BLAW360"] })
+
+        let resolved = Catalog.fixture(
+            courses: ["FIN360", "FIN420", "FIN500", "ACTG313", "BLAW360"].map {
+                Course(id: $0, code: "\($0.prefix(while: \.isLetter)) \($0.drop(while: \.isLetter))", title: $0, credits: 3, availability: nil, prerequisites: [])
+            },
+            program: .fixture(id: "fin", title: "Finance", requirements: categories)
+        ).resolvingElectivePools()
+        let slot = try #require(resolved.programs[0].requirements.first { $0.id == electives.id }?.courseOptions.first)
+        #expect(slot == ["FIN420", "ACTG313", "BLAW360"])
+    }
+
     @Test func nestedParenthesesBecomeOneRemark() {
         // Sport Communication minor: "SMAD 295 Practicum in Media Arts and Design ((taken for 3 credits))"
         let cleaned = JMUHTMLCatalogParser.cleanCourseTitle("Practicum in Media Arts and Design ((taken for 3 credits))")

@@ -59,10 +59,18 @@ public struct HTMLProgramRequirements: Sendable {
 public struct HTMLCourseDetail: Equatable, Sendable {
     public var description: String?
     public var prerequisiteText: String?
+    /// The course's own credit hours ("Credits 4-12" reads 4). More exact
+    /// than a program table, which can split a row's hours across a pair.
+    public var credits: Int?
+    /// The top of a variable-credit range ("4-12" reads 12); `credits`
+    /// when the course has one fixed value.
+    public var maximumCredits: Int?
 
-    public init(description: String?, prerequisiteText: String?) {
+    public init(description: String?, prerequisiteText: String?, credits: Int? = nil, maximumCredits: Int? = nil) {
         self.description = description
         self.prerequisiteText = prerequisiteText
+        self.credits = credits
+        self.maximumCredits = maximumCredits ?? credits
     }
 }
 
@@ -200,6 +208,9 @@ public struct JMUHTMLCatalogParser: Sendable {
             }
         }
 
+        let pageSubjects = Set(coursesByID.values.compactMap { ElectivePool.subjectAndNumber(of: $0.code)?.subject })
+        categories = Self.foldingSubjectElectivePools(categories, subjects: pageSubjects)
+
         var usedConcentrationIDs: Set<String> = []
         let concentrations = split.concentrationRuns.compactMap { run -> Concentration? in
             var usedRequirementIDs: Set<String> = []
@@ -219,10 +230,10 @@ public struct JMUHTMLCatalogParser: Sendable {
                run.blocks.first?.heading == first.block.heading {
                 parsedRequirements.removeFirst()
             }
-            let requirements = adjustedConcentrationRequirements(
+            let requirements = Self.foldingSubjectElectivePools(adjustedConcentrationRequirements(
                 from: mergingOptionGroups(parsedRequirements),
                 totalCredits: concentrationTotalCredits(in: run.blocks)
-            )
+            ), subjects: pageSubjects)
             guard !requirements.isEmpty else { return nil }
             let cleanName = JMUHTMLCatalogParser.cleanConcentrationName(run.name)
             let displayName = cleanName.isEmpty ? run.name : cleanName
@@ -292,8 +303,10 @@ public struct JMUHTMLCatalogParser: Sendable {
         }.last
     }
 
-    public func parseCourseDetail(_ html: String) -> HTMLCourseDetail {
-        if let modernDetail = parseModernCourseDetail(html) {
+    /// `courseCode` ("CHEM 131") picks that course when the search page also
+    /// lists others ("CHEM 130" comes first).
+    public func parseCourseDetail(_ html: String, courseCode: String? = nil) -> HTMLCourseDetail {
+        if let modernDetail = parseModernCourseDetail(html, courseCode: courseCode) {
             return modernDetail
         }
 
@@ -336,11 +349,14 @@ public struct JMUHTMLCatalogParser: Sendable {
         )
     }
 
-    private func parseModernCourseDetail(_ html: String) -> HTMLCourseDetail? {
-        guard html.contains("search-courseresult"),
-              let article = html.firstMatch(for: #"(?is)<article\b[^>]*class="[^"]*\bsearch-courseresult\b[^"]*"[^>]*>(.*?)</article>"#),
-              article.count > 1
-        else { return nil }
+    private func parseModernCourseDetail(_ html: String, courseCode: String?) -> HTMLCourseDetail? {
+        guard html.contains("search-courseresult") else { return nil }
+        let articles = html.matches(for: #"(?is)<article\b[^>]*class="[^"]*\bsearch-courseresult\b[^"]*"[^>]*>(.*?)</article>"#)
+            .filter { $0.count > 1 }
+        let searched = courseCode.flatMap { code in
+            articles.first { $0[1].contains(#"data-coursecode="\#(code)""#) }
+        }
+        guard let article = searched ?? articles.first else { return nil }
 
         let description = article[1]
             .firstMatch(for: #"(?is)<div\b[^>]*class="[^"]*\bcourseblockdesc\b[^"]*"[^>]*>(.*?)</div>"#)
@@ -349,8 +365,19 @@ public struct JMUHTMLCatalogParser: Sendable {
             .firstMatch(for: #"(?is)<div\b[^>]*class="[^"]*\bcourseblockextra\b[^"]*"[^>]*>(.*?)</div>"#)
             .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
 
+        let hours = article[1]
+            .firstMatch(for: #"(?is)<span\b[^>]*class="[^"]*\bdetail-hours_html\b[^"]*"[^>]*>(.*?)</span>"#)
+            .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]).replacingOccurrences(of: "Credits", with: "") : nil }
+        let credits = hours.flatMap(Self.hoursColumnCredits)
+        let maximum = hours?.firstMatch(for: #"^\s*\d+\s*[-–]\s*(\d+)"#)?.dropFirst().first.flatMap { Int($0) }
+
         guard description?.isEmpty == false || prerequisiteText?.isEmpty == false else { return nil }
-        return HTMLCourseDetail(description: description, prerequisiteText: prerequisiteText)
+        return HTMLCourseDetail(
+            description: description,
+            prerequisiteText: prerequisiteText,
+            credits: credits,
+            maximumCredits: credits.map { max(maximum ?? $0, $0) }
+        )
     }
 
     /// Handles the live JMU popup-style `preview_course.php` page. Format:
@@ -950,6 +977,58 @@ public struct JMUHTMLCatalogParser: Sendable {
             note: "Any \(match[2].uppercased()) course numbered \(minimum) or above that isn't already required.",
             electivePoolSlots: Array(0..<slots)
         )
+    }
+
+    /// "Finance electives include any 300- level or 400-level finance
+    /// course": the subject is named in words or as its code.
+    private static let subjectElectivePattern = #"(?i)\bany\s+(\d)00\s*-?\s*(?:level\s+)?or\s+\d00\s*-?\s*level\s+([A-Za-z]+)\s+courses?\b"#
+
+    /// A requirement with credits but no course list whose text allows "any
+    /// 300- or 400-level finance course" becomes a pool of that subject's
+    /// courses. A list right after it of courses "up to one of" which may
+    /// count toward it joins every slot instead of standing as its own
+    /// requirement. `subjects` are the course subjects on the page, which
+    /// turn "finance" into FIN.
+    static func foldingSubjectElectivePools(_ categories: [RequirementCategory], subjects: Set<String>) -> [RequirementCategory] {
+        var result: [RequirementCategory] = []
+        var index = 0
+        while index < categories.count {
+            var category = categories[index]
+            index += 1
+            let text = [category.name, category.catalogDescription ?? ""].joined(separator: " ")
+            guard category.courseOptions.isEmpty, category.requiredCredits > 0,
+                  let match = text.firstMatch(for: subjectElectivePattern), match.count > 2,
+                  let level = Int(match[1]),
+                  let subject = subjectCode(named: match[2], among: subjects)
+            else {
+                result.append(category)
+                continue
+            }
+            var extras: [String] = []
+            if index < categories.count,
+               categories[index].name.range(of: #"(?i)\bup to (?:one|1) of the following\b"#, options: .regularExpression) != nil {
+                var seen: Set<String> = []
+                extras = categories[index].courseOptions.flatMap { $0 }.filter { seen.insert($0).inserted }
+                index += 1
+            }
+            let slots = max(Int(ceil(Double(category.requiredCredits) / Double(ScheduleGenerator.electivePoolSlotCredits))), 1)
+            let minimum = level * 100
+            category.courseOptions = Array(repeating: [ElectivePool.token(subject: subject, minimumNumber: minimum)] + extras, count: slots)
+            category.electivePoolSlots = Array(0..<slots)
+            category.selection = .unknown
+            category.note = "Any \(subject) course numbered \(minimum) or above that isn't already required."
+                + (extras.isEmpty ? "" : " Up to one listed course outside \(subject) may count.")
+            result.append(category)
+        }
+        return result
+    }
+
+    /// "SPAN" stays SPAN; a word ("finance") is the longest page subject it
+    /// starts with (FIN).
+    private static func subjectCode(named word: String, among subjects: Set<String>) -> String? {
+        let upper = word.uppercased()
+        if subjects.contains(upper) { return upper }
+        return subjects.filter { upper.hasPrefix($0) }.max { $0.count < $1.count }
     }
 
     /// "Option 1:", "Option 2:" sub-headings inside a course table.
@@ -1650,30 +1729,41 @@ public struct JMUHTMLCatalogParser: Sendable {
                 items.append(.marker("or"))
             }
             let rowCredits = hoursText.flatMap(parseLeadingCredits)
-            let perCourseCredits = rowCredits.map { max(Int(ceil(Double($0) / Double(max(links.count, 1)))), 1) } ?? 3
 
             var rowCourses: [Course] = []
             var rowAnnotations: [CourseAnnotation] = []
             for (position, link) in links.enumerated() where link.count >= 3 {
-                let code = HTMLCleaner.clean(link[2])
+                let codePattern = #"^([A-Z]{2,5})(?:/[A-Z]{2,5})*\s+(\d{3}[A-Z]?)$"#
+                let href = HTMLCleaner.decodeEntities(in: link[1])
+                var code = HTMLCleaner.clean(link[2])
+                // "BIO 150 & 150L": the second link's text drops the subject,
+                // but its search link names the whole course.
+                if code.firstMatch(for: codePattern) == nil,
+                   let query = href.firstMatch(for: #"[?&]P=([^&#]+)"#)?.dropFirst().first {
+                    code = (query.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? query)
+                        .trimmingCharacters(in: .whitespaces)
+                }
                 // Cross-listed codes ("PSYC/BIO 385") are the first subject's course.
-                guard let parsedCode = code.firstMatch(for: #"^([A-Z]{2,5})(?:/[A-Z]{2,5})*\s+(\d{3}[A-Z]?)$"#), parsedCode.count >= 3 else { continue }
+                guard let parsedCode = code.firstMatch(for: codePattern), parsedCode.count >= 3 else { continue }
                 let subject = parsedCode[1]
                 let number = parsedCode[2]
-                let url = URL(string: HTMLCleaner.decodeEntities(in: link[1]), relativeTo: baseURL)?.absoluteURL
+                let url = URL(string: href, relativeTo: baseURL)?.absoluteURL
                 let titleHTML = links.count > 1 && titleParts.count == links.count ? titleParts[position] : titleCell
                 let cleaned = Self.cleanCourseTitle(titleHTML)
                 rowCourses.append(Course(
                     id: "\(subject)\(number)",
                     code: "\(subject) \(number)",
                     title: cleaned.title,
-                    credits: perCourseCredits,
+                    credits: 3,
                     availability: nil,
                     prerequisites: [],
                     verificationStatus: .partial,
                     registrarURL: url
                 ))
                 rowAnnotations.append(CourseAnnotation(remarks: cleaned.remarks, footnoteMarks: cleaned.footnoteMarks))
+            }
+            for (index, credits) in Self.rowCourseCredits(rowCredits, courseIDs: rowCourses.map(\.id)).enumerated() {
+                rowCourses[index].credits = credits
             }
             if rowCourses.count > 1 {
                 items.append(.pair(rowCourses, rowAnnotations))
@@ -1682,6 +1772,18 @@ public struct JMUHTMLCatalogParser: Sendable {
             }
         }
         return items
+    }
+
+    /// Each course's share of a row's hours. A lecture and its lab ("BIO 150
+    /// & 150L", 4) split as 3 and 1; other pairs split evenly. 3 each when
+    /// the row has no hours.
+    static func rowCourseCredits(_ rowCredits: Int?, courseIDs: [String]) -> [Int] {
+        guard let rowCredits else { return courseIDs.map { _ in 3 } }
+        if courseIDs.count == 2, courseIDs[1] == courseIDs[0] + "L", rowCredits >= 2 {
+            return [rowCredits - 1, 1]
+        }
+        let share = max(Int(ceil(Double(rowCredits) / Double(max(courseIDs.count, 1)))), 1)
+        return courseIDs.map { _ in share }
     }
 
     /// Credits from a table's hours column: "3"; for a range the lower bound,

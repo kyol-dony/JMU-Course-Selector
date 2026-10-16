@@ -60,7 +60,7 @@ struct CourseDetailService {
             guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
                 return nil
             }
-            let parsed = parser.parseCourseDetail(html)
+            let parsed = parser.parseCourseDetail(html, courseCode: course.code)
             guard let description = parsed.description, !description.isEmpty else { return nil }
             return (description, url)
         } catch {

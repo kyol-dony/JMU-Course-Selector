@@ -54,12 +54,14 @@ public extension Catalog {
                 var category = category
                 var slots = Set(category.electivePoolSlots ?? [])
                 category.courseOptions = category.courseOptions.enumerated().map { index, option in
-                    guard option.count == 1, let rule = ElectivePool.rule(from: option[0]) else { return option }
+                    // A pool token may lead a few named courses that also count.
+                    guard let first = option.first, let rule = ElectivePool.rule(from: first) else { return option }
                     slots.insert(index)
-                    return sortedCourses
+                    let pool = sortedCourses
                         .filter { $0.1 == rule.subject && (rule.minimumNumber...ElectivePool.maximumNumber).contains($0.2) }
                         .map(\.0)
-                        .filter { !required.contains($0) }
+                    let extras = option.dropFirst().filter { !pool.contains($0) }
+                    return (pool + extras).filter { !required.contains($0) }
                 }
                 category.electivePoolSlots = slots.isEmpty ? category.electivePoolSlots : slots.sorted()
                 return category

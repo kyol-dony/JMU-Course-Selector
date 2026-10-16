@@ -68,6 +68,40 @@ struct CatalogHTMLParserTests {
         #expect(detail.prerequisiteText == "Prerequisites: MATH 155 or sufficient placement score.")
     }
 
+    @Test("2026 course search reads the course's credits and their range")
+    func parsesModernCourseDetailCredits() {
+        func credits(_ hours: String) -> (Int?, Int?) {
+            let detail = JMUHTMLCatalogParser().parseCourseDetail("""
+            <article class="searchresult search-courseresult"><div class="courseblock" data-coursecode="KIN 481">
+              <div class="cols noindent"><span class="text detail-hours_html margin--tiny"><strong> Credits </strong> \(hours)</span></div>
+              <div class="noindent"><div class="courseblockdesc noindent">Internship.</div></div>
+            </div></article>
+            """)
+            return (detail.credits, detail.maximumCredits)
+        }
+        #expect(credits("3") == (3, 3))
+        #expect(credits("4-12") == (4, 12))
+        #expect(credits("0-3") == (3, 3))
+        #expect(credits("") == (nil, nil))
+    }
+
+    @Test("2026 course search reads the searched course, not the first result")
+    func parsesTheSearchedCourseDetail() {
+        // "CHEM 131" also finds the CHEM 130 sidecar course, listed first.
+        func article(_ code: String, _ hours: String, _ text: String) -> String {
+            """
+            <article class="searchresult search-courseresult"><div class="courseblock" data-coursecode="\(code)">
+              <div class="cols noindent"><span class="text detail-hours_html margin--tiny"><strong> Credits </strong> \(hours)</span></div>
+              <div class="noindent"><div class="courseblockdesc noindent">\(text)</div></div>
+            </div></article>
+            """
+        }
+        let html = article("CHEM 130", "1", "A sidecar course.") + article("CHEM 131", "3", "General chemistry.")
+        let detail = JMUHTMLCatalogParser().parseCourseDetail(html, courseCode: "CHEM 131")
+        #expect(detail.description == "General chemistry.")
+        #expect(detail.credits == 3)
+    }
+
     @Test("2026 Gen Ed tables retain a parent cluster tag below explanatory subheadings")
     func parsesModernNestedGenEdHeading() throws {
         let html = """

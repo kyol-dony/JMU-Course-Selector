@@ -140,6 +140,13 @@ struct CatalogRepository {
             if let text = enrichment.prerequisiteText, !text.isEmpty {
                 course.rawPrerequisiteText = text
             }
+            // A program table can split a row's hours across a pair, and
+            // the first program to list a course sets its credits. A
+            // variable-credit course keeps the table's value inside its range.
+            if let credits = enrichment.credits {
+                let maximum = max(enrichment.maximumCredits ?? credits, credits)
+                course.credits = maximum > credits ? min(max(course.credits, credits), maximum) : credits
+            }
             coursesByID[enrichment.courseID] = course
         }
         try Task.checkCancellation()
@@ -259,7 +266,10 @@ struct CatalogRepository {
     /// IDs exactly as v15 did when several instruction lines precede a list.
     /// v20 scopes section subtotals, groups "Option N:" rows inside a
     /// section, and keeps trailing years in course titles.
-    private static let cacheSchemaVersion = 20
+    /// v21 keeps the lab of a "BIO 150 & 150L" row, takes credits from each
+    /// course's own page, and turns "any 300- or 400-level finance course"
+    /// into an elective pool.
+    private static let cacheSchemaVersion = 21
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())
@@ -379,7 +389,7 @@ struct CatalogRepository {
 
                     do {
                         let html = try await Self.fetchHTML(from: url)
-                        let detail = parser.parseCourseDetail(html)
+                        let detail = parser.parseCourseDetail(html, courseCode: course.code)
                         guard let description = detail.description, !description.isEmpty else {
                             return nil
                         }
@@ -387,6 +397,8 @@ struct CatalogRepository {
                             courseID: course.id,
                             description: description,
                             prerequisiteText: detail.prerequisiteText,
+                            credits: detail.credits,
+                            maximumCredits: detail.maximumCredits,
                             sourceURL: url,
                             retrievedAt: Date()
                         )
@@ -548,6 +560,8 @@ private struct CourseDetailEnrichment: Sendable {
     var courseID: String
     var description: String
     var prerequisiteText: String?
+    var credits: Int?
+    var maximumCredits: Int?
     var sourceURL: URL
     var retrievedAt: Date
 }

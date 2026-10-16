@@ -938,8 +938,13 @@ public struct ScheduleGenerator: Sendable {
         // a selective pool. Reserve that work before selecting elective slots.
         let anticipatedCourses: Set<String> = source == nil ? [] : Set(([program] + additionalPrograms).flatMap { p in
             p.requirements.filter { category in
-                let name = category.name.lowercased()
-                return name.contains("required") || !(name.contains("elective") || name.contains("choose") || name.contains("select"))
+                switch behavior(for: category) {
+                case .required: return true
+                case .selective, .groups: return false
+                case .legacy:
+                    let name = category.name.lowercased()
+                    return name.contains("required") || !(name.contains("elective") || name.contains("choose") || name.contains("select"))
+                }
             }.flatMap { $0.courseOptions.filter { $0.count == 1 }.flatMap { $0 } }
         })
         let lists = plannedProgramLists(
@@ -1107,14 +1112,34 @@ public struct ScheduleGenerator: Sendable {
         for category in program.requirements {
             if Task.isCancelled { break }
             let lowerName = category.name.lowercased()
-            // Categories whose heading carries "required" are mandatory in
-            // full — every option must reach the schedule. Bypass the Gen Ed
-            // cluster shortcut and the selective-elective placeholder path
-            // so nothing trims the option list before iteration.
-            let categoryIsRequired = lowerName.contains("required")
+            let rule = behavior(for: category)
+            // Required categories are mandatory in full — every option must
+            // reach the schedule. Bypass the Gen Ed cluster shortcut and the
+            // selective-elective placeholder path so nothing trims the option
+            // list before iteration. Without a parsed rule, a heading that
+            // carries "required" marks the category.
+            let categoryIsRequired: Bool
+            switch rule {
+            case .required: categoryIsRequired = true
+            case .selective, .groups: categoryIsRequired = false
+            case .legacy: categoryIsRequired = lowerName.contains("required")
+            }
 
             let categorySatisfiedByCluster = completedClusterTags.contains(where: category.name.contains)
             if !categoryIsRequired && categorySatisfiedByCluster { continue }
+
+            if case .groups(let count) = rule,
+               appendCourseGroups(
+                count,
+                for: category,
+                completed: completed,
+                anticipatedCourses: anticipatedCourses,
+                seen: &seen,
+                result: &result,
+                anchors: anchors
+            ) {
+                continue
+            }
 
             let optionCount = max(category.courseOptions.count, 1)
             let fallbackOptionCredits = max(category.requiredCredits / optionCount, 1)
@@ -1135,11 +1160,17 @@ public struct ScheduleGenerator: Sendable {
             // Only selective categories use an allowance. Reserve its entire
             // anchored amount before choosing earlier options; a retained later
             // slot must not be overlooked when the cap stops iteration.
-            let categoryIsSelective = !categoryIsRequired && (
-                lowerName.contains("choose")
-                || lowerName.contains("elective")
-                || lowerName.contains("select")
-            )
+            let categoryIsSelective: Bool
+            switch rule {
+            case .required: categoryIsSelective = false
+            case .selective, .groups: categoryIsSelective = true
+            case .legacy:
+                categoryIsSelective = !categoryIsRequired && (
+                    lowerName.contains("choose")
+                    || lowerName.contains("elective")
+                    || lowerName.contains("select")
+                )
+            }
             let hasCreditLimit = categoryIsSelective && category.requiredCredits > 0
             let poolSlots = Set(category.electivePoolSlots ?? [])
             var reservedIDs = Set((anchors?.placeholders ?? [:]).filter { $0.value.categoryID == category.id }.keys)
@@ -1217,7 +1248,13 @@ public struct ScheduleGenerator: Sendable {
         fallbackOptionCredits: Int,
         anchors: AnchoredScheduleContext? = nil
     ) -> Bool {
-        guard category.name.lowercased().contains("elective"),
+        let usesElectivePool: Bool
+        switch category.selection {
+        case .chooseCredits: usesElectivePool = true
+        case .unknown: usesElectivePool = category.name.lowercased().contains("elective")
+        case .allRequired, .chooseCourses, .chooseGroups: usesElectivePool = false
+        }
+        guard usesElectivePool,
               category.requiredCredits > 0,
               category.courseOptions.count > 1
         else {
@@ -1254,6 +1291,52 @@ public struct ScheduleGenerator: Sendable {
                 alternates: alternates,
                 credits: min(Double(slotCredits), remainingCredits - Double(slot * slotCredits))
             )
+        }
+        return true
+    }
+
+    /// How the generator fills a requirement: from its parsed selection rule,
+    /// or from keywords in its name when the parser could not tell.
+    private enum RequirementBehavior: Equatable {
+        case required, selective, groups(Int), legacy
+    }
+
+    private func behavior(for category: RequirementCategory) -> RequirementBehavior {
+        switch category.selection {
+        case .allRequired: return .required
+        case .chooseCourses, .chooseCredits: return .selective
+        case .chooseGroups(let count): return .groups(count)
+        case .unknown: return .legacy
+        }
+    }
+
+    /// Schedules `count` whole groups from `category.choices` (a group can be
+    /// a pair taken together), every member as a concrete course. Groups with
+    /// a member already completed or planned come first, then catalog order.
+    /// Returns false when the slot loop should handle the category instead:
+    /// no groups were parsed, or an anchored regeneration already holds
+    /// placeholders for its slots.
+    private func appendCourseGroups(
+        _ count: Int,
+        for category: RequirementCategory,
+        completed: Set<String>,
+        anticipatedCourses: Set<String>,
+        seen: inout Set<String>,
+        result: inout [String],
+        anchors: AnchoredScheduleContext?
+    ) -> Bool {
+        guard !category.choices.isEmpty else { return false }
+        let slotPrefix = "\(PathwayPlaceholder.prefix)\(category.id)::"
+        let anchoredSlots = (anchors?.placeholders ?? [:]).values.contains { $0.categoryID == category.id }
+            || (anchors?.reservedPlaceholderIDs ?? []).contains { $0.hasPrefix(slotPrefix) }
+        guard !anchoredSlots else { return false }
+        let started = completed.union(seen).union(anticipatedCourses)
+        let ordered = category.choices.filter { $0.contains(where: started.contains) }
+            + category.choices.filter { !$0.contains(where: started.contains) }
+        for group in ordered.prefix(max(count, 1)) {
+            for courseID in group where !completed.contains(courseID) && seen.insert(courseID).inserted {
+                result.append(courseID)
+            }
         }
         return true
     }

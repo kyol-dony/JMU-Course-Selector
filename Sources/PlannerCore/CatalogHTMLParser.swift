@@ -658,13 +658,21 @@ public struct JMUHTMLCatalogParser: Sendable {
                 var currentIDSource: String?
                 var currentRowHours: Int?
                 var currentSubtotal: Int?
+                // An instruction under a concentration heading with no course
+                // rows, only plain list rows ("Choose one of the following:" over
+                // the concentration names), picks a concentration; it is not a
+                // requirement. Without plain rows it is an "Option N:" chooser
+                // that option merging still reads.
+                var underConcentrationHeader = false
+                var currentIsConcentrationChooser = false
+                var currentHasPlainItems = false
                 // "9 credits of MATH electives" rows stand alone, but the
                 // course rows after them still belong to the requirement
                 // above ("Option 1:"); emit them right after it.
                 var pendingAllowances: [RequirementBlock] = []
 
                 func flushComment() {
-                    if let heading = currentCommentHeading {
+                    if let heading = currentCommentHeading, !(currentIsConcentrationChooser && currentHasPlainItems && !currentHasCourses) {
                         var block = RequirementBlock(
                             level: min(level + 1, 5),
                             heading: heading,
@@ -691,6 +699,8 @@ public struct JMUHTMLCatalogParser: Sendable {
                     currentIDSource = nil
                     currentRowHours = nil
                     currentSubtotal = nil
+                    currentIsConcentrationChooser = false
+                    currentHasPlainItems = false
                 }
 
                 for row in table.match.matches(for: #"(?is)<tr\b[^>]*>(.*?)</tr>"#) {
@@ -722,7 +732,10 @@ public struct JMUHTMLCatalogParser: Sendable {
                             .firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>(.*?)</td>"#)
                             .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
                         let isSectionHeader = rowHTML.contains("areaheader") || rowHTML.contains("areasubheader")
-                        let rowCredits = hours.flatMap(parseLeadingCredits)
+                        // A 0-credit row ("Assessment Milestone 0") is an item, not
+                        // the section's credits.
+                        let rowCredits = hours.flatMap(Self.hoursColumnCredits)
+                        let isZeroHourRow = hours?.isEmpty == false && rowCredits == nil
                         let isChoiceLine = choiceSelectionCount(heading: commentHeading, body: "") != nil
                             || Self.selectionRule(text: commentHeading, hasMultiCourseGroups: false) != nil
                         // "Subtotal" rows carry the section's real credits.
@@ -731,6 +744,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                             flushComment()
                             continue
                         }
+                        if isSectionHeader { underConcentrationHeader = !canNameRequirement(areaHeader: commentHeading) }
                         // An area header ("Methodology Core") names the requirement;
                         // the instruction rows under it become its description.
                         if isSectionHeader, canNameRequirement(areaHeader: commentHeading) {
@@ -746,7 +760,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                             if !currentHasCourses {
                                 currentLines.append(commentHeading)
                                 currentMarks += commentMarks
-                                if currentIDSource == nil, rowCredits != nil || isChoiceLine {
+                                if currentIDSource == nil, hours?.isEmpty == false || isChoiceLine {
                                     currentIDSource = commentHeading
                                 }
                                 if let rowCredits { currentRowHours = rowCredits }
@@ -764,6 +778,11 @@ public struct JMUHTMLCatalogParser: Sendable {
                                 currentIDSource = commentHeading
                                 currentRowHours = rowCredits
                                 currentCommentBody = rowHTML
+                                continue
+                            }
+                            if isZeroHourRow {
+                                currentLines.append(commentHeading)
+                                currentCommentBody += rowHTML
                                 continue
                             }
                         }
@@ -784,12 +803,14 @@ public struct JMUHTMLCatalogParser: Sendable {
                             hasCommentRequirements = true
                             currentCommentHeading = commentHeading
                             currentCommentBody = rowHTML
+                            currentIsConcentrationChooser = underConcentrationHeader && !isSectionHeader && isChoiceLine
                         } else {
                             currentCommentBody += rowHTML
+                            currentHasPlainItems = true
                         }
                     } else if currentCommentHeading != nil {
                         currentCommentBody += rowHTML
-                        if rowHTML.contains("codecol") { currentHasCourses = true }
+                        if rowHTML.contains("codecol") { currentHasCourses = true } else { currentHasPlainItems = true }
                     } else {
                         baseBody += rowHTML
                     }
@@ -1486,7 +1507,10 @@ public struct JMUHTMLCatalogParser: Sendable {
             guard !remark.isEmpty else { continue }
             remarks.append(remark.prefix(1).uppercased() + remark.dropFirst())
         }
-        title = title.replacingOccurrences(of: #"\s*\([^()]*\)"#, with: "", options: .regularExpression)
+        // Repeat so nested parentheses ("((taken for 3 credits))") leave nothing behind.
+        while title.range(of: #"\([^()]*\)"#, options: .regularExpression) != nil {
+            title = title.replacingOccurrences(of: #"\s*\([^()]*\)"#, with: "", options: .regularExpression)
+        }
         title = title.replacingOccurrences(of: #"\s?\*+[\d,]*$"#, with: "", options: .regularExpression)
         title = title.replacingOccurrences(of: #"\s[\d,]+$"#, with: "", options: .regularExpression)
         return (title.trimmingCharacters(in: .whitespacesAndNewlines), remarks, marks)
@@ -1582,6 +1606,18 @@ public struct JMUHTMLCatalogParser: Sendable {
             }
         }
         return items
+    }
+
+    /// Credits from a table's hours column: "3"; for a range the lower bound,
+    /// or the upper one when the lower is 0 ("0-3" -> 3, "46-54" -> 46).
+    /// Nil for "0" and for text without a number.
+    static func hoursColumnCredits(_ text: String) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let match = trimmed.firstMatch(for: #"^(\d+)(?:\s*[-–]\s*(\d+))?"#), match.count > 1,
+              let lower = Int(match[1])
+        else { return nil }
+        if lower > 0 { return lower }
+        return match.count > 2 ? Int(match[2]).flatMap { $0 > 0 ? $0 : nil } : nil
     }
 
     private func parseLeadingCredits(_ text: String) -> Int? {

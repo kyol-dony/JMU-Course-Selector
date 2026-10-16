@@ -153,5 +153,57 @@ struct CatalogRequirementStructureTests {
         #expect(category.requiredCredits == 24)
     }
 
+    // MARK: Whole-catalog audit findings (Task 8)
+
+    @Test func hourRangesUseTheLowerBoundUnlessItIsZero() throws {
+        // Biology B.A. "Capstone Requirement": hours "0-3"
+        let capstone = try #require(parseSnippet(
+            Self.header("Capstone Requirement")
+            + Self.comment("Students must complete a Capstone experience, decided upon with their advisor. The courses below qualify.", hours: "0-3")
+            + Self.course("BIO 497", "Advanced Biological Research") + Self.course("BIO 499A", "Senior Project")
+            + Self.comment("Subtotal", hours: "0-3")
+        ).first)
+        #expect(capstone.requiredCredits == 3)
+        let ranged = try #require(parseSnippet(
+            Self.header("Upper Electives") + Self.comment("Choose 6 credits of the following:", hours: "6-8")
+            + Self.course("ART 300", "Art") + Self.course("ART 310", "Design") + Self.course("ART 320", "Print")
+        ).first)
+        #expect(ranged.requiredCredits == 6)
+    }
+
+    @Test func zeroHourMilestonesKeepTheSubtotal() throws {
+        // Music B.A. "Core Courses": 0-credit milestone rows around the courses
+        let categories = parseSnippet(
+            Self.header("Core Courses")
+            + Self.comment("Incoming Music Major Assessment Milestone", hours: "0")
+            + Self.course("MUS 206", "Introduction to Global Music") + Self.course("MUS 207", "History of Western Music")
+            + Self.comment("School of Music Senior Assessment Milestone", hours: "0")
+            + Self.comment("Subtotal", hours: "6")
+        )
+        #expect(categories.count == 1)
+        let core = try #require(categories.first)
+        #expect(core.name == "Core Courses")
+        #expect(core.requiredCredits == 6)
+        #expect(core.id == "incoming-music-major-assessment-milestone")
+        #expect(core.choices == [["MUS206"], ["MUS207"]])
+    }
+
+    @Test func concentrationChooserIsNotARequirement() {
+        // Kinesiology B.S.: "Choose one of the following: 46-54" lists the concentrations
+        let categories = parseSnippet(
+            Self.header("Kinesiology Concentrations")
+            + Self.comment("Choose one of the following:", hours: "46-54")
+            + Self.comment("Exercise Science") + Self.comment("Physical and Health Education Teacher Education")
+            + Self.comment("Subtotal", hours: "46-54")
+        )
+        #expect(categories.isEmpty, "\(categories.map { "\($0.name) \($0.requiredCredits)" })")
+    }
+
+    @Test func nestedParenthesesBecomeOneRemark() {
+        // Sport Communication minor: "SMAD 295 Practicum in Media Arts and Design ((taken for 3 credits))"
+        let cleaned = JMUHTMLCatalogParser.cleanCourseTitle("Practicum in Media Arts and Design ((taken for 3 credits))")
+        #expect(cleaned.title == "Practicum in Media Arts and Design")
+        #expect(cleaned.remarks == ["Taken for 3 credits"])
+    }
 }
 

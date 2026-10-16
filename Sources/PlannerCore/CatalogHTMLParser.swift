@@ -554,6 +554,8 @@ public struct JMUHTMLCatalogParser: Sendable {
         /// mentioned in the block's prose ("complete the 22-24 credit hours
         /// of the education program").
         var tableTotal: Int? = nil
+        /// The footnotes printed under this block's course table, by number.
+        var footnotes: [String: String] = [:]
         /// Set on the blocks of one "Option N:" group, which merge into a
         /// single requirement named for the option.
         var optionGroup: String? = nil
@@ -620,10 +622,18 @@ public struct JMUHTMLCatalogParser: Sendable {
 
             var baseBody = String(segment[..<tables[0].range.lowerBound])
             var commentBlocks: [RequirementBlock] = []
+            var baseFootnotes: [String: String] = [:]
             var tableTotals: [Int] = []
             var hasCommentRequirements = false
 
-            for table in tables {
+            for (tableIndex, table) in tables.enumerated() {
+                let tableFootnotes = Self.footnotes(
+                    after: table.range.upperBound,
+                    before: tableIndex + 1 < tables.count ? tables[tableIndex + 1].range.lowerBound : segment.endIndex,
+                    in: segment
+                )
+                baseFootnotes.merge(tableFootnotes, uniquingKeysWith: { first, _ in first })
+                let firstCommentBlock = commentBlocks.count
                 var currentCommentHeading: String?
                 var currentCommentBody = ""
                 // "9 credits of MATH electives" rows stand alone, but the
@@ -696,18 +706,39 @@ public struct JMUHTMLCatalogParser: Sendable {
                     }
                 }
                 flushComment()
+                for index in firstCommentBlock..<commentBlocks.count {
+                    commentBlocks[index].footnotes = tableFootnotes
+                }
             }
 
             blocks.append(RequirementBlock(
                 level: level,
                 heading: heading,
                 body: baseBody,
-                tableTotal: tables.count == 1 && !hasCommentRequirements ? tableTotals.first : nil
+                tableTotal: tables.count == 1 && !hasCommentRequirements ? tableTotals.first : nil,
+                footnotes: baseFootnotes
             ))
             blocks.append(contentsOf: commentBlocks)
         }
 
         return blocks
+    }
+
+    /// `<dl class="sc_footnotes">` entries between a course table and the next
+    /// one: `<dt><sup>N</sup></dt><dd>text</dd>`.
+    private static func footnotes(after start: String.Index, before end: String.Index, in segment: String) -> [String: String] {
+        guard start < end else { return [:] }
+        let between = String(segment[start..<end])
+        guard let list = between.firstMatch(for: #"(?is)<dl\b[^>]*class="[^"]*\bsc_footnotes\b[^"]*"[^>]*>(.*?)</dl>"#),
+              list.count > 1
+        else { return [:] }
+        var notes: [String: String] = [:]
+        for entry in list[1].matches(for: #"(?is)<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>"#) where entry.count > 2 {
+            let number = HTMLCleaner.clean(entry[1])
+            let text = HTMLCleaner.clean(entry[2])
+            if !number.isEmpty, !text.isEmpty { notes[number] = text }
+        }
+        return notes
     }
 
     /// Folds the requirements of one "Option N:" group into a single
@@ -726,6 +757,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                 var merged = last.category
                 let offset = merged.courseOptions.count
                 merged.courseOptions += entry.category.courseOptions
+                merged.courseRemarks.merge(entry.category.courseRemarks, uniquingKeysWith: +)
                 let slots = (merged.electivePoolSlots ?? []) + (entry.category.electivePoolSlots ?? []).map { $0 + offset }
                 merged.electivePoolSlots = slots.isEmpty ? nil : slots
                 merged.requiredCredits = entry.block.optionCredits ?? merged.requiredCredits + entry.category.requiredCredits
@@ -1134,10 +1166,8 @@ public struct JMUHTMLCatalogParser: Sendable {
             return pool
         }
         let courseItems = courseItems(in: block.body, catoid: catoid)
-        let courses = courseItems.compactMap { item -> Course? in
-            if case .course(let course) = item { return course }
-            return nil
-        }
+        let annotated = annotatedCourses(courseItems)
+        let courses = annotated.map(\.course)
 
         // Skip non-requirement sections (descriptions, totals, admission, etc).
         // Umbrella headings like "Major Requirements" are skipped ONLY when their
@@ -1169,6 +1199,11 @@ public struct JMUHTMLCatalogParser: Sendable {
         )
         let categoryID = uniqueID(slug(from: block.heading), used: &usedCategoryIDs)
         let note = note(for: block, options: options, courses: courses)
+        var remarks: [String: [String]] = [:]
+        for (course, annotation) in annotated {
+            let notes = annotation.remarks + annotation.footnoteMarks.compactMap { block.footnotes[$0] }
+            if !notes.isEmpty { remarks[course.id, default: []].append(contentsOf: notes) }
+        }
 
         return RequirementCategory(
             id: categoryID,
@@ -1176,7 +1211,8 @@ public struct JMUHTMLCatalogParser: Sendable {
             requiredCredits: requiredCredits,
             courseOptions: options,
             verificationStatus: .partial,
-            note: note
+            note: note,
+            courseRemarks: remarks
         )
     }
 
@@ -1205,8 +1241,62 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private enum CourseItem {
-        case course(Course)
+        case course(Course, CourseAnnotation)
+        /// Courses on one catalog row that are taken together ("PSYC 210 & PSYC 211").
+        case pair([Course], [CourseAnnotation])
         case marker(String)
+    }
+
+    /// What a course row says besides the course itself: catalog remarks
+    /// ("Offered every semester") and footnote numbers to resolve.
+    private struct CourseAnnotation {
+        var remarks: [String] = []
+        var footnoteMarks: [String] = []
+    }
+
+    /// Pairs as separate course items, the way every consumer saw them before
+    /// pairs were recognized.
+    private func flattened(_ items: [CourseItem]) -> [CourseItem] {
+        items.flatMap { item -> [CourseItem] in
+            if case .pair(let courses, let annotations) = item {
+                return zip(courses, annotations).map { CourseItem.course($0, $1) }
+            }
+            return [item]
+        }
+    }
+
+    private func annotatedCourses(_ items: [CourseItem]) -> [(course: Course, annotation: CourseAnnotation)] {
+        flattened(items).compactMap { item in
+            if case .course(let course, let annotation) = item { return (course, annotation) }
+            return nil
+        }
+    }
+
+    /// Splits a course title cell into its title and what the catalog hangs
+    /// on it: `<sup>` footnote numbers, parenthetical remarks, stray markers.
+    /// Bracketed Gen Ed cluster codes ("[C5SD]") stay in the title.
+    static func cleanCourseTitle(_ html: String) -> (title: String, remarks: [String], footnoteMarks: [String]) {
+        var marks: [String] = []
+        for sup in html.matches(for: #"(?is)<sup\b[^>]*>(.*?)</sup>"#) where sup.count > 1 {
+            marks += HTMLCleaner.clean(sup[1])
+                .split(whereSeparator: { $0 == "," || $0 == " " })
+                .map(String.init)
+                .filter { !$0.isEmpty }
+        }
+        var title = HTMLCleaner.clean(
+            html.replacingOccurrences(of: #"(?is)<sup\b[^>]*>.*?</sup>"#, with: " ", options: .regularExpression)
+        )
+        title = title.replacingOccurrences(of: #"(?i)^and\s+"#, with: "", options: .regularExpression)
+        var remarks: [String] = []
+        for paren in title.matches(for: #"\(([^()]*)\)"#) where paren.count > 1 {
+            let remark = paren[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !remark.isEmpty else { continue }
+            remarks.append(remark.prefix(1).uppercased() + remark.dropFirst())
+        }
+        title = title.replacingOccurrences(of: #"\s*\([^()]*\)"#, with: "", options: .regularExpression)
+        title = title.replacingOccurrences(of: #"\s?\*+[\d,]*$"#, with: "", options: .regularExpression)
+        title = title.replacingOccurrences(of: #"\s[\d,]+$"#, with: "", options: .regularExpression)
+        return (title.trimmingCharacters(in: .whitespacesAndNewlines), remarks, marks)
     }
 
     private func courseItems(in html: String, catoid: String) -> [CourseItem] {
@@ -1229,10 +1319,12 @@ public struct JMUHTMLCatalogParser: Sendable {
                 return text == "or" ? .marker("or") : nil
             }
 
-            guard let course = parseCourse(fromListItem: body, catoid: catoid) else {
+            guard var course = parseCourse(fromListItem: body, catoid: catoid) else {
                 return nil
             }
-            return .course(course)
+            let cleaned = Self.cleanCourseTitle(course.title)
+            course.title = cleaned.title
+            return .course(course, CourseAnnotation(remarks: cleaned.remarks, footnoteMarks: cleaned.footnoteMarks))
         }
     }
 
@@ -1247,7 +1339,11 @@ public struct JMUHTMLCatalogParser: Sendable {
             else { continue }
 
             let cells = row[1].matches(for: #"(?is)<td\b[^>]*>(.*?)</td>"#)
-            let title = cells.count > 1 && cells[1].count > 1 ? HTMLCleaner.clean(cells[1][1]) : ""
+            let titleCell = cells.count > 1 && cells[1].count > 1 ? cells[1][1] : ""
+            // A pair row lists one title per course, separated by <br/>.
+            let titleParts = titleCell.components(separatedBy: #"<br"#).map { part -> String in
+                part.replacingOccurrences(of: #"(?is)^\s*/?>"#, with: "", options: .regularExpression)
+            }
             let hoursText = row[1]
                 .firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>(.*?)</td>"#)
                 .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
@@ -1263,22 +1359,32 @@ public struct JMUHTMLCatalogParser: Sendable {
             let rowCredits = hoursText.flatMap(parseLeadingCredits)
             let perCourseCredits = rowCredits.map { max(Int(ceil(Double($0) / Double(max(links.count, 1)))), 1) } ?? 3
 
-            for link in links where link.count >= 3 {
+            var rowCourses: [Course] = []
+            var rowAnnotations: [CourseAnnotation] = []
+            for (position, link) in links.enumerated() where link.count >= 3 {
                 let code = HTMLCleaner.clean(link[2])
                 guard let parsedCode = code.firstMatch(for: #"^([A-Z]{2,5})\s+(\d{3}[A-Z]?)$"#), parsedCode.count >= 3 else { continue }
                 let subject = parsedCode[1]
                 let number = parsedCode[2]
                 let url = URL(string: HTMLCleaner.decodeEntities(in: link[1]), relativeTo: baseURL)?.absoluteURL
-                items.append(.course(Course(
+                let titleHTML = links.count > 1 && titleParts.count == links.count ? titleParts[position] : titleCell
+                let cleaned = Self.cleanCourseTitle(titleHTML)
+                rowCourses.append(Course(
                     id: "\(subject)\(number)",
                     code: "\(subject) \(number)",
-                    title: title,
+                    title: cleaned.title,
                     credits: perCourseCredits,
                     availability: nil,
                     prerequisites: [],
                     verificationStatus: .partial,
                     registrarURL: url
-                )))
+                ))
+                rowAnnotations.append(CourseAnnotation(remarks: cleaned.remarks, footnoteMarks: cleaned.footnoteMarks))
+            }
+            if rowCourses.count > 1 {
+                items.append(.pair(rowCourses, rowAnnotations))
+            } else if let course = rowCourses.first, let annotation = rowAnnotations.first {
+                items.append(.course(course, annotation))
             }
         }
         return items
@@ -1377,10 +1483,8 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func inferredCredits(for items: [CourseItem], selectionCount: Int?) -> Int {
-        let courses = items.compactMap { item -> Course? in
-            if case .course(let course) = item { return course }
-            return nil
-        }
+        let items = flattened(items)
+        let courses = annotatedCourses(items).map(\.course)
 
         if let selectionCount {
             return courses.prefix(selectionCount).reduce(0) { $0 + $1.credits }
@@ -1477,10 +1581,8 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func courseOptions(from items: [CourseItem], selectionCount: Int?) -> [[String]] {
-        let courseIDs = items.compactMap { item -> String? in
-            if case .course(let course) = item { return course.id }
-            return nil
-        }
+        let items = flattened(items)
+        let courseIDs = annotatedCourses(items).map(\.course.id)
         guard !courseIDs.isEmpty else { return [] }
 
         if selectionCount == 1 {
@@ -1501,7 +1603,7 @@ public struct JMUHTMLCatalogParser: Sendable {
         var options: [[String]] = []
         var index = 0
         while index < items.count {
-            guard case .course(let course) = items[index] else {
+            guard case .course(let course, _) = items[index] else {
                 index += 1
                 continue
             }
@@ -1511,7 +1613,7 @@ public struct JMUHTMLCatalogParser: Sendable {
             while cursor + 2 < items.count,
                   case .marker(let marker) = items[cursor + 1],
                   marker.lowercased() == "or",
-                  case .course(let nextCourse) = items[cursor + 2] {
+                  case .course(let nextCourse, _) = items[cursor + 2] {
                 group.append(nextCourse.id)
                 cursor += 2
             }

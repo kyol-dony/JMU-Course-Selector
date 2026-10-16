@@ -211,6 +211,24 @@ struct CatalogRequirementStructureTests {
         #expect(category.name == "Electives")
     }
 
+    @Test func idFollowsTheLastCountedLineLikeTheOldParser() throws {
+        // Biology A&P: "Complete 9 hours" (with hours) then a choice line the old parser didn't count
+        let anatomy = try #require(parseSnippet(
+            Self.header("Anatomy and Physiology Electives")
+            + Self.comment("Complete 9 hours from the following:", hours: "9")
+            + Self.comment("Choose at least one course from the following:")
+            + Self.course("BIO 320", "Anatomy") + Self.course("BIO 370", "Physiology")
+        ).first)
+        #expect(anatomy.id == "complete-9-hours-from-the-following")
+        // Dance B.A.: a rule sentence without hours leaves the header as the ID
+        let technique = try #require(parseSnippet(
+            Self.header("Technique Courses")
+            + Self.comment("The student is required to complete 10 credits of technique courses.")
+            + Self.course("DANC 140", "Ballet I") + Self.course("DANC 141", "Modern I")
+        ).first)
+        #expect(technique.id == "technique-courses")
+    }
+
     @Test func moreInstructionPhrasingsHaveRules() {
         func rule(_ text: String) -> RequirementSelection? {
             JMUHTMLCatalogParser.selectionRule(text: text, hasMultiCourseGroups: false)

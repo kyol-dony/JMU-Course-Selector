@@ -257,7 +257,9 @@ struct CatalogRepository {
     /// drops "choose one" rows that only list a program's concentrations.
     /// v18 reads more instruction phrasings as rules. v19 names requirement
     /// IDs exactly as v15 did when several instruction lines precede a list.
-    private static let cacheSchemaVersion = 19
+    /// v20 scopes section subtotals, groups "Option N:" rows inside a
+    /// section, and keeps trailing years in course titles.
+    private static let cacheSchemaVersion = 20
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

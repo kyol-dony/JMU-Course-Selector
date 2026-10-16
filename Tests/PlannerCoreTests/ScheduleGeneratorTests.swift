@@ -381,6 +381,76 @@ struct ScheduleGeneratorTests {
         #expect(openElectives.completedCredits == 0)
     }
 
+    @Test("a course filling a major requirement and a Gen Ed cluster counts once toward 120")
+    func overlappingCourseCountsOnceTowardOpenElectiveGap() throws {
+        // Declares 93 CRH, but MATH 220 fills both rows and is scheduled
+        // once: 90 CRH toward the degree, so 30 CRH of Open Electives.
+        let major = Program.fixture(
+            id: "econ-ba",
+            title: "Economics, B.A.",
+            requirements: [
+                RequirementCategory(id: "core", name: "Core", requiredCredits: 90, courseOptions: [["MATH220"]]),
+                RequirementCategory(id: "gened-c3qr", name: "General Education - Quantitative Reasoning [C3QR]", requiredCredits: 3, courseOptions: [["MATH220", "MATH205"]])
+            ]
+        )
+        let catalog = Catalog(
+            source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
+            programs: [major],
+            courses: [
+                Course(id: "MATH220", code: "MATH 220", title: "Statistics", credits: 3, availability: [.fall, .spring], prerequisites: []),
+                Course(id: "MATH205", code: "MATH 205", title: "Calculus", credits: 3, availability: [.fall, .spring], prerequisites: [])
+            ],
+            apCreditRules: []
+        )
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: major.id,
+            workload: .standard,
+            transferCredits: []
+        ).first)
+        let openElectiveCredits = pathway.placeholders.values
+            .filter { $0.categoryID == ScheduleGenerator.openElectiveCategoryID }
+            .reduce(0) { $0 + $1.credits }
+        #expect(openElectiveCredits == 30)
+        #expect(pathway.semesters.flatMap(\.courseIDs).filter { $0 == "MATH220" }.count == 1)
+
+        let progress = try ProgressCalculator(catalog: catalog).progress(programID: major.id, pathway: pathway, transferCredits: [])
+        let openElectives = try #require(progress.categories.first { $0.id == ScheduleGenerator.openElectiveCategoryID })
+        #expect(openElectives.requiredCredits == 30)
+    }
+
+    @Test("scheduled hours above the declared credits shrink the open elective top-up to 120")
+    func scheduledHoursAboveDeclaredShrinkOpenElectiveGap() throws {
+        // Declares 61 CRH but schedules 63: a 3-credit course fills the
+        // 1-credit lab row. 120 - 63 = 57 CRH tops the plan up to 120.
+        let courseIDs = (1...15).map { "CHEM\(100 + $0)" }
+        let major = Program.fixture(
+            id: "chem-bs",
+            title: "Chemistry, B.S.",
+            requirements: [
+                RequirementCategory(id: "core", name: "Core", requiredCredits: 60, courseOptions: courseIDs.map { [$0] }),
+                RequirementCategory(id: "gened-c3l", name: "General Education - Lab Experience [C3L]", requiredCredits: 1, courseOptions: [["ISAT100"]])
+            ]
+        )
+        let catalog = Catalog(
+            source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
+            programs: [major],
+            courses: courseIDs.map { Course(id: $0, code: "CHEM \($0.dropFirst(4))", title: $0, credits: 4, availability: [.fall, .spring], prerequisites: []) }
+                + [Course(id: "ISAT100", code: "ISAT 100", title: "Lab", credits: 3, availability: [.fall, .spring], prerequisites: [])],
+            apCreditRules: []
+        )
+        let generator = ScheduleGenerator(catalog: catalog)
+        #expect(generator.openElectiveGap(for: major, additionalPrograms: []) == 57)
+        let pathway = try #require(try generator.generatePathways(
+            for: major.id,
+            workload: .standard,
+            transferCredits: []
+        ).first)
+        let hours = AcademicCreditCalculator.projectedHours(
+            in: pathway.semesters, placeholders: pathway.placeholders, transferCredits: [], catalog: catalog
+        )
+        #expect(hours == 120)
+    }
+
     @Test("a shared course completes a second major's selective elective without being scheduled twice")
     func sharedCourseCompletesSecondMajorElective() throws {
         let mathematics = Program.fixture(

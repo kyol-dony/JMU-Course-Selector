@@ -66,8 +66,8 @@ struct CatalogRequirementStructureTests {
         ).requirements
     }
 
-    private static func header(_ text: String) -> String {
-        #"<tr class="areaheader"><td colspan="2"><span class="courselistcomment areaheader">\#(text)</span></td><td class="hourscol"></td></tr>"#
+    private static func header(_ text: String, hours: String = "") -> String {
+        #"<tr class="areaheader"><td colspan="2"><span class="courselistcomment areaheader">\#(text)</span></td><td class="hourscol">\#(hours)</td></tr>"#
     }
     private static func comment(_ text: String, hours: String = "") -> String {
         #"<tr><td colspan="2"><span class="courselistcomment">\#(text)</span></td><td class="hourscol">\#(hours)</td></tr>"#
@@ -227,6 +227,70 @@ struct CatalogRequirementStructureTests {
             + Self.course("DANC 140", "Ballet I") + Self.course("DANC 141", "Modern I")
         ).first)
         #expect(technique.id == "technique-courses")
+    }
+
+    // MARK: Final review findings
+
+    @Test func subtotalOnlyFillsASectionsOnlyRequirement() {
+        // Economics: a second instruction without hours must not take the section subtotal
+        let split = parseSnippet(
+            Self.header("Additional Required Courses")
+            + Self.comment("Choose two of the following:", hours: "6")
+            + Self.course("ECON 300", "Micro") + Self.course("ECON 301", "Macro") + Self.course("ECON 302", "Money")
+            + Self.comment("Choose one of the following statistics courses:")
+            + Self.course("MATH 220", "Statistics") + Self.course("COB 191", "Business Statistics")
+            + Self.comment("Subtotal", hours: "9")
+        )
+        #expect(split.map(\.requiredCredits) == [6, 3])
+        // Biology Neuroscience: the instruction's own range, not the section's
+        let generic = parseSnippet(
+            Self.header("Neuroscience Concentration")
+            + Self.comment("Choose one of the following:", hours: "3-4")
+            + Self.course("BIO 365", "Neurobiology") + Self.course("PSYC 385", "Biopsychology")
+            + Self.comment("Subtotal", hours: "6-7")
+        )
+        #expect(generic.map(\.requiredCredits) == [3])
+    }
+
+    @Test func optionRowsInsideASectionBecomeGroups() throws {
+        // Psychology B.A. Methodology Core: "Option 1:" / "Option 2:" comment rows
+        let methodology = try #require(parseSnippet(
+            Self.header("Methodology Core")
+            + Self.comment("Choose one of the following options:", hours: "8")
+            + Self.comment("Option 1:") + Self.course("PSYC 210", "Measurement") + Self.course("PSYC 211", "Methods")
+            + Self.comment("Option 2:") + Self.course("PSYC 212", "Design I") + Self.course("PSYC 213", "Design II")
+            + Self.comment("Subtotal", hours: "8")
+        ).first)
+        #expect(methodology.selection == .chooseGroups(1))
+        #expect(methodology.choices == [["PSYC210", "PSYC211"], ["PSYC212", "PSYC213"]])
+        #expect(methodology.requiredCredits == 8)
+        #expect(methodology.catalogDescription == "Choose one of the following options:")
+    }
+
+    @Test func aHeaderThatIsTheInstructionGivesTheRule() throws {
+        // Biology: "Choose at least one organismal diversity course from the following list: 3-4"
+        let diversity = try #require(parseSnippet(
+            Self.header("Choose at least one organismal diversity course from the following list:", hours: "3-4")
+            + Self.course("BIO 310", "Vertebrates") + Self.course("BIO 320", "Plants") + Self.course("BIO 330", "Fungi")
+        ).first)
+        #expect(diversity.selection == .chooseCourses(1))
+        #expect(diversity.courseOptions.count == 1)
+    }
+
+    @Test func titlesKeepTrailingYears() {
+        #expect(JMUHTMLCatalogParser.cleanCourseTitle("China to 1600").title == "China to 1600")
+        #expect(JMUHTMLCatalogParser.cleanCourseTitle("Europe Since 1914").title == "Europe Since 1914")
+        #expect(JMUHTMLCatalogParser.cleanCourseTitle("Topics in Psychology 1,2").title == "Topics in Psychology")
+    }
+
+    @Test func creditRangesAndCourseLevelsInRules() {
+        func rule(_ text: String) -> RequirementSelection? {
+            JMUHTMLCatalogParser.selectionRule(text: text, hasMultiCourseGroups: false)
+        }
+        #expect(rule("Select 9-12 credit hours of the following:") == .chooseCredits(9))
+        #expect(rule("Select 0-3 credit hours of the following:") == .chooseCredits(3))
+        #expect(rule("Choose any 300- or 400-level SPAN course") == nil)
+        #expect(rule("Choose one 300-level course") == .chooseCourses(1))
     }
 
     @Test func moreInstructionPhrasingsHaveRules() {

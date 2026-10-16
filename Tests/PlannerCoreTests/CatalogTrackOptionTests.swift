@@ -104,5 +104,9 @@ struct CatalogTrackOptionTests {
         #expect(option2.courseOptions.first == ["POSC240"])
         #expect(option2.courseOptions[1].contains("POSC340"))
         #expect(!option2.courseOptions.joined().contains("POSC230"))
+        // The merged option shows every course it lists, not just the first block's
+        #expect(option1.choices.joined().contains("POSC361"))
+        #expect(option2.choices.joined().contains("POSC340"))
+        #expect(option1.selection == .unknown)
     }
 }

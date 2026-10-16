@@ -34,6 +34,12 @@ public enum RequirementSelection: Codable, Hashable, Sendable {
             let count = max(Int(ceil(Double(total) / Double(largest))), 1)
             return Array(repeating: alternatives, count: count)
         case .chooseGroups(let count):
+            // Groups of different sizes ("PSYC 492, 495, 497 or 499A-C") have
+            // no member every option shares, so each of the N slots accepts
+            // any member; equal-size groups (pairs) get one slot per position.
+            guard Set(choices.map(\.count)).count == 1 else {
+                return Array(repeating: alternatives, count: max(count, 1))
+            }
             let width = choices.map(\.count).max() ?? 0
             let positions = (0..<width).map { position in
                 unique(choices.compactMap { position < $0.count ? $0[position] : nil })

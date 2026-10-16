@@ -564,6 +564,8 @@ public struct JMUHTMLCatalogParser: Sendable {
         var optionCredits: Int? = nil
         /// The table's area-header row this requirement sits under ("Methodology Core").
         var areaHeader: String? = nil
+        /// "Option 1:" rows inside a section split its courses into groups.
+        var hasOptionRows = false
         /// The text the requirement's ID and legacy calculations come from: the
         /// instruction line that used to be the heading, so IDs stay stable.
         var idSource: String? = nil
@@ -666,12 +668,21 @@ public struct JMUHTMLCatalogParser: Sendable {
                 var underConcentrationHeader = false
                 var currentIsConcentrationChooser = false
                 var currentHasPlainItems = false
+                var currentHasOptionRows = false
+                // A "Subtotal" row totals its whole section; it fills a block's
+                // credits only when no earlier block in that section had courses.
+                var sectionIndex = 0
+                var currentSection = 0
+                var courseBlocksBySection: [Int: Int] = [:]
                 // "9 credits of MATH electives" rows stand alone, but the
                 // course rows after them still belong to the requirement
                 // above ("Option 1:"); emit them right after it.
                 var pendingAllowances: [RequirementBlock] = []
 
                 func flushComment() {
+                    if currentCommentHeading != nil, currentHasCourses {
+                        courseBlocksBySection[currentSection, default: 0] += 1
+                    }
                     if let heading = currentCommentHeading, !(currentIsConcentrationChooser && currentHasPlainItems && !currentHasCourses) {
                         var block = RequirementBlock(
                             level: min(level + 1, 5),
@@ -680,6 +691,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                             isStructuralHeading: false
                         )
                         block.areaHeader = currentAreaHeader
+                        block.hasOptionRows = currentHasOptionRows
                         block.idSource = currentIDSource
                         block.descriptionLines = currentLines
                         block.instructionMarks = currentMarks
@@ -701,6 +713,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                     currentSubtotal = nil
                     currentIsConcentrationChooser = false
                     currentHasPlainItems = false
+                    currentHasOptionRows = false
                 }
 
                 for row in table.match.matches(for: #"(?is)<tr\b[^>]*>(.*?)</tr>"#) {
@@ -740,11 +753,16 @@ public struct JMUHTMLCatalogParser: Sendable {
                             || Self.selectionRule(text: commentHeading, hasMultiCourseGroups: false) != nil
                         // "Subtotal" rows carry the section's real credits.
                         if commentHeading.lowercased().hasPrefix("subtotal") {
-                            if currentCommentHeading != nil { currentSubtotal = rowCredits }
+                            if currentCommentHeading != nil, courseBlocksBySection[currentSection, default: 0] == 0 {
+                                currentSubtotal = rowCredits
+                            }
                             flushComment()
                             continue
                         }
-                        if isSectionHeader { underConcentrationHeader = !canNameRequirement(areaHeader: commentHeading) }
+                        if isSectionHeader {
+                            underConcentrationHeader = !canNameRequirement(areaHeader: commentHeading)
+                            sectionIndex += 1
+                        }
                         // An area header ("Methodology Core") names the requirement;
                         // the instruction rows under it become its description.
                         if isSectionHeader, canNameRequirement(areaHeader: commentHeading) {
@@ -754,6 +772,12 @@ public struct JMUHTMLCatalogParser: Sendable {
                             currentAreaHeader = commentHeading
                             currentCommentBody = rowHTML
                             currentRowHours = rowCredits
+                            currentSection = sectionIndex
+                            continue
+                        }
+                        if currentAreaHeader != nil, !isSectionHeader, Self.isOptionLabel(commentHeading) {
+                            currentCommentBody += rowHTML
+                            currentHasOptionRows = true
                             continue
                         }
                         if let areaHeader = currentAreaHeader, !isSectionHeader, !Self.isCreditAllowanceText(commentHeading) {
@@ -782,6 +806,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                                 currentIDSource = commentHeading
                                 currentRowHours = rowCredits
                                 currentCommentBody = rowHTML
+                                currentSection = sectionIndex
                                 continue
                             }
                             if isZeroHourRow {
@@ -808,6 +833,8 @@ public struct JMUHTMLCatalogParser: Sendable {
                             currentCommentHeading = commentHeading
                             currentCommentBody = rowHTML
                             currentIsConcentrationChooser = underConcentrationHeader && !isSectionHeader && isChoiceLine
+                            currentRowHours = rowCredits
+                            currentSection = sectionIndex
                         } else {
                             currentCommentBody += rowHTML
                             currentHasPlainItems = true
@@ -872,6 +899,12 @@ public struct JMUHTMLCatalogParser: Sendable {
                 let offset = merged.courseOptions.count
                 merged.courseOptions += entry.category.courseOptions
                 merged.courseRemarks.merge(entry.category.courseRemarks, uniquingKeysWith: +)
+                // The merged option shows every block's courses; no one block's
+                // rule covers them all, so the keyword fallback decides.
+                merged.choices += entry.category.choices.filter { !merged.choices.contains($0) }
+                merged.selection = .unknown
+                let descriptions = [merged.catalogDescription, entry.category.catalogDescription].compactMap { $0 }
+                merged.catalogDescription = descriptions.isEmpty ? nil : descriptions.joined(separator: " ")
                 let slots = (merged.electivePoolSlots ?? []) + (entry.category.electivePoolSlots ?? []).map { $0 + offset }
                 merged.electivePoolSlots = slots.isEmpty ? nil : slots
                 merged.requiredCredits = entry.block.optionCredits ?? merged.requiredCredits + entry.category.requiredCredits
@@ -1299,9 +1332,14 @@ public struct JMUHTMLCatalogParser: Sendable {
             coursesByID[course.id] = course
         }
 
-        let groups = courseGroups(courseItems)
+        let groups = block.hasOptionRows ? optionRowGroups(in: block.body, catoid: catoid) : courseGroups(courseItems)
         let hasMultiCourseGroups = groups.contains { $0.count > 1 }
-        let ruleText = block.areaHeader != nil ? block.descriptionLines.joined(separator: " ") : legacyHeading
+        // Under a section header the instruction rows state the rule; with
+        // none, the header itself may be the instruction ("Choose at least
+        // one organismal diversity course from the following list:").
+        let ruleText = block.areaHeader == nil ? legacyHeading
+            : block.descriptionLines.isEmpty ? block.heading
+            : block.descriptionLines.joined(separator: " ")
         let selection: RequirementSelection
         if let rule = Self.selectionRule(text: ruleText, hasMultiCourseGroups: hasMultiCourseGroups) {
             selection = rule
@@ -1377,6 +1415,31 @@ public struct JMUHTMLCatalogParser: Sendable {
         )
     }
 
+    /// An "Option 1:" label row: the start of one group of courses taken together.
+    private static func isOptionLabel(_ text: String) -> Bool {
+        text.range(of: #"(?i)^option\s+[a-z0-9]+\s*:?$"#, options: .regularExpression) != nil
+    }
+
+    /// Course groups for a section split by "Option N:" rows: every course
+    /// under one label is one group. Courses before the first label keep
+    /// their own groups.
+    private func optionRowGroups(in body: String, catoid: String) -> [[String]] {
+        let separator = "\u{1}option\u{1}"
+        let marked = body.replacingOccurrences(
+            of: #"(?is)<tr\b[^>]*>(?:(?!</tr>).)*?<span\b[^>]*class="[^"]*\bcourselistcomment\b[^"]*"[^>]*>\s*option\s+[a-z0-9]+\s*:?\s*</span>.*?</tr>"#,
+            with: separator,
+            options: .regularExpression
+        )
+        let segments = marked.components(separatedBy: separator)
+        var groups = courseGroups(courseItems(in: segments[0], catoid: catoid))
+        for segment in segments.dropFirst() {
+            var seen: Set<String> = []
+            let ids = annotatedCourses(courseItems(in: segment, catoid: catoid)).map(\.course.id).filter { seen.insert($0).inserted }
+            if !ids.isEmpty { groups.append(ids) }
+        }
+        return groups
+    }
+
     /// Course groups in catalog order: one per row, a pair row as one group.
     private func courseGroups(_ items: [CourseItem]) -> [[String]] {
         var seen: Set<String> = []
@@ -1421,14 +1484,20 @@ public struct JMUHTMLCatalogParser: Sendable {
         func value(_ token: String) -> Int? { Int(token) ?? numberWords[token] }
 
         let atLeast = #"(?:(?:at\s+least|a\s+minimum\s+of|any)\s+)?"#
-        if let match = lower.firstMatch(for: #"(?:choose|select|complete|take|earn)\s+"# + atLeast + number + #"\s+(?:additional\s+)?credit"#),
-           match.count > 1, let credits = value(match[1]) {
-            return .chooseCredits(credits)
+        // "9-12 credit hours" takes the lower bound; "0-3" the upper, as the
+        // hours column does.
+        if let match = lower.firstMatch(for: #"(?:choose|select|complete|take|earn)\s+"# + atLeast + number + #"(?:\s*[-–]\s*(\d+))?\s+(?:additional\s+)?(?:credit|hour)"#),
+           match.count > 1, let lowerBound = value(match[1]) {
+            let upperBound = match.count > 2 ? Int(match[2]) : nil
+            if lowerBound > 0 { return .chooseCredits(lowerBound) }
+            if let upperBound, upperBound > 0 { return .chooseCredits(upperBound) }
         }
         if lower.contains("one of the following") || lower.range(of: #"\bselect one\b"#, options: .regularExpression) != nil {
             return hasMultiCourseGroups ? .chooseGroups(1) : .chooseCourses(1)
         }
-        if let match = lower.firstMatch(for: #"(?:choose|select)\s+"# + atLeast + number + #"\b"#)
+        // A number followed by "-" is a course level ("any 300- or 400-level")
+        // or a range, not a count.
+        if let match = lower.firstMatch(for: #"(?:choose|select)\s+"# + atLeast + number + #"\b(?!\s*[-–])"#)
             ?? lower.firstMatch(for: #"complete\s+"# + atLeast + number + #"\s+(?:of\b|courses?\b)"#),
            match.count > 1, let count = value(match[1]) {
             return hasMultiCourseGroups ? .chooseGroups(count) : .chooseCourses(count)
@@ -1518,7 +1587,8 @@ public struct JMUHTMLCatalogParser: Sendable {
             title = title.replacingOccurrences(of: #"\s*\([^()]*\)"#, with: "", options: .regularExpression)
         }
         title = title.replacingOccurrences(of: #"\s?\*+[\d,]*$"#, with: "", options: .regularExpression)
-        title = title.replacingOccurrences(of: #"\s[\d,]+$"#, with: "", options: .regularExpression)
+        // Trailing footnote numbers ("1,2"); years like "China to 1600" stay.
+        title = title.replacingOccurrences(of: #"\s\d{1,2}(?:,\d{1,2})*$"#, with: "", options: .regularExpression)
         return (title.trimmingCharacters(in: .whitespacesAndNewlines), remarks, marks)
     }
 

@@ -28,6 +28,12 @@ struct RequirementSelectionTests {
             == [["P210", "P212"], ["P211", "P213"]])
     }
 
+    @Test func mixedWidthGroupsGiveNSlotsOfAllMembers() {
+        // Psychology Capstone: 492, 495, 497 or the 499A/B/C sequence — no single member is required
+        #expect(RequirementSelection.slots(choices: [["X"], ["P1", "P2"], ["Y"]], selection: .chooseGroups(2), credits: c3)
+            == Array(repeating: ["X", "P1", "P2", "Y"], count: 2))
+    }
+
     @Test func noChoicesGiveNoSlots() {
         // Psychology Electives: "Choose three credit hours", no course list
         #expect(RequirementSelection.slots(choices: [], selection: .chooseCredits(3), credits: c3) == [])

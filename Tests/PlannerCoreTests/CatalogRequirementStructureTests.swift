@@ -199,6 +199,17 @@ struct CatalogRequirementStructureTests {
         #expect(categories.isEmpty, "\(categories.map { "\($0.name) \($0.requiredCredits)" })")
     }
 
+    @Test func moreInstructionPhrasingsHaveRules() {
+        func rule(_ text: String) -> RequirementSelection? {
+            JMUHTMLCatalogParser.selectionRule(text: text, hasMultiCourseGroups: false)
+        }
+        #expect(rule("Earn six credit hours from among the following:") == .chooseCredits(6))
+        #expect(rule("Choose any 9 credits from the following:") == .chooseCredits(9))
+        #expect(rule("Choose a minimum of 2 courses from the following:") == .chooseCourses(2))
+        #expect(rule("Complete at least 3 of the following:") == .chooseCourses(3))
+        #expect(rule("Students must complete the following courses.") == nil)
+    }
+
     @Test func nestedParenthesesBecomeOneRemark() {
         // Sport Communication minor: "SMAD 295 Practicum in Media Arts and Design ((taken for 3 credits))"
         let cleaned = JMUHTMLCatalogParser.cleanCourseTitle("Practicum in Media Arts and Design ((taken for 3 credits))")

@@ -78,4 +78,19 @@ struct RuleBasedGeneratorTests {
         #expect(try scheduled([legacy]).count == 2)
         #expect(try scheduled([elective]).count == 2)
     }
+
+    @Test func unknownRuleKeepsKeywordsAfterRenaming() throws {
+        // Psychology B.A.: renamed from "Earn ..." to its header; the ID still
+        // carries the old instruction text and its keywords
+        let renamed = RequirementCategory(id: "choose-two-of-the-following", name: "Upper-Level Courses", requiredCredits: 6, courseOptions: [["A"], ["B"], ["C"]])
+        #expect(try scheduled([renamed]).count == 2)
+    }
+
+    @Test func requirementsWithoutListsStillCountTowardTheTopUp() throws {
+        // Individualized Study: 18 listed credits plus 45 credits with no list
+        let listed = requirement("Core", .allRequired, [["A"], ["B"], ["C"], ["D"], ["E"], ["F"]], credits: 18)
+        let unlisted = RequirementCategory(id: "major-electives", name: "Major Electives", requiredCredits: 45, courseOptions: [], selection: .chooseCredits(45))
+        let ids = try scheduled([listed, unlisted])
+        #expect(ids.filter(PathwayPlaceholder.isPlaceholder).count >= 30)
+    }
 }

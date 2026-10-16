@@ -942,7 +942,7 @@ public struct ScheduleGenerator: Sendable {
                 case .required: return true
                 case .selective, .groups: return false
                 case .legacy:
-                    let name = category.name.lowercased()
+                    let name = legacyKeywordText(category)
                     return name.contains("required") || !(name.contains("elective") || name.contains("choose") || name.contains("select"))
                 }
             }.flatMap { $0.courseOptions.filter { $0.count == 1 }.flatMap { $0 } }
@@ -981,7 +981,7 @@ public struct ScheduleGenerator: Sendable {
             reservedIDs: context?.reservedPlaceholderIDs ?? []
         )
         if source != nil, program.kind == .major,
-           program.requirements.filter({ !$0.courseOptions.isEmpty }).reduce(0, { $0 + $1.requiredCredits }) >= 60 {
+           program.requirements.reduce(0, { $0 + $1.requiredCredits }) >= 60 {
             let prefixHours = AcademicCreditCalculator.projectedHours(in: prefix, placeholders: placeholders, transferCredits: transferCredits, catalog: catalog)
             let suffixHours = Set(required).reduce(0.0) { $0 + credits(for: $1, placeholders: placeholders) }
             required += openElectivePlaceholders(gap: max(0, 120 - prefixHours - suffixHours), placeholders: &placeholders, reservedIDs: context?.reservedPlaceholderIDs ?? [])
@@ -1111,7 +1111,7 @@ public struct ScheduleGenerator: Sendable {
         var result: [String] = []
         for category in program.requirements {
             if Task.isCancelled { break }
-            let lowerName = category.name.lowercased()
+            let lowerName = legacyKeywordText(category)
             let rule = behavior(for: category)
             // Required categories are mandatory in full — every option must
             // reach the schedule. Bypass the Gen Ed cluster shortcut and the
@@ -1251,7 +1251,7 @@ public struct ScheduleGenerator: Sendable {
         let usesElectivePool: Bool
         switch category.selection {
         case .chooseCredits: usesElectivePool = true
-        case .unknown: usesElectivePool = category.name.lowercased().contains("elective")
+        case .unknown: usesElectivePool = legacyKeywordText(category).contains("elective")
         case .allRequired, .chooseCourses, .chooseGroups: usesElectivePool = false
         }
         guard usesElectivePool,
@@ -1299,6 +1299,13 @@ public struct ScheduleGenerator: Sendable {
     /// or from keywords in its name when the parser could not tell.
     private enum RequirementBehavior: Equatable {
         case required, selective, groups(Int), legacy
+    }
+
+    /// The text the keyword fallback reads: the name plus the ID. A
+    /// requirement renamed after its catalog section keeps its old
+    /// instruction ("choose-two-of-the-following") in its ID.
+    private func legacyKeywordText(_ category: RequirementCategory) -> String {
+        "\(category.name) \(category.id.replacingOccurrences(of: "-", with: " "))".lowercased()
     }
 
     private func behavior(for category: RequirementCategory) -> RequirementBehavior {
@@ -1818,11 +1825,12 @@ public struct ScheduleGenerator: Sendable {
         let declared = program.requirements
             .filter { !$0.courseOptions.isEmpty }
             .reduce(0) { $0 + $1.requiredCredits }
-        // Threshold gate keeps thin test fixtures (declared < 60) from
+        // Threshold gate keeps thin test fixtures (under 60 credits) from
         // generating dozens of placeholders. Real JMU majors easily clear
         // 60 once Gen Ed clusters and concentration requirements are
-        // merged into the effective program.
-        guard declared >= 60 else { return 0 }
+        // merged into the effective program. Requirements without a course
+        // list count toward the gate; their credits are left to the gap.
+        guard program.requirements.reduce(0, { $0 + $1.requiredCredits }) >= 60 else { return 0 }
         return max(0, 120 - declared - additionalCredits)
     }
 

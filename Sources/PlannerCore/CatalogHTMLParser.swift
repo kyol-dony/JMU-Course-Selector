@@ -1416,14 +1416,16 @@ public struct JMUHTMLCatalogParser: Sendable {
         let number = #"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|eighteen)"#
         func value(_ token: String) -> Int? { Int(token) ?? numberWords[token] }
 
-        if let match = lower.firstMatch(for: #"(?:choose|select|complete|take)\s+(?:at\s+least\s+)?"# + number + #"\s+(?:additional\s+)?credit"#),
+        let atLeast = #"(?:(?:at\s+least|a\s+minimum\s+of|any)\s+)?"#
+        if let match = lower.firstMatch(for: #"(?:choose|select|complete|take|earn)\s+"# + atLeast + number + #"\s+(?:additional\s+)?credit"#),
            match.count > 1, let credits = value(match[1]) {
             return .chooseCredits(credits)
         }
         if lower.contains("one of the following") || lower.range(of: #"\bselect one\b"#, options: .regularExpression) != nil {
             return hasMultiCourseGroups ? .chooseGroups(1) : .chooseCourses(1)
         }
-        if let match = lower.firstMatch(for: #"(?:choose|select)\s+(?:at\s+least\s+)?"# + number + #"\b"#),
+        if let match = lower.firstMatch(for: #"(?:choose|select)\s+"# + atLeast + number + #"\b"#)
+            ?? lower.firstMatch(for: #"complete\s+"# + atLeast + number + #"\s+(?:of\b|courses?\b)"#),
            match.count > 1, let count = value(match[1]) {
             return hasMultiCourseGroups ? .chooseGroups(count) : .chooseCourses(count)
         }

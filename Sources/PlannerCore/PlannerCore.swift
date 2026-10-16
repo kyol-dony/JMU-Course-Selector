@@ -935,18 +935,8 @@ public struct ScheduleGenerator: Sendable {
         // an overlap is scheduled only once, while each program's requirement
         // still treats it as fulfilled.
         // Mandatory concrete work from any declared program can also fulfill
-        // a selective pool. Reserve that work before selecting elective slots.
-        let anticipatedCourses: Set<String> = source == nil ? [] : Set(([program] + additionalPrograms).flatMap { p in
-            p.requirements.filter { category in
-                switch behavior(for: category) {
-                case .required: return true
-                case .selective, .groups: return false
-                case .legacy:
-                    let name = legacyKeywordText(category)
-                    return name.contains("required") || !(name.contains("elective") || name.contains("choose") || name.contains("select"))
-                }
-            }.flatMap { $0.courseOptions.filter { $0.count == 1 }.flatMap { $0 } }
-        })
+        // another program's choice. Reserve that work before selecting slots.
+        let anticipatedCourses = anticipatedCourses(for: [program] + additionalPrograms)
         let lists = plannedProgramLists(
             for: program,
             additionalPrograms: additionalPrograms,
@@ -1161,6 +1151,7 @@ public struct ScheduleGenerator: Sendable {
                 result: &result,
                 placeholders: &placeholders,
                 fallbackOptionCredits: fallbackOptionCredits,
+                reusedCredits: &categoryReusedCredits,
                 anchors: anchors
             ) {
                 continue
@@ -1220,7 +1211,8 @@ public struct ScheduleGenerator: Sendable {
                     available.contains($0) && !consumed.contains($0)
                 }) {
                     consumed.insert(match)
-                    if seen.contains(match) && !completed.contains(match) {
+                    // Scheduled once, for whichever requirement lists it outright.
+                    if (seen.contains(match) || anticipatedCourses.contains(match)) && !completed.contains(match) {
                         categoryReusedCredits += optionCredits
                     }
                     plannedCredits += Double(optionCredits)
@@ -1262,6 +1254,7 @@ public struct ScheduleGenerator: Sendable {
         result: inout [String],
         placeholders: inout [String: PlaceholderSpec],
         fallbackOptionCredits: Int,
+        reusedCredits: inout Int,
         anchors: AnchoredScheduleContext? = nil
     ) -> Bool {
         let usesElectivePool: Bool
@@ -1284,6 +1277,11 @@ public struct ScheduleGenerator: Sendable {
         let satisfiedCourseIDs = completed.union(plannedCourseIDs)
         let fulfilledCredits = uniqueCourseIDs(category.courseOptions.flatMap { $0 })
             .filter(satisfiedCourseIDs.contains)
+            .reduce(0) { $0 + (catalog.coursesByID[$1]?.credits ?? fallbackOptionCredits) }
+        // Courses another requirement schedules count here without being
+        // scheduled again.
+        reusedCredits += uniqueCourseIDs(category.courseOptions.flatMap { $0 })
+            .filter { plannedCourseIDs.contains($0) && !completed.contains($0) }
             .reduce(0) { $0 + (catalog.coursesByID[$1]?.credits ?? fallbackOptionCredits) }
         let reservedHours = anchors?.placeholders.filter {
             $0.value.categoryID == category.id && anchors?.resolvedPlaceholders[$0.key] == nil
@@ -1309,6 +1307,33 @@ public struct ScheduleGenerator: Sendable {
             )
         }
         return true
+    }
+
+    /// Courses some stacked program requires outright (single-course slots of
+    /// required categories), plus the one lab each such lecture must be
+    /// taken with. A choice in any program (a Gen Ed cluster, a cognate, an
+    /// elective pool) that lists one of them is filled by it rather than by
+    /// a second course: MATH 231 required by one major also meets another
+    /// major's [C3QR]. Full generation, regeneration and the Open Elective
+    /// gap all read the same set, so the gap counts what gets scheduled.
+    private func anticipatedCourses(for programs: [Program]) -> Set<String> {
+        let required = Set(programs.flatMap { program in
+            program.requirements.filter { category in
+                switch behavior(for: category) {
+                case .required: return true
+                case .selective, .groups: return false
+                case .legacy:
+                    let name = legacyKeywordText(category)
+                    return name.contains("required") || !(name.contains("elective") || name.contains("choose") || name.contains("select"))
+                }
+            }.flatMap { $0.courseOptions.filter { $0.count == 1 }.flatMap { $0 } }
+        })
+        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: programs.first?.title)
+        let labs = required.compactMap { lecture -> String? in
+            let options = labPairing.labOptions(forLecture: lecture)
+            return options.count == 1 ? options[0] : nil
+        }
+        return required.union(labs)
     }
 
     /// How the generator fills a requirement: from its parsed selection rule,
@@ -1883,7 +1908,10 @@ public struct ScheduleGenerator: Sendable {
     public func openElectiveGap(for program: Program, additionalPrograms: [Program]) -> Int {
         guard program.kind == .major else { return 0 }
         var placeholders: [String: PlaceholderSpec] = [:]
-        let lists = plannedProgramLists(for: program, additionalPrograms: additionalPrograms, completed: [], placeholders: &placeholders)
+        let lists = plannedProgramLists(
+            for: program, additionalPrograms: additionalPrograms, completed: [], placeholders: &placeholders,
+            anticipatedCourses: anticipatedCourses(for: [program] + additionalPrograms)
+        )
         // Courses that also fill one of the primary major's elective-pool
         // slots count once toward 120, so they don't shrink the gap.
         let additionalCredits = lists.extras.joined()

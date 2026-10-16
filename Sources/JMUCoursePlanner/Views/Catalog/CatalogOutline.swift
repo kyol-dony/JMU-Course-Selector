@@ -81,7 +81,10 @@ enum RequirementRuleText {
     static func label(for category: RequirementCategory) -> String {
         switch category.selection {
         case .allRequired: "All required"
-        case .chooseCourses(let count): "Choose \(count) of \(category.choices.count)"
+        case .chooseCourses(let count):
+            category.choices.isEmpty
+                ? "Choose \(count) course\(count == 1 ? "" : "s")"
+                : "Choose \(count) of \(category.choices.count)"
         case .chooseCredits(let credits): "Choose \(credits) credits"
         case .chooseGroups(let count): count == 1 ? "Choose 1 option" : "Choose \(count) options"
         case .unknown: "See catalog"

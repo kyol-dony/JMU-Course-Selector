@@ -8,6 +8,8 @@ import PlannerCore
 struct CatalogCourseBlock: View {
     @EnvironmentObject private var store: PlanStore
     var courseIDs: [String]
+    /// The courses are alternatives ("or"), not taken together ("&").
+    var isAlternatives = false
     var catalog: Catalog
     var remarks: [String: [String]]
     var slotMap: [String: Int]
@@ -29,7 +31,7 @@ struct CatalogCourseBlock: View {
     private var creditsText: String? {
         let known = courseIDs.compactMap { catalog.coursesByID[$0]?.credits }
         guard !known.isEmpty else { return nil }
-        return "\(known.reduce(0, +)) cr"
+        return "\(isAlternatives ? known.max() ?? 0 : known.reduce(0, +)) cr"
     }
 
     private var blockRemarks: [String] {
@@ -44,7 +46,7 @@ struct CatalogCourseBlock: View {
                 .frame(width: 3)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(codes.joined(separator: " & "))
+                    Text(codes.joined(separator: isAlternatives ? " or " : " & "))
                         .font(DesignTokens.Typography.bodyEmphasized)
                         .foregroundStyle(DesignTokens.Colors.textPrimary)
                         .monospacedDigit()
@@ -86,7 +88,7 @@ struct CatalogCourseBlock: View {
         .onHover { isHovering = $0 }
         .animation(DesignTokens.Motion.hover, value: isHovering)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(codes.joined(separator: " and "))
+        .accessibilityLabel(codes.joined(separator: isAlternatives ? " or " : " and "))
     }
 
     /// A course's title; in a group each title opens its own course.

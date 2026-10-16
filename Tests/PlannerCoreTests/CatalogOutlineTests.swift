@@ -65,6 +65,24 @@ struct CatalogOutlineTests {
         #expect(label(.unknown, []) == "See catalog")
     }
 
+    @Test func allRequiredShowsCatalogAlternatives() {
+        // Public Relations Capstone: SCOM 461 or SCOM 462 is one requirement, not two
+        let capstone = RequirementCategory(id: "c", name: "Capstone", requiredCredits: 6, courseOptions: [["SCOM461", "SCOM462"], ["SCOM470"]],
+                                           selection: .allRequired, choices: [["SCOM461"], ["SCOM462"], ["SCOM470"]])
+        #expect(RequirementDetailView.blocks(for: capstone) == [
+            CatalogBlockGroup(courseIDs: ["SCOM461", "SCOM462"], isAlternatives: true),
+            CatalogBlockGroup(courseIDs: ["SCOM470"], isAlternatives: false)
+        ])
+        let methodology = RequirementCategory(id: "m", name: "Methodology", requiredCredits: 8, courseOptions: [],
+                                              selection: .chooseGroups(1), choices: [["P210", "P211"], ["P212", "P213"]])
+        #expect(RequirementDetailView.blocks(for: methodology).first == CatalogBlockGroup(courseIDs: ["P210", "P211"], isAlternatives: false))
+    }
+
+    @Test func choiceLabelWithoutAListOmitsTheCount() {
+        let category = RequirementCategory(id: "r", name: "R", requiredCredits: 9, courseOptions: [], selection: .chooseCourses(3))
+        #expect(RequirementRuleText.label(for: category) == "Choose 3 courses")
+    }
+
     @Test func firstEntryIsFirstShared() {
         let outline = CatalogOutline(program: physics(required: false), concentrationID: nil)
         #expect(outline.firstEntryID == outline.sections[0].entries[0].id)

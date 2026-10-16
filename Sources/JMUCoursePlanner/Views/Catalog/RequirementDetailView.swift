@@ -80,8 +80,8 @@ struct RequirementDetailView: View {
 
     @ViewBuilder
     private func courses(_ category: RequirementCategory) -> some View {
-        let groups = Self.groups(for: category)
-        if groups.isEmpty {
+        let blocks = Self.blocks(for: category)
+        if blocks.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "info.circle")
                     .font(.system(size: 11))
@@ -92,8 +92,14 @@ struct RequirementDetailView: View {
             }
         } else {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-                ForEach(groups, id: \.self) { group in
-                    CatalogCourseBlock(courseIDs: group, catalog: catalog, remarks: category.courseRemarks, slotMap: slotMap)
+                ForEach(blocks, id: \.self) { block in
+                    CatalogCourseBlock(
+                        courseIDs: block.courseIDs,
+                        isAlternatives: block.isAlternatives,
+                        catalog: catalog,
+                        remarks: category.courseRemarks,
+                        slotMap: slotMap
+                    )
                 }
             }
         }
@@ -101,7 +107,7 @@ struct RequirementDetailView: View {
 
     /// "9 credits · 4 options"; all-required lists count courses instead.
     private func summary(_ category: RequirementCategory) -> String {
-        let count = Self.groups(for: category).count
+        let count = Self.blocks(for: category).count
         let credits = "\(category.requiredCredits) credit\(category.requiredCredits == 1 ? "" : "s")"
         guard count > 0 else { return credits }
         if case .allRequired = category.selection {
@@ -110,12 +116,27 @@ struct RequirementDetailView: View {
         return "\(credits) · \(count) option\(count == 1 ? "" : "s")"
     }
 
-    /// The blocks to show: the parsed groups, or, for requirements parsed
-    /// before groups existed, each distinct course on its own. (A legacy
-    /// slot lists alternatives, not courses taken together.)
-    static func groups(for category: RequirementCategory) -> [[String]] {
-        if !category.choices.isEmpty { return category.choices }
+    /// The blocks to show. An all-required list follows its slots, so the
+    /// catalog's "A or B" stays one block; other rules show the parsed groups
+    /// (a pair taken together is one block). Requirements parsed before
+    /// groups existed show each distinct course on its own, since a legacy
+    /// slot lists alternatives, not courses taken together.
+    nonisolated static func blocks(for category: RequirementCategory) -> [CatalogBlockGroup] {
+        if case .allRequired = category.selection, !category.courseOptions.isEmpty {
+            return category.courseOptions.map { CatalogBlockGroup(courseIDs: $0, isAlternatives: $0.count > 1) }
+        }
+        if !category.choices.isEmpty {
+            return category.choices.map { CatalogBlockGroup(courseIDs: $0, isAlternatives: false) }
+        }
         var seen: Set<String> = []
-        return category.courseOptions.flatMap { $0 }.filter { seen.insert($0).inserted }.map { [$0] }
+        return category.courseOptions.flatMap { $0 }.filter { seen.insert($0).inserted }
+            .map { CatalogBlockGroup(courseIDs: [$0], isAlternatives: false) }
     }
+}
+
+/// One course block's courses: taken together ("PSYC 210 & PSYC 211") or,
+/// for an all-required slot, interchangeable ("SCOM 461 or SCOM 462").
+struct CatalogBlockGroup: Hashable {
+    var courseIDs: [String]
+    var isAlternatives: Bool
 }

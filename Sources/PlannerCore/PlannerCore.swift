@@ -2760,7 +2760,27 @@ public extension Program {
             throw PlannerError.concentrationNotFound(programTitle: title, concentrationID: concentrationID)
         }
         var effective = self
-        effective.requirements = requirements + concentration.requirements
+        // A concentration row can share a major row's ID (both named after
+        // "Choose one of the following:"). Its placeholders would reuse the
+        // major's slot IDs and drop out of the schedule, so it takes the
+        // concentration's name as a prefix. Major IDs never change.
+        var takenIDs = Set(requirements.map(\.id))
+        let concentrationRequirements = concentration.requirements.map { category in
+            var category = category
+            if takenIDs.contains(category.id) {
+                let base = "\(concentration.id)-\(category.id)"
+                var candidate = base
+                var suffix = 2
+                while takenIDs.contains(candidate) || concentration.requirements.contains(where: { $0.id == candidate }) {
+                    candidate = "\(base)-\(suffix)"
+                    suffix += 1
+                }
+                category.id = candidate
+            }
+            takenIDs.insert(category.id)
+            return category
+        }
+        effective.requirements = requirements + concentrationRequirements
         effective.sourceNote = "\(sourceNote) Selected concentration: \(concentration.name)."
         return effective
     }

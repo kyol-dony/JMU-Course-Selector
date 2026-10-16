@@ -451,6 +451,50 @@ struct ScheduleGeneratorTests {
         #expect(hours == 120)
     }
 
+    @Test("a concentration requirement sharing a major requirement's ID still gets its own slot")
+    func concentrationRequirementWithMajorIDKeepsItsSlot() throws {
+        // The parser names both rows after their "Choose one of the
+        // following:" instruction, so the IDs match.
+        let major = Program.fixture(
+            id: "finance-bba",
+            title: "Finance, B.B.A.",
+            requirements: [
+                RequirementCategory(id: "choose-one-of-the-following", name: "Lower-Level Core: Choose one of the following:", requiredCredits: 3, courseOptions: [["MATH205", "MATH235"]], selection: .chooseCourses(1))
+            ],
+            concentrations: [
+                Concentration(id: "financial-analysis", name: "Financial Analysis", requirements: [
+                    RequirementCategory(id: "choose-one-of-the-following", name: "Electives", requiredCredits: 3, courseOptions: [["FIN420", "FIN434"]], selection: .chooseCourses(1))
+                ])
+            ]
+        )
+        let catalog = Catalog.fixture(
+            courses: ["MATH205", "MATH235", "FIN420", "FIN434"].map {
+                Course(id: $0, code: "\($0.prefix(while: \.isLetter)) \($0.drop(while: \.isLetter))", title: $0, credits: 3, availability: [.fall, .spring], prerequisites: [])
+            },
+            program: major
+        )
+
+        let effective = try major.effectiveProgram(concentrationID: "financial-analysis")
+        #expect(effective.requirements.map(\.id) == ["choose-one-of-the-following", "financial-analysis-choose-one-of-the-following"])
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: major.id,
+            concentrationID: "financial-analysis",
+            workload: .standard,
+            transferCredits: []
+        ).first)
+        let alternates = Set(pathway.placeholders.values.map { Set($0.alternates) })
+        #expect(alternates == [["MATH205", "MATH235"], ["FIN420", "FIN434"]])
+
+        let progress = try ProgressCalculator(catalog: catalog).progress(
+            programID: major.id,
+            concentrationID: "financial-analysis",
+            pathway: pathway,
+            transferCredits: []
+        )
+        #expect(progress.categories.map(\.id) == ["choose-one-of-the-following", "financial-analysis-choose-one-of-the-following"])
+    }
+
     @Test("a shared course completes a second major's selective elective without being scheduled twice")
     func sharedCourseCompletesSecondMajorElective() throws {
         let mathematics = Program.fixture(

@@ -31,6 +31,12 @@ struct CatalogAuditTests {
                     in: pathway.semesters, placeholders: pathway.placeholders, transferCredits: [], catalog: catalog
                 )
                 print("AUDIT\t\(program.id)\t\(Int(hours.rounded()))")
+                if ProcessInfo.processInfo.environment["CATALOG_AUDIT_PROGRAM"] == program.id {
+                    for id in pathway.semesters.flatMap(\.courseIDs) {
+                        let spec = pathway.placeholders[id]
+                        print("COURSE\t\(spec.map { "\($0.categoryName) (\($0.credits))" } ?? id)\t\(catalog.coursesByID[id]?.credits ?? 0)")
+                    }
+                }
                 #expect(hours <= 140, "\(program.title): \(hours) credits")
             } catch {
                 print("AUDIT\t\(program.id)\tERROR \(error.localizedDescription)")

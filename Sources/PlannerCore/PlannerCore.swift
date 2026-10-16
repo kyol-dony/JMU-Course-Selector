@@ -1786,7 +1786,7 @@ public struct ScheduleGenerator: Sendable {
         }
     }
 
-    private static func isGenEdCategory(id: String, name: String) -> Bool {
+    public static func isGenEdCategory(id: String, name: String) -> Bool {
         id.contains("gened") || name.lowercased().contains("general education")
     }
 

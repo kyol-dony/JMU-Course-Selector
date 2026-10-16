@@ -255,7 +255,9 @@ struct CatalogRepository {
     /// and strips footnote markers from course titles into remarks.
     /// v17 reads hour ranges ("0-3"), ignores 0-credit milestone rows, and
     /// drops "choose one" rows that only list a program's concentrations.
-    private static let cacheSchemaVersion = 17
+    /// v18 keeps requirement IDs on the choice line when prose with credit
+    /// hours comes first, and reads more instruction phrasings as rules.
+    private static let cacheSchemaVersion = 18
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

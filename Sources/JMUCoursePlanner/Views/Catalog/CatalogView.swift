@@ -5,6 +5,8 @@ struct CatalogView: View {
     @EnvironmentObject private var store: PlanStore
     var catalog: Catalog
     @State private var searchText: String = ""
+    @State private var selectedEntryID: String?
+    @State private var concentrationID: String?
 
     private var filteredPrograms: [Program] {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
@@ -37,7 +39,31 @@ struct CatalogView: View {
             if store.catalogSelectedProgramID == nil {
                 store.catalogSelectedProgramID = store.plan.programID ?? catalog.programs.first?.id
             }
+            resetSelection()
         }
+        .onChange(of: store.catalogSelectedProgramID) { _, _ in resetSelection() }
+        .onChange(of: concentrationID) { _, _ in
+            guard let outline = selectedProgram.map({ CatalogOutline(program: $0, concentrationID: concentrationID) }) else { return }
+            if !outline.sections.contains(where: { $0.entries.contains { $0.id == selectedEntryID } }) {
+                selectedEntryID = outline.firstEntryID
+            }
+        }
+    }
+
+    private var selectedProgram: Program? {
+        store.catalogSelectedProgramID.flatMap { catalog.programsByID[$0] }
+    }
+
+    /// A newly chosen program starts on its default concentration and its
+    /// first requirement.
+    private func resetSelection() {
+        guard let program = selectedProgram else {
+            concentrationID = nil
+            selectedEntryID = nil
+            return
+        }
+        concentrationID = CatalogOutline.defaultConcentrationID(for: program)
+        selectedEntryID = CatalogOutline(program: program, concentrationID: concentrationID).firstEntryID
     }
 
     private var leftRail: some View {
@@ -109,21 +135,34 @@ struct CatalogView: View {
 
     @ViewBuilder
     private var detail: some View {
-        if let id = store.catalogSelectedProgramID, let program = catalog.programsByID[id] {
-            ScrollView {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.l) {
-                    detailHero(program)
-                    ForEach(program.requirements) { requirement in
-                        requirementCard(requirement)
-                    }
-                    if !program.concentrations.isEmpty {
-                        concentrationSection(program)
+        if let program = selectedProgram {
+            let outline = CatalogOutline(program: program, concentrationID: concentrationID)
+            VStack(alignment: .leading, spacing: 0) {
+                programHeader(program)
+                Divider()
+                HStack(spacing: 0) {
+                    RequirementIndexView(
+                        program: program,
+                        outline: outline,
+                        concentrationID: $concentrationID,
+                        selectedEntryID: $selectedEntryID
+                    )
+                    Divider()
+                    if let entry = outline.sections.lazy.flatMap(\.entries).first(where: { $0.id == selectedEntryID }) {
+                        RequirementDetailView(entry: entry, catalog: catalog, slotMap: slotMap(for: program))
+                    } else {
+                        EmptyState(
+                            systemImage: "list.bullet.rectangle",
+                            title: "No requirements listed",
+                            body: "The catalog page for this program didn't list requirements the app could read.",
+                            actionLabel: nil,
+                            action: nil
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-                .padding(DesignTokens.Spacing.xl)
-                .frame(maxWidth: 980, alignment: .leading)
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
             EmptyState(
                 systemImage: "book.closed",
@@ -135,86 +174,34 @@ struct CatalogView: View {
         }
     }
 
-    private func detailHero(_ program: Program) -> some View {
-        Card {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
-                HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
-                    Text(program.title)
-                        .font(DesignTokens.Typography.title)
-                        .foregroundStyle(DesignTokens.Colors.textPrimary)
-                    if let degree = program.degreeType {
-                        StatusPill(text: degree, tone: .info)
-                    }
-                    StatusPill(
-                        text: program.requirementDataComplete ? "Verified" : "Partial",
-                        tone: program.requirementDataComplete ? .success : .warning
-                    )
+    private func programHeader(_ program: Program) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
+                Text(program.title)
+                    .font(DesignTokens.Typography.title)
+                    .foregroundStyle(DesignTokens.Colors.textPrimary)
+                if let degree = program.degreeType {
+                    StatusPill(text: degree, tone: .info)
                 }
-                Text("\(program.college) - \(program.department)")
-                    .font(DesignTokens.Typography.body)
-                    .foregroundStyle(DesignTokens.Colors.textSecondary)
-                Text(program.sourceNote)
-                    .font(DesignTokens.Typography.caption)
-                    .foregroundStyle(DesignTokens.Colors.textTertiary)
-            }
-        }
-    }
-
-    private func concentrationSection(_ program: Program) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.m) {
-            SectionHeader("Concentrations")
-            ForEach(program.concentrations) { concentration in
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
-                    Text(concentration.name)
-                        .font(DesignTokens.Typography.bodyEmphasized)
-                        .foregroundStyle(DesignTokens.Colors.textPrimary)
-                    ForEach(concentration.requirements) { requirement in
-                        requirementCard(requirement)
-                    }
-                }
-            }
-        }
-    }
-
-    private func requirementCard(_ requirement: RequirementCategory) -> some View {
-        Card {
-            InteractiveDisclosureGroup(contentIndent: DesignTokens.Spacing.m) {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
-                    if let note = requirement.note {
-                        Text(note)
-                            .font(DesignTokens.Typography.caption)
-                            .foregroundStyle(DesignTokens.Colors.textSecondary)
-                    }
-                    ForEach(requirement.courseOptions.indices, id: \.self) { index in
-                        let alternatives = requirement.courseOptions[index]
-                        HStack(spacing: 6) {
-                            Image(systemName: "circle")
-                                .font(.system(size: 9))
-                                .foregroundStyle(DesignTokens.Colors.textTertiary)
-                            Text(alternatives.compactMap { catalog.coursesByID[$0]?.code }.joined(separator: " or "))
-                                .font(DesignTokens.Typography.caption)
-                                .foregroundStyle(DesignTokens.Colors.textPrimary)
-                                .onTapGesture {
-                                    if let firstID = alternatives.first {
-                                        store.showCourse(firstID)
-                                    }
-                                }
-                        }
-                    }
-                }
-                .padding(.top, DesignTokens.Spacing.s)
-            } label: {
-                ProgressRail(
-                    title: requirement.name,
-                    completedCredits: 0,
-                    requiredCredits: requirement.requiredCredits,
-                    remainingCourseCodes: requirement.courseOptions.compactMap { option in
-                        option.first.flatMap { catalog.coursesByID[$0]?.code }
-                    },
-                    hasCourseOptions: !requirement.courseOptions.isEmpty,
-                    isVerified: requirement.verificationStatus == .verified
+                StatusPill(
+                    text: program.requirementDataComplete ? "Verified" : "Partial",
+                    tone: program.requirementDataComplete ? .success : .warning
                 )
             }
+            Text(([program.college, program.department] + (program.totalCredits.map { ["\($0) credits"] } ?? [])).joined(separator: " · "))
+                .font(DesignTokens.Typography.body)
+                .foregroundStyle(DesignTokens.Colors.textSecondary)
         }
+        .padding(.horizontal, DesignTokens.Spacing.xl)
+        .padding(.vertical, DesignTokens.Spacing.l)
+    }
+
+    /// One subject color per subject across the whole program, so a subject
+    /// keeps its color from requirement to requirement.
+    private func slotMap(for program: Program) -> [String: Int] {
+        let categories = program.requirements + program.concentrations.flatMap(\.requirements)
+        let codes = categories.flatMap { $0.choices.flatMap { $0 } + $0.courseOptions.flatMap { $0 } }
+            .map { catalog.coursesByID[$0]?.code ?? $0 }
+        return CourseClassificationPalette.slotMap(for: codes.map(CourseClassificationPalette.classification(forCode:)))
     }
 }

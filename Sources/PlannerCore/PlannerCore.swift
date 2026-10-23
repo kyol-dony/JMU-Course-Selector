@@ -269,6 +269,8 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
     public var verificationStatus: VerificationStatus
     public var requirementDataComplete: Bool
     public var sourceNote: String
+    /// The B.A./B.S. rows of the program's "Degree Requirements" table.
+    public var degreeRequirements: [DegreeRequirement] = []
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -285,6 +287,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         case verificationStatus
         case requirementDataComplete
         case sourceNote
+        case degreeRequirements
     }
 
     public init(
@@ -335,6 +338,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         verificationStatus = try container.decode(VerificationStatus.self, forKey: .verificationStatus)
         requirementDataComplete = try container.decode(Bool.self, forKey: .requirementDataComplete)
         sourceNote = try container.decode(String.self, forKey: .sourceNote)
+        degreeRequirements = try container.decodeIfPresent([DegreeRequirement].self, forKey: .degreeRequirements) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -353,6 +357,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         try container.encode(verificationStatus, forKey: .verificationStatus)
         try container.encode(requirementDataComplete, forKey: .requirementDataComplete)
         try container.encode(sourceNote, forKey: .sourceNote)
+        try container.encode(degreeRequirements, forKey: .degreeRequirements)
     }
 }
 
@@ -366,6 +371,8 @@ public struct Catalog: Codable, Sendable {
     }
     public var apCreditRules: [TransferCreditRule]
     public var prereqRuleOverlay: PrereqRuleOverlay
+    /// The Registrar's B.A./B.S. degree course list, attached at load.
+    public var degreeEligibility: DegreeEligibility
     private var coursesByIDStorage: [String: Course]
     private var programsByIDStorage: [String: Program]
 
@@ -374,19 +381,21 @@ public struct Catalog: Codable, Sendable {
         programs: [Program],
         courses: [Course],
         apCreditRules: [TransferCreditRule],
-        prereqRuleOverlay: PrereqRuleOverlay = .empty
+        prereqRuleOverlay: PrereqRuleOverlay = .empty,
+        degreeEligibility: DegreeEligibility = .empty
     ) {
         self.source = source
         self.programs = programs
         self.courses = courses
         self.apCreditRules = apCreditRules
         self.prereqRuleOverlay = prereqRuleOverlay
+        self.degreeEligibility = degreeEligibility
         self.coursesByIDStorage = Self.index(courses)
         self.programsByIDStorage = Self.index(programs)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case source, programs, courses, apCreditRules, prereqRuleOverlay
+        case source, programs, courses, apCreditRules, prereqRuleOverlay, degreeEligibility
     }
 
     public init(from decoder: Decoder) throws {
@@ -396,6 +405,7 @@ public struct Catalog: Codable, Sendable {
         self.courses = try c.decode([Course].self, forKey: .courses)
         self.apCreditRules = try c.decode([TransferCreditRule].self, forKey: .apCreditRules)
         self.prereqRuleOverlay = try c.decodeIfPresent(PrereqRuleOverlay.self, forKey: .prereqRuleOverlay) ?? .empty
+        self.degreeEligibility = try c.decodeIfPresent(DegreeEligibility.self, forKey: .degreeEligibility) ?? .empty
         self.coursesByIDStorage = Self.index(courses)
         self.programsByIDStorage = Self.index(programs)
     }
@@ -407,6 +417,7 @@ public struct Catalog: Codable, Sendable {
         try c.encode(courses, forKey: .courses)
         try c.encode(apCreditRules, forKey: .apCreditRules)
         try c.encode(prereqRuleOverlay, forKey: .prereqRuleOverlay)
+        try c.encode(degreeEligibility, forKey: .degreeEligibility)
     }
 
     public var coursesByID: [String: Course] {

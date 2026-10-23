@@ -281,8 +281,21 @@ struct CatalogRepository {
             programs: catalog.programs,
             courses: catalog.courses,
             apCreditRules: catalog.apCreditRules,
-            prereqRuleOverlay: status.overlay
+            prereqRuleOverlay: status.overlay,
+            degreeEligibility: bundledDegreeEligibility()
         )
+    }
+
+    /// The Registrar's B.A./B.S. degree course list. A missing or unreadable
+    /// file leaves degree requirements without eligible courses rather than
+    /// failing the catalog load.
+    func bundledDegreeEligibility() -> DegreeEligibility {
+        let candidates = [
+            Bundle.main.url(forResource: "degree_requirement_courses", withExtension: "json"),
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appending(path: "Data/degree_requirement_courses.json")
+        ].compactMap { $0 }
+        guard let url = candidates.first(where: { fileManager.fileExists(atPath: $0.path) }) else { return .empty }
+        return (try? DegreeEligibility.load(from: url)) ?? .empty
     }
 
     private func bundledPrereqOverlayURL() throws -> URL {

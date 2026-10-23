@@ -9,6 +9,16 @@ public enum DegreeRequirementKind: String, Codable, Hashable, Sendable, CaseIter
     /// Category ID of the requirement's placeholders ("degree-philosophy").
     public var categoryID: String { "degree-\(rawValue)" }
 
+    /// Name of the requirement's progress row.
+    public var progressName: String {
+        switch self {
+        case .philosophy: "Degree: Philosophy"
+        case .foreignLanguage: "Degree: Foreign Language through 232"
+        case .scientificLiteracy: "Degree: Scientific Literacy"
+        case .quantitative: "Degree: Quantitative"
+        }
+    }
+
     /// Name of the requirement's pick-a-course placeholder.
     public var placeholderName: String {
         switch self {
@@ -223,6 +233,29 @@ public struct DegreeRequirementResolver: Sendable {
             }
         }
         return result
+    }
+
+    /// Credits of the language sequence from the placement through 232, and
+    /// how many of them `courseIDs` (planned or earned) cover. With no
+    /// answer yet the full sequence from 101 counts as required; placed out,
+    /// or a 232 / intensive 212 taken, completes it.
+    public func languageProgress(plan: ForeignLanguagePlan?, courseIDs: Set<String>) -> (required: Int, completed: Int) {
+        let placement = plan?.placement ?? .notSure
+        guard let start = placement.startingNumber, let startIndex = Self.sequence.firstIndex(of: start) else { return (0, 0) }
+        let levels = Array(Self.sequence[startIndex...])
+        func credits(_ number: Int) -> Int { plan.flatMap { coursesByID["\($0.subject)\(number)"]?.credits } ?? 3 }
+        let required = levels.reduce(0) { $0 + credits($1) }
+        guard let subject = plan?.subject else { return (required, 0) }
+        func taken(_ number: Int) -> Bool {
+            if courseIDs.contains("\(subject)\(number)") { return true }
+            switch number {
+            case 101, 102: return courseIDs.contains("\(subject)111")
+            case 231, 232: return courseIDs.contains("\(subject)212")
+            default: return false
+            }
+        }
+        if taken(232) { return (required, required) }
+        return (required, levels.filter(taken).reduce(0) { $0 + credits($1) })
     }
 
     /// From the placement's starting level, or the level after the highest

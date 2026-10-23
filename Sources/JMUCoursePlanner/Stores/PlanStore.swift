@@ -213,7 +213,8 @@ final class PlanStore: ObservableObject {
                 concentrationID: plan.concentrationID,
                 pathway: activePathway,
                 transferCredits: effectiveAcademicHistory.effectiveCredits,
-                additionalPrograms: selectedMinorPrograms()
+                additionalPrograms: selectedMinorPrograms(),
+                languagePlan: plan.foreignLanguage
             )
         } else {
             result = nil

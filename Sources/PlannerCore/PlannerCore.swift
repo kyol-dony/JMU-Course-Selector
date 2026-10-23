@@ -2730,7 +2730,8 @@ public struct ProgressCalculator: Sendable {
         concentrationID: String? = nil,
         pathway: Pathway,
         transferCredits: [TransferCredit],
-        additionalPrograms: [Program] = []
+        additionalPrograms: [Program] = [],
+        languagePlan: ForeignLanguagePlan? = nil
     ) throws -> GraduationProgress {
         guard let program = catalog.programsByID[programID] else {
             throw PlannerError.programNotFound(programID)
@@ -2794,7 +2795,7 @@ public struct ProgressCalculator: Sendable {
         // placeholder slot (the resolved credits stop appearing in
         // pathway.placeholders).
         let openElectiveGap = ScheduleGenerator(catalog: catalog)
-            .openElectiveGap(for: effectiveProgram, additionalPrograms: additionalPrograms)
+            .openElectiveGap(for: effectiveProgram, additionalPrograms: additionalPrograms, languagePlan: languagePlan)
         if openElectiveGap > 0 {
             let resolvedIDs = Set(pathway.resolvedPlaceholders.keys)
             let unresolvedOpenElectiveCredits = pathway.placeholders
@@ -2814,6 +2815,41 @@ public struct ProgressCalculator: Sendable {
                 // they're never catalog-verified.
                 verificationStatus: .partial
             ))
+        }
+
+        // One row per B.A./B.S. degree requirement of every declared major.
+        // A course used for Gen Ed never meets one; an unresolved
+        // placeholder counts nothing.
+        let degreeKinds = DegreeRequirementResolver.kinds(for: [effectiveProgram] + additionalPrograms)
+        if !degreeKinds.isEmpty {
+            let resolver = DegreeRequirementResolver(catalog: catalog)
+            let earned = Set(transferCredits.flatMap(\.courseIDs))
+            let genEd = GenEdAssignment.courses(
+                categories: ([effectiveProgram] + additionalPrograms).flatMap(\.requirements),
+                courseIDs: earned.sorted() + pathwayCourseIDs,
+                fixed: pathway.resolvedPlaceholders,
+                degreeKinds: Set(degreeKinds),
+                eligibility: catalog.degreeEligibility
+            )
+            let resolution = resolver.resolve(kinds: degreeKinds, plannedCourseIDs: pathwayCourseIDs, completedCourseIDs: earned,
+                                              genEdCourseIDs: genEd, languagePlan: languagePlan)
+            for kind in degreeKinds {
+                let required: Int
+                let completed: Int
+                if kind == .foreignLanguage {
+                    (required, completed) = resolver.languageProgress(plan: languagePlan, courseIDs: completedCourseIDs)
+                } else {
+                    required = 3
+                    completed = resolution.satisfiedBy[kind].map { min(coursesByID[$0]?.credits ?? 3, 3) } ?? 0
+                }
+                categories.append(CategoryProgress(
+                    id: kind.categoryID,
+                    name: kind.progressName,
+                    completedCredits: Double(completed),
+                    requiredCredits: required,
+                    verificationStatus: .verified
+                ))
+            }
         }
 
         // Add a category row per minor / second-major requirement, prefixed

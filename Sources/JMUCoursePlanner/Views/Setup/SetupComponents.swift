@@ -11,6 +11,7 @@ extension SetupStep {
         case .year: "Year in school"
         case .major: "Major"
         case .minor: "Minor"
+        case .language: "Language"
         case .transfer: "Prior credit"
         case .transcript: "Transcript"
         case .review: "Review courses"
@@ -23,6 +24,7 @@ extension SetupStep {
         case .year: "Where are you in school?"
         case .major: "Choose your major"
         case .minor: "Add a minor or second major"
+        case .language: "Choose your foreign language"
         case .transfer: "Bring in AP and dual enrollment credit"
         case .transcript: "Import your JMU transcript"
         case .review: "Review your courses"
@@ -38,6 +40,8 @@ extension SetupStep {
             "Pick the exact program and degree type. You can change this later from the menu."
         case .minor:
             "Optional. Skip this if you haven't decided yet; you can add one any time."
+        case .language:
+            "A B.A. requires a foreign language through the intermediate level (232). Your placement decides where the plan starts."
         case .transfer:
             "Optional. Credit you've already earned can clear requirements and unlock prerequisites."
         case .transcript:

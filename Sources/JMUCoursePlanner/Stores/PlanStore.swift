@@ -392,6 +392,19 @@ final class PlanStore: ObservableObject {
         autosave()
     }
 
+    /// Setup opens at this step instead of the start; cleared once shown.
+    @Published var setupResumeStep: SetupStep?
+
+    /// Whether a declared major's degree requires a foreign language.
+    var requiresForeignLanguage: Bool {
+        ForeignLanguagePlan.isRequired(by: [activeProgram].compactMap { $0 } + selectedMinorPrograms())
+    }
+
+    func setForeignLanguage(_ language: ForeignLanguagePlan?) {
+        plan.foreignLanguage = language
+        autosave()
+    }
+
     func setWorkload(_ workload: WorkloadPreference) {
         plan.workload = workload
         autosave()
@@ -473,6 +486,13 @@ final class PlanStore: ObservableObject {
 
     func generateSchedules() async {
         guard canEditSchedule else { return }
+        // A plan saved before the language question existed is left alone
+        // until it is built again; then setup asks first.
+        if requiresForeignLanguage, plan.foreignLanguage == nil {
+            setupResumeStep = .language
+            setupSheetPresented = true
+            return
+        }
         guard let catalog, let programID = plan.programID else {
             errorMessage = "Choose a major before generating a plan."
             return

@@ -80,3 +80,39 @@ public struct DegreeEligibility: Codable, Hashable, Sendable {
         return (String(subject), number)
     }
 }
+
+/// Where a B.A. student starts the foreign-language sequence, from the
+/// placement question in setup.
+public enum LanguagePlacement: String, Codable, Hashable, Sendable, CaseIterable {
+    case level101, level102, level231, level232, placedOut, notSure
+
+    /// The first course number the plan schedules; nil when placed out.
+    /// "Not sure yet" plans the full sequence from 101.
+    public var startingNumber: Int? {
+        switch self {
+        case .level101, .notSure: 101
+        case .level102: 102
+        case .level231: 231
+        case .level232: 232
+        case .placedOut: nil
+        }
+    }
+}
+
+/// A B.A. student's language and placement.
+public struct ForeignLanguagePlan: Codable, Hashable, Sendable {
+    /// Course subject ("SPAN").
+    public var subject: String
+    public var placement: LanguagePlacement
+
+    public init(subject: String, placement: LanguagePlacement) {
+        self.subject = subject
+        self.placement = placement
+    }
+
+    /// Whether any declared major's degree table lists the foreign-language
+    /// requirement. Minors never carry degree requirements.
+    public static func isRequired(by programs: [Program]) -> Bool {
+        programs.contains { $0.kind == .major && $0.degreeRequirements.contains { $0.kind == .foreignLanguage } }
+    }
+}

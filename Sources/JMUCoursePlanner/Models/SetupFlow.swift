@@ -13,13 +13,18 @@ extension SemesterIdentity {
     }
 }
 
-enum SetupStep: String, CaseIterable { case year, major, minor, transfer, transcript, review, workload }
+enum SetupStep: String, CaseIterable { case year, major, minor, language, transfer, transcript, review, workload }
 struct SetupFlow {
     private(set) var step: SetupStep = .year
     private(set) var visited: [SetupStep] = []
     private(set) var year: StudentYear?
+    /// A declared B.A. major needs the student's language and placement.
+    var needsLanguage = false
     var route: [SetupStep] {
-        year == .incomingFreshman ? [.year, .major, .minor, .transfer, .workload] : [.year, .major, .minor, .transcript, .review, .workload]
+        let language: [SetupStep] = needsLanguage ? [.language] : []
+        return year == .incomingFreshman
+            ? [.year, .major, .minor] + language + [.transfer, .workload]
+            : [.year, .major, .minor] + language + [.transcript, .review, .workload]
     }
     static func needsInitialSetup(plan: SavedStudentPlan) -> Bool { plan.programID == nil && !plan.setupCompleted }
     mutating func selectYear(_ year: StudentYear) { self.year = year }
@@ -28,7 +33,8 @@ struct SetupFlow {
         switch step {
         case .year: if year != nil { go(.major) }
         case .major: if majorSelectionComplete { go(.minor) }
-        case .minor: go(year == .incomingFreshman ? .transfer : .transcript)
+        case .minor: go(needsLanguage ? .language : year == .incomingFreshman ? .transfer : .transcript)
+        case .language: go(year == .incomingFreshman ? .transfer : .transcript)
         case .transfer: go(.workload)
         default: break
         }
@@ -43,6 +49,14 @@ struct SetupFlow {
         visited.removeSubrange(index...)
         step = target
     }
+    /// Opens setup partway through, as if every earlier step on the route
+    /// had been visited (a saved plan generated without a language answer).
+    mutating func resume(at target: SetupStep) {
+        guard let index = route.firstIndex(of: target) else { return }
+        visited = Array(route[..<index])
+        step = target
+    }
+
     /// One-based position of the current step within the route.
     var position: Int { (route.firstIndex(of: step) ?? 0) + 1 }
 }

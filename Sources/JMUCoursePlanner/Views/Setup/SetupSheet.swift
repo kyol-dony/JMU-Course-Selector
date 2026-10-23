@@ -36,7 +36,15 @@ struct SetupSheet: View {
         }
         .frame(minWidth: 880, idealWidth: 920, minHeight: 640, idealHeight: 680)
         .background(DesignTokens.Colors.surface)
-        .onAppear { if let year = store.plan.studentYear { flow.selectYear(year) } }
+        .onAppear {
+            if let year = store.plan.studentYear { flow.selectYear(year) }
+            flow.needsLanguage = store.requiresForeignLanguage
+            if let step = store.setupResumeStep {
+                flow.resume(at: step)
+                store.setupResumeStep = nil
+            }
+        }
+        .onChange(of: store.requiresForeignLanguage) { _, required in flow.needsLanguage = required }
         .onDisappear {
             importController.cancel()
             yearAdvanceTask?.cancel()
@@ -167,6 +175,8 @@ struct SetupSheet: View {
             case .minor:
                 SetupStepMinor(catalog: catalog)
                     .padding(.horizontal, DesignTokens.Spacing.xxl)
+            case .language:
+                scrolling { SetupStepLanguage(catalog: catalog) }
             case .transfer:
                 scrolling { SetupStepTransfer(catalog: catalog) }
             case .transcript:
@@ -296,6 +306,7 @@ struct SetupSheet: View {
         switch flow.step {
         case .year: flow.year != nil
         case .major: catalog != nil && store.majorSelectionComplete
+        case .language: catalog != nil && store.plan.foreignLanguage != nil
         default: catalog != nil
         }
     }
@@ -324,6 +335,8 @@ struct SetupSheet: View {
             return ("Choose a major to continue", false)
         case .major where !store.majorSelectionComplete:
             return ("Choose a concentration to continue", false)
+        case .language where store.plan.foreignLanguage == nil:
+            return ("Choose a language to continue", false)
         case .review where reviewHasBlockingIssues:
             return ("Resolve the flagged rows to continue", false)
         default:

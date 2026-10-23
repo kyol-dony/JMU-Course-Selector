@@ -10,6 +10,26 @@ import Testing
 struct CatalogAuditTests {
     private static let path = ProcessInfo.processInfo.environment["CATALOG_AUDIT_JSON"]
 
+    /// History B.A. placing into SPAN 102 or 231 graduates on the same
+    /// schedule as starting at 101, with the sequence early in the plan.
+    @MainActor @Test(.enabled(if: path != nil))
+    func languagePlacementKeepsGraduationOnTime() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(Catalog.self, from: Data(contentsOf: URL(fileURLWithPath: try #require(Self.path))))
+        let catalog = CatalogRepository.applyingCurrentGenEdCredits(to: decoded).resolvingElectivePools()
+        let history = try #require(catalog.programsByID["history-ba"])
+        for placement in [LanguagePlacement.level102, .level231] {
+            let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+                for: history.id, concentrationID: history.concentrations.first?.id, workload: .standard, transferCredits: [],
+                starting: SemesterIdentity(year: 2026, term: .fall), languagePlan: ForeignLanguagePlan(subject: "SPAN", placement: placement)
+            ).first)
+            let first = pathway.semesters.firstIndex { $0.courseIDs.contains { $0.hasPrefix("SPAN") } }
+            #expect(pathway.semesters.count <= 8, "\(placement): \(pathway.semesters.count) semesters")
+            #expect((first ?? 99) <= 2, "\(placement): first SPAN course in semester \((first ?? 99) + 1)")
+        }
+    }
+
     @MainActor @Test(.enabled(if: path != nil))
     func everyMajorGeneratesAReasonablePlan() throws {
         let decoder = JSONDecoder()

@@ -133,6 +133,21 @@ public struct ForeignLanguagePlan: Codable, Hashable, Sendable {
         self.placement = placement
     }
 
+    /// Courses below the placement's starting level, which a placement
+    /// stands in for when checking prerequisites (SPAN 231's "SPAN 102 or
+    /// per placement exam score"). Placement awards no credit hours.
+    public func placementCreditCourseIDs() -> Set<String> {
+        let below: [Int]
+        switch placement {
+        case .level101, .notSure: below = []
+        case .level102: below = [101]
+        case .level231: below = [101, 102, 111]
+        case .level232: below = [101, 102, 111, 231]
+        case .placedOut: below = [101, 102, 111, 231, 232, 212]
+        }
+        return Set(below.map { "\(subject)\($0)" })
+    }
+
     /// Whether any declared major's degree table lists the foreign-language
     /// requirement. Minors never carry degree requirements.
     public static func isRequired(by programs: [Program]) -> Bool {
@@ -149,7 +164,8 @@ public enum GenEdAssignment {
     /// takes one course from `courseIDs` among its alternates, in category
     /// order, preferring a course no degree kind in `degreeKinds` accepts. A
     /// resolved Gen Ed placeholder in `fixed` (placeholder ID → course) keeps
-    /// the course the student chose.
+    /// the course the student chose; a slot whose own placeholder is still
+    /// in `courseIDs` stays open and takes no course.
     public static func courses(
         categories: [RequirementCategory],
         courseIDs: [String],
@@ -161,10 +177,13 @@ public enum GenEdAssignment {
         func degreeUsable(_ id: String) -> Bool { degreeKinds.contains { eligibility.isEligible(id, for: $0) } }
         for category in categories where ScheduleGenerator.isGenEdCategory(id: category.id, name: category.name) {
             for (index, slot) in category.courseOptions.enumerated() {
-                if let chosen = fixed[PathwayPlaceholder.id(categoryID: category.id, optionIndex: index)] {
+                let slotID = PathwayPlaceholder.id(categoryID: category.id, optionIndex: index)
+                if let chosen = fixed[slotID] {
                     used.insert(chosen)
                     continue
                 }
+                // The plan still holds this slot open for the student to fill.
+                if courseIDs.contains(slotID) { continue }
                 let candidates = courseIDs.filter { slot.contains($0) && !used.contains($0) }
                 if let pick = candidates.first(where: { !degreeUsable($0) }) ?? candidates.first {
                     used.insert(pick)
@@ -217,22 +236,52 @@ public struct DegreeRequirementResolver: Sendable {
     ) -> DegreeResolution {
         var result = DegreeResolution()
         let available = completedCourseIDs.sorted() + plannedCourseIDs.filter { !completedCourseIDs.contains($0) }
-        var used: Set<String> = []
-        for kind in DegreeRequirementKind.allCases where kinds.contains(kind) {
-            if kind == .foreignLanguage {
-                resolveLanguage(languagePlan, planned: Set(plannedCourseIDs), completed: completedCourseIDs, into: &result)
-                continue
+        let listKinds = DegreeRequirementKind.allCases.filter { kinds.contains($0) && $0 != .foreignLanguage }
+        // Each kind's candidates: eligible, at least the minimum credits (a
+        // 1-credit lab doesn't meet a 3-credit requirement), not used for Gen Ed.
+        let candidates = listKinds.map { kind in
+            available.filter { id in
+                eligibility.isEligible(id, for: kind) && !genEdCourseIDs.contains(id)
+                    && (coursesByID[id]?.credits ?? 0) >= (eligibility.rules[kind]?.minimumCredits ?? 3)
             }
-            if let course = available.first(where: {
-                eligibility.isEligible($0, for: kind) && !genEdCourseIDs.contains($0) && !used.contains($0)
-            }) {
-                used.insert(course)
+        }
+        let assignment = Self.bestAssignment(candidates)
+        for (index, kind) in listKinds.enumerated() {
+            if let course = assignment[index] {
                 result.satisfiedBy[kind] = course
             } else {
                 result.placeholdersNeeded.append(kind)
             }
         }
+        if kinds.contains(.foreignLanguage) {
+            resolveLanguage(languagePlan, planned: Set(plannedCourseIDs), completed: completedCourseIDs, into: &result)
+        }
+        result.placeholdersNeeded.sort { DegreeRequirementKind.allCases.firstIndex(of: $0)! < DegreeRequirementKind.allCases.firstIndex(of: $1)! }
         return result
+    }
+
+    /// One distinct course per kind, meeting as many kinds as possible (a
+    /// course on two lists goes where no other course can stand in). With at
+    /// most three kinds an exhaustive search is cheap; ties keep catalog order.
+    private static func bestAssignment(_ candidates: [[String]]) -> [String?] {
+        var best: [String?] = Array(repeating: nil, count: candidates.count)
+        var bestCount = 0
+        var current = best
+        func search(_ index: Int, _ used: Set<String>, _ count: Int) {
+            if index == candidates.count {
+                if count > bestCount { bestCount = count; best = current }
+                return
+            }
+            for course in candidates[index] where !used.contains(course) {
+                current[index] = course
+                search(index + 1, used.union([course]), count + 1)
+                if bestCount == candidates.count { return }
+            }
+            current[index] = nil
+            search(index + 1, used, count)
+        }
+        search(0, [], 0)
+        return best
     }
 
     /// Credits of the language sequence from the placement through 232, and

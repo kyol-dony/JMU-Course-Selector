@@ -40,6 +40,17 @@ struct LanguageSetupTests {
         #expect(flow.step == .transcript)
     }
 
+    @Test func languageOnlyRouteIsJustTheLanguageStep() {
+        // A regeneration that needs the answer asks only for the language, then resumes
+        var flow = SetupFlow()
+        flow.needsLanguage = true
+        flow.languageOnly = true
+        flow.selectYear(.junior)
+        #expect(flow.route == [.language])
+        flow.resume(at: .language)
+        #expect(flow.step == .language && flow.visited.isEmpty)
+    }
+
     @Test func notSureStartsAt101() {
         #expect(LanguagePlacement.notSure.startingNumber == 101)
         #expect(LanguagePlacement.level231.startingNumber == 231)

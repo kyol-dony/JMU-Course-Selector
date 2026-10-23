@@ -7,14 +7,16 @@ import Testing
 /// the foreign-language sequence starts.
 @Suite("Degree requirement resolver")
 struct DegreeRequirementResolverTests {
-    private static func course(_ id: String, title: String? = nil) -> Course {
-        Course(id: id, code: id, title: title ?? id, credits: 3, availability: [.fall, .spring], prerequisites: [])
+    private static func course(_ id: String, title: String? = nil, credits: Int = 3) -> Course {
+        Course(id: id, code: id, title: title ?? id, credits: credits, availability: [.fall, .spring], prerequisites: [])
     }
 
     private func resolver(without missing: Set<String> = []) throws -> DegreeRequirementResolver {
         let ids = ["PHIL101", "PHIL120", "MATH231", "ISAT151", "BIO140", "SPAN101", "SPAN102", "SPAN231", "SPAN232"]
         var catalog = Catalog.fixture(
-            courses: ids.filter { !missing.contains($0) }.map { Self.course($0) } + [Self.course("MATH220", title: "Elementary Statistics [C3QR]")],
+            courses: ids.filter { !missing.contains($0) }.map { Self.course($0) } + [
+                Self.course("MATH220", title: "Elementary Statistics [C3QR]"), Self.course("CHEM131"), Self.course("CHEM131L", credits: 1)
+            ],
             program: Program.fixture(id: "p", title: "P", requirements: [])
         )
         catalog.degreeEligibility = try DegreeEligibility.load(from: DegreeEligibilityTests.bundledURL)
@@ -50,6 +52,31 @@ struct DegreeRequirementResolverTests {
         let result = try resolve([.scientificLiteracy, .quantitative], planned: ["ISAT151"])
         #expect(result.satisfiedBy.values.filter { $0 == "ISAT151" }.count == 1)
         #expect(result.placeholdersNeeded.count == 1)
+    }
+
+    @Test func oneCreditLabDoesNotMeetScientificLiteracy() throws {
+        // Scientific Literacy needs at least 3 credits; CHEM 131L is a 1-credit lab
+        #expect(try resolve([.scientificLiteracy], planned: ["CHEM131L"]).placeholdersNeeded == [.scientificLiteracy])
+        #expect(try resolve([.scientificLiteracy], planned: ["CHEM131L", "CHEM131"]).satisfiedBy[.scientificLiteracy] == "CHEM131")
+    }
+
+    @Test func dualEligibleCourseGoesWhereItIsNeeded() throws {
+        // ISAT 151 meets either; CHEM 131 only Scientific Literacy — both requirements are met
+        let result = try resolve([.scientificLiteracy, .quantitative], planned: ["ISAT151", "CHEM131"])
+        #expect(result.satisfiedBy[.scientificLiteracy] == "CHEM131")
+        #expect(result.satisfiedBy[.quantitative] == "ISAT151")
+        #expect(result.placeholdersNeeded.isEmpty)
+    }
+
+    @Test func openGenEdSlotDoesNotClaimACourse() throws {
+        // The Gen Ed QR placeholder is still unresolved, so MATH 231 is free for the degree requirement
+        let quantitative = RequirementCategory(id: "gened-c3qr", name: "General Education - Quantitative Reasoning [C3QR]",
+                                               requiredCredits: 3, courseOptions: [["MATH231", "COB191"]])
+        let genEd = GenEdAssignment.courses(categories: [quantitative],
+                                            courseIDs: [PathwayPlaceholder.id(categoryID: "gened-c3qr", optionIndex: 0), "MATH231"],
+                                            fixed: [:], degreeKinds: [.quantitative],
+                                            eligibility: try DegreeEligibility.load(from: DegreeEligibilityTests.bundledURL))
+        #expect(genEd.isEmpty)
     }
 
     @Test func philosophy120DoesNotCount() throws {

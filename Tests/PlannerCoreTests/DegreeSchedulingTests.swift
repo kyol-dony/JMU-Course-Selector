@@ -14,10 +14,27 @@ struct DegreeSchedulingTests {
                prerequisites: prerequisite.map { [$0] } ?? [])
     }
 
-    private static let courses: [Course] = coreIDs.map { course($0) } + [
+    /// Prerequisite text is parsed the way the catalog refresh does it.
+    private static let courses: [Course] = {
+        var courses = rawCourses
+        CatalogPrereqResolver.applyPassTwo(to: &courses)
+        return courses
+    }()
+
+    private static let rawCourses: [Course] = coreIDs.map { course($0) } + [
         course("MATH220", title: "Elementary Statistics [C3QR]"), course("MATH231"), course("PHIL101"), course("BIO140"), course("COB191"),
-        course("SPAN101"), course("SPAN102", after: "SPAN101"), course("SPAN231", after: "SPAN102"), course("SPAN232", after: "SPAN231")
+        language("SPAN 101", nil),
+        language("SPAN 102", "Prerequisites: SPAN 101 or per placement exam score."),
+        language("SPAN 231", "Prerequisites: SPAN 102 or SPAN 111 , or per placement exam score."),
+        language("SPAN 232", "Prerequisites: SPAN 231 or per placement exam score.")
     ]
+
+    /// A language course as the catalog has it: spaced code and the raw
+    /// "or per placement exam score" prerequisite text.
+    private static func language(_ code: String, _ prerequisites: String?) -> Course {
+        Course(id: code.replacingOccurrences(of: " ", with: ""), code: code, title: code, credits: 3,
+               availability: [.fall, .spring], prerequisites: [], rawPrerequisiteText: prerequisites)
+    }
 
     private static func required(_ id: String, _ courseIDs: [String]) -> RequirementCategory {
         RequirementCategory(id: id, name: "Required Courses", requiredCredits: 3 * courseIDs.count,
@@ -46,7 +63,8 @@ struct DegreeSchedulingTests {
         func semester(of id: String) -> Int? { pathway.semesters.firstIndex { $0.courseIDs.contains(id) } }
     }
 
-    private func plan(_ primary: Program, with extras: [Program] = [], language: ForeignLanguagePlan? = nil) throws -> Result {
+    private func plan(_ primary: Program, with extras: [Program] = [], language: ForeignLanguagePlan? = nil, transfer: [String] = []) throws -> Result {
+        let credits = transfer.isEmpty ? [] : [TransferCredit(sourceDescription: "AP", courseIDs: transfer, credits: Double(3 * transfer.count))]
         let catalog = Catalog(
             source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
             programs: [primary] + extras,
@@ -55,10 +73,10 @@ struct DegreeSchedulingTests {
             degreeEligibility: try DegreeEligibility.load(from: DegreeEligibilityTests.bundledURL)
         )
         let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
-            for: primary.id, workload: .standard, transferCredits: [],
+            for: primary.id, workload: .standard, transferCredits: credits,
             starting: SemesterIdentity(year: 2026, term: .fall), additionalPrograms: extras, languagePlan: language
         ).first)
-        let hours = AcademicCreditCalculator.projectedHours(in: pathway.semesters, placeholders: pathway.placeholders, transferCredits: [], catalog: catalog)
+        let hours = AcademicCreditCalculator.projectedHours(in: pathway.semesters, placeholders: pathway.placeholders, transferCredits: credits, catalog: catalog)
         return Result(ids: pathway.semesters.flatMap(\.courseIDs), pathway: pathway, hours: hours)
     }
 
@@ -104,6 +122,46 @@ struct DegreeSchedulingTests {
         let result = try plan(Self.major("ba", [Self.core], [.foreignLanguage, .philosophy]))
         #expect(!result.ids.contains { $0.hasPrefix("SPAN") })
         #expect(result.placeholders(.philosophy).count == 1)
+    }
+
+    @Test func transferredLanguageCourseKeepsThePlanAt120() throws {
+        // AP Spanish awards SPAN 231: the plan schedules only SPAN 232 and still reaches 120
+        let result = try plan(Self.major("ba", [Self.core], [.foreignLanguage, .philosophy]),
+                              language: ForeignLanguagePlan(subject: "SPAN", placement: .notSure), transfer: ["SPAN231"])
+        #expect(result.ids.contains("SPAN232") && !result.ids.contains("SPAN231") && !result.ids.contains("SPAN101"))
+        #expect(result.hours >= 120 && result.hours < 123, "\(result.hours)")
+    }
+
+    @Test func transferredPhilosophyKeepsThePlanAt120() throws {
+        let result = try plan(Self.major("ba", [Self.core], [.philosophy]), transfer: ["PHIL101"])
+        #expect(result.placeholders(.philosophy).isEmpty)
+        #expect(result.hours >= 120 && result.hours < 123, "\(result.hours)")
+    }
+
+    @Test func placementAbove101StartsEarly() throws {
+        // SPAN 102's prerequisite is "SPAN 101 or placement": placing into 102 must not push it to the end
+        let result = try plan(Self.major("ba", [Self.core], [.foreignLanguage]),
+                              language: ForeignLanguagePlan(subject: "SPAN", placement: .level102))
+        let semesters = ["SPAN102", "SPAN231", "SPAN232"].compactMap(result.semester(of:))
+        #expect(semesters.count == 3 && semesters == semesters.sorted() && Set(semesters).count == 3)
+        #expect((result.semester(of: "SPAN102") ?? 99) <= 1)
+        #expect(!result.ids.contains("SPAN101"))
+        #expect(result.pathway.semesters.count <= 8)
+    }
+
+    @Test func placementCreditCountsForPrerequisites() throws {
+        #expect(ForeignLanguagePlan(subject: "SPAN", placement: .level231).placementCreditCourseIDs() == ["SPAN101", "SPAN102", "SPAN111"])
+        #expect(ForeignLanguagePlan(subject: "SPAN", placement: .notSure).placementCreditCourseIDs().isEmpty)
+        #expect(ForeignLanguagePlan(subject: "SPAN", placement: .placedOut).placementCreditCourseIDs().contains("SPAN232"))
+        // Placing into 102 means SPAN 102 has no missing prerequisite
+        let language = ForeignLanguagePlan(subject: "SPAN", placement: .level102)
+        let result = try plan(Self.major("ba", [Self.core], [.foreignLanguage]), language: language)
+        let catalog = Catalog(
+            source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
+            programs: [], courses: Self.courses, apCreditRules: []
+        )
+        let warnings = ConflictDetector(catalog: catalog).warnings(for: result.pathway, overrides: [], completedAtStart: language.placementCreditCourseIDs())
+        #expect(!warnings.contains { $0.courseID == "SPAN102" && $0.kind == .missingPrerequisite })
     }
 
     @Test func degreeCoursesReplaceOpenElectives() throws {

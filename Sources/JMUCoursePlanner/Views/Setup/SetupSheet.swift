@@ -39,6 +39,7 @@ struct SetupSheet: View {
         .onAppear {
             if let year = store.plan.studentYear { flow.selectYear(year) }
             flow.needsLanguage = store.requiresForeignLanguage
+            flow.languageOnly = store.pendingLanguageAction != nil
             if let step = store.setupResumeStep {
                 flow.resume(at: step)
                 store.setupResumeStep = nil
@@ -48,6 +49,8 @@ struct SetupSheet: View {
         .onDisappear {
             importController.cancel()
             yearAdvanceTask?.cancel()
+            // Closing a language-only sheet without Continue drops the request.
+            store.pendingLanguageAction = nil
         }
         .onChange(of: importController.state) { _, state in
             if state == .reviewing { navigate { $0.importReady() } }
@@ -274,6 +277,18 @@ struct SetupSheet: View {
                 .buttonStyle(.dtPrimary)
                 .keyboardShortcut(.defaultAction)
                 .disabled(importController.draft == nil || reviewHasBlockingIssues)
+        case .language where flow.languageOnly:
+            // Asked only to finish a generation the student already started.
+            Button {
+                let action = store.takePendingLanguageAction()
+                dismiss()
+                Task { await store.resume(action) }
+            } label: {
+                Label("Continue", systemImage: "wand.and.stars")
+            }
+            .buttonStyle(.dtPrimary)
+            .keyboardShortcut(.defaultAction)
+            .disabled(store.plan.foreignLanguage == nil)
         case .workload:
             Button {
                 Task {

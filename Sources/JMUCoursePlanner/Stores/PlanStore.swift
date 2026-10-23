@@ -155,7 +155,7 @@ final class PlanStore: ObservableObject {
             // AP / dual-enrollment awards count as completed before the first
             // term so prereq/coreq checks see them the same way the schedule
             // generator does.
-            completedAtStart: effectiveAcademicHistory.completedCourseIDs,
+            completedAtStart: prerequisiteCreditAtStart,
             workload: plan.workload,
             earnedHoursAtStart: earnedHoursContext,
             prerequisiteAnalysis: placeholderPrerequisiteAnalysis ?? .empty
@@ -175,7 +175,7 @@ final class PlanStore: ObservableObject {
             result = ConflictDetector(catalog: catalog).placeholderPrerequisiteAnalysis(
                 for: activePathway,
                 activeProgramTitle: effectiveActiveProgram?.title,
-                completedAtStart: effectiveAcademicHistory.completedCourseIDs,
+                completedAtStart: prerequisiteCreditAtStart,
                 workload: plan.workload,
                 earnedHoursAtStart: earnedHoursContext
             )
@@ -396,6 +396,49 @@ final class PlanStore: ObservableObject {
     /// Setup opens at this step instead of the start; cleared once shown.
     @Published var setupResumeStep: SetupStep?
 
+    /// What to run once a B.A. student answers the language question that
+    /// generating or regenerating stopped to ask.
+    enum PendingLanguageAction: Equatable {
+        case generate
+        case regenerate(after: SemesterIdentity)
+    }
+    @Published var pendingLanguageAction: PendingLanguageAction?
+
+    /// Courses that count as done before the first planned semester when
+    /// checking prerequisites: earned credit, plus the language levels a
+    /// placement skips.
+    var prerequisiteCreditAtStart: Set<String> {
+        effectiveAcademicHistory.completedCourseIDs.union(plan.foreignLanguage?.placementCreditCourseIDs() ?? [])
+    }
+
+    /// Opens setup at the language step only; the generation that needed
+    /// the answer runs once it is given.
+    private func askForLanguage(then action: PendingLanguageAction) {
+        pendingLanguageAction = action
+        setupResumeStep = .language
+        setupSheetPresented = true
+    }
+
+    /// Runs the generation or regeneration that stopped to ask the language.
+    func continueAfterLanguageAnswer() async {
+        await resume(takePendingLanguageAction())
+    }
+
+    /// Clears and returns the pending action, so closing the sheet can't
+    /// race the Continue button that runs it.
+    func takePendingLanguageAction() -> PendingLanguageAction? {
+        defer { pendingLanguageAction = nil }
+        return pendingLanguageAction
+    }
+
+    func resume(_ action: PendingLanguageAction?) async {
+        guard let action, plan.foreignLanguage != nil else { return }
+        switch action {
+        case .generate: await generateSchedules()
+        case .regenerate(let cutoff): await regenerateActivePathway(after: cutoff)
+        }
+    }
+
     /// Whether a declared major's degree requires a foreign language.
     var requiresForeignLanguage: Bool {
         ForeignLanguagePlan.isRequired(by: [activeProgram].compactMap { $0 } + selectedMinorPrograms())
@@ -490,8 +533,7 @@ final class PlanStore: ObservableObject {
         // A plan saved before the language question existed is left alone
         // until it is built again; then setup asks first.
         if requiresForeignLanguage, plan.foreignLanguage == nil {
-            setupResumeStep = .language
-            setupSheetPresented = true
+            askForLanguage(then: .generate)
             return
         }
         guard let catalog, let programID = plan.programID else {
@@ -572,8 +614,7 @@ final class PlanStore: ObservableObject {
     func regenerateActivePathway(after cutoff: SemesterIdentity) async {
         guard canEditSchedule else { return }
         if requiresForeignLanguage, plan.foreignLanguage == nil {
-            setupResumeStep = .language
-            setupSheetPresented = true
+            askForLanguage(then: .regenerate(after: cutoff))
             return
         }
         guard let catalog, let programID = plan.programID, majorSelectionComplete,
@@ -783,7 +824,7 @@ final class PlanStore: ObservableObject {
             in: activePathway,
             overrides: plan.overrides,
             activeProgramTitle: effectiveActiveProgram?.title,
-            completedAtStart: effectiveAcademicHistory.completedCourseIDs,
+            completedAtStart: prerequisiteCreditAtStart,
             workload: plan.workload,
             earnedHoursAtStart: earnedHoursContext
         )
@@ -806,7 +847,7 @@ final class PlanStore: ObservableObject {
         let revision = verdictRevision
         let overrides = plan.overrides
         let title = effectiveActiveProgram?.title
-        let completed = effectiveAcademicHistory.completedCourseIDs
+        let completed = prerequisiteCreditAtStart
         let earnedHours = earnedHoursContext
         let workload = plan.workload
         let worker = Task.detached(priority: .userInitiated) {

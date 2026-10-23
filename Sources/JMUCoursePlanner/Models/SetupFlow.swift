@@ -20,7 +20,10 @@ struct SetupFlow {
     private(set) var year: StudentYear?
     /// A declared B.A. major needs the student's language and placement.
     var needsLanguage = false
+    /// Setup opened only to ask the language before a generation resumes.
+    var languageOnly = false
     var route: [SetupStep] {
+        if languageOnly { return [.language] }
         let language: [SetupStep] = needsLanguage ? [.language] : []
         return year == .incomingFreshman
             ? [.year, .major, .minor] + language + [.transfer, .workload]

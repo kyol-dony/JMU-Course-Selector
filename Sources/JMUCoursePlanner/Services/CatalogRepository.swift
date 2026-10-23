@@ -290,7 +290,9 @@ struct CatalogRepository {
     /// into an elective pool.
     /// v22 adds each program's B.A./B.S. degree requirements and the
     /// foreign-language sequence courses read from subject pages.
-    private static let cacheSchemaVersion = 22
+    /// v23 is the same shape; it skips the v22 number another branch's
+    /// parser already used for cached catalogs without degree data.
+    private static let cacheSchemaVersion = 23
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

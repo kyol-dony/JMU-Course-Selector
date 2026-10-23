@@ -83,6 +83,31 @@ struct CatalogOutlineTests {
         #expect(RequirementRuleText.label(for: category) == "Choose 3 courses")
     }
 
+    @Test func degreeSectionFollowsEveryMajor() {
+        var program = physics(required: false)
+        program.degreeRequirements = [
+            DegreeRequirement(kind: .foreignLanguage, creditsText: "0-12", note: "The foreign language requirement may be satisfied by placing out."),
+            DegreeRequirement(kind: .philosophy, creditsText: "3")
+        ]
+        let outline = CatalogOutline(program: program, concentrationID: nil)
+        #expect(outline.sections.map(\.title).suffix(2) == ["Every major", "Degree"])
+        let degree = outline.sections.last?.entries ?? []
+        #expect(degree.map(\.name) == ["Foreign Language", "Philosophy"])
+        #expect(degree.map(\.id) == ["degree-foreignLanguage", "degree-philosophy"])
+        #expect(degree.map(\.creditsText) == ["Through 232", "3 cr"])
+        #expect(degree.allSatisfy { !$0.hasCourseList })
+    }
+
+    @Test func noDegreeSectionWithoutTable() {
+        #expect(!CatalogOutline(program: physics(required: false), concentrationID: nil).sections.map(\.title).contains("Degree"))
+    }
+
+    @Test func degreeRuleTextAndEligibility() {
+        #expect(DegreeRequirementText.rule(for: DegreeRequirement(kind: .foreignLanguage, creditsText: "0-12")) == "Through 232")
+        #expect(DegreeRequirementText.rule(for: DegreeRequirement(kind: .quantitative, creditsText: "3")) == "Choose 3 credits")
+        #expect(DegreeRequirementText.eligibility(for: .philosophy) == "Any PHIL course except PHIL 120 and PHIL 150, not also used for General Education.")
+    }
+
     @Test func firstEntryIsFirstShared() {
         let outline = CatalogOutline(program: physics(required: false), concentrationID: nil)
         #expect(outline.firstEntryID == outline.sections[0].entries[0].id)

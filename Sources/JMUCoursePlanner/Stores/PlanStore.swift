@@ -521,6 +521,7 @@ final class PlanStore: ObservableObject {
         let earnedHours = earnedHoursContext
         let planningStart = plan.planningStart ?? SemesterIdentity.current()
         let additionalPrograms = selectedMinorPrograms()
+        let languagePlan = plan.foreignLanguage
 
         let result: Result<[Pathway], Error> = await Task.detached(priority: .userInitiated) {
             do {
@@ -533,6 +534,7 @@ final class PlanStore: ObservableObject {
                     additionalPrograms: additionalPrograms,
                     preservedSemester: preservedSemester,
                     earnedHoursAtStart: earnedHours,
+                    languagePlan: languagePlan,
                     progress: { [weak self] current, total, name in
                         Task { @MainActor in
                             self?.scheduleGenerationProgress = ScheduleGenerationProgress(
@@ -568,6 +570,11 @@ final class PlanStore: ObservableObject {
     /// that bypass the board's interaction lock.
     func regenerateActivePathway(after cutoff: SemesterIdentity) async {
         guard canEditSchedule else { return }
+        if requiresForeignLanguage, plan.foreignLanguage == nil {
+            setupResumeStep = .language
+            setupSheetPresented = true
+            return
+        }
         guard let catalog, let programID = plan.programID, majorSelectionComplete,
               let source = activePathway else {
             errorMessage = "Choose a major and a pathway before regenerating."
@@ -587,7 +594,8 @@ final class PlanStore: ObservableObject {
             concentrationID: plan.concentrationID,
             strategy: .resolve(pathwayID: source.id, index: plan.pathways.firstIndex(where: { $0.id == source.id }) ?? 0),
             workload: plan.workload, transferCredits: creditResult.credits,
-            additionalPrograms: selectedMinorPrograms(), earnedHoursAtStart: earnedHoursContext)
+            additionalPrograms: selectedMinorPrograms(), earnedHoursAtStart: earnedHoursContext,
+            languagePlan: plan.foreignLanguage)
         errorMessage = nil
         partialRegeneration = .init(operationID: operationID, pathwayID: source.id, cutoff: cutoff,
                                     progress: .init(current: 0, total: 1, pathwayName: "Preparing"))

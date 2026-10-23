@@ -5,6 +5,19 @@ import Foundation
 /// Literacy and Quantitative for a B.S.
 public enum DegreeRequirementKind: String, Codable, Hashable, Sendable, CaseIterable, CodingKeyRepresentable {
     case philosophy, foreignLanguage, scientificLiteracy, quantitative
+
+    /// Category ID of the requirement's placeholders ("degree-philosophy").
+    public var categoryID: String { "degree-\(rawValue)" }
+
+    /// Name of the requirement's pick-a-course placeholder.
+    public var placeholderName: String {
+        switch self {
+        case .philosophy: "Philosophy (B.A.)"
+        case .foreignLanguage: "Foreign Language (B.A.)"
+        case .scientificLiteracy: "Scientific Literacy (B.S.)"
+        case .quantitative: "Quantitative (B.S.)"
+        }
+    }
 }
 
 /// One row of a program's "Degree Requirements" table.

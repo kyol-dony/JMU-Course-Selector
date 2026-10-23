@@ -109,7 +109,7 @@ struct CatalogRepository {
                 ?? seedProgram.flatMap { existing in existing.kind == .major ? 120 : nil }
                 ?? (entry.kind == .major ? 120 : nil)
 
-            refreshedPrograms.append(Program(
+            var program = Program(
                 id: id,
                 title: requirements?.title ?? seedProgram?.title ?? entry.title,
                 degreeType: seedProgram?.degreeType ?? entry.degreeType,
@@ -124,7 +124,9 @@ struct CatalogRepository {
                 verificationStatus: parsedRequirements.isEmpty ? .unverified : .partial,
                 requirementDataComplete: hasSchedulableCourses,
                 sourceNote: sourceNote(for: entry, parsedRequirements: parsedRequirements, failed: failedPrograms.contains(entry.title))
-            ))
+            )
+            program.degreeRequirements = requirements?.degreeRequirements ?? []
+            refreshedPrograms.append(program)
 
             if index + 1 < entries.count {
                 try await Task.sleep(for: .milliseconds(150))

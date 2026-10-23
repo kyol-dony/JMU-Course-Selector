@@ -116,3 +116,135 @@ public struct ForeignLanguagePlan: Codable, Hashable, Sendable {
         programs.contains { $0.kind == .major && $0.degreeRequirements.contains { $0.kind == .foreignLanguage } }
     }
 }
+
+/// Which planned courses the plan uses for General Education. A course used
+/// for Gen Ed cannot also meet a degree requirement, and today a course
+/// matched to a Gen Ed slot is not recorded per slot, so this re-derives it
+/// the same way for scheduling and progress.
+public enum GenEdAssignment {
+    /// Each slot of each Gen Ed category (`ScheduleGenerator.isGenEdCategory`)
+    /// takes one course from `courseIDs` among its alternates, in category
+    /// order, preferring a course no degree kind in `degreeKinds` accepts. A
+    /// resolved Gen Ed placeholder in `fixed` (placeholder ID → course) keeps
+    /// the course the student chose.
+    public static func courses(
+        categories: [RequirementCategory],
+        courseIDs: [String],
+        fixed: [String: String],
+        degreeKinds: Set<DegreeRequirementKind>,
+        eligibility: DegreeEligibility
+    ) -> Set<String> {
+        var used: Set<String> = []
+        func degreeUsable(_ id: String) -> Bool { degreeKinds.contains { eligibility.isEligible(id, for: $0) } }
+        for category in categories where ScheduleGenerator.isGenEdCategory(id: category.id, name: category.name) {
+            for (index, slot) in category.courseOptions.enumerated() {
+                if let chosen = fixed[PathwayPlaceholder.id(categoryID: category.id, optionIndex: index)] {
+                    used.insert(chosen)
+                    continue
+                }
+                let candidates = courseIDs.filter { slot.contains($0) && !used.contains($0) }
+                if let pick = candidates.first(where: { !degreeUsable($0) }) ?? candidates.first {
+                    used.insert(pick)
+                }
+            }
+        }
+        return used
+    }
+}
+
+/// What a plan still needs for its degree requirements.
+public struct DegreeResolution: Equatable, Sendable {
+    /// The course meeting each of Philosophy, Scientific Literacy and Quantitative.
+    public var satisfiedBy: [DegreeRequirementKind: String] = [:]
+    /// Language courses to schedule, in sequence order.
+    public var languageCoursesToAdd: [String] = []
+    public var languageComplete = false
+    /// One entry per pick-a-course slot to add; `.foreignLanguage` once per
+    /// sequence level missing from the catalog.
+    public var placeholdersNeeded: [DegreeRequirementKind] = []
+    /// Sequence levels with no catalog course.
+    public var missingLanguageLevels: [Int] = []
+}
+
+/// Resolves a plan's courses against its degree requirements (spec §6.3).
+public struct DegreeRequirementResolver: Sendable {
+    private static let sequence = [101, 102, 231, 232]
+
+    private let coursesByID: [String: Course]
+    private let eligibility: DegreeEligibility
+
+    public init(catalog: Catalog) {
+        self.coursesByID = catalog.coursesByID
+        self.eligibility = catalog.degreeEligibility
+    }
+
+    /// The degree requirements of every declared major, each once, in
+    /// `DegreeRequirementKind` order. Minors carry none.
+    public static func kinds(for programs: [Program]) -> [DegreeRequirementKind] {
+        let declared = Set(programs.filter { $0.kind == .major }.flatMap { $0.degreeRequirements.map(\.kind) })
+        return DegreeRequirementKind.allCases.filter(declared.contains)
+    }
+
+    public func resolve(
+        kinds: [DegreeRequirementKind],
+        plannedCourseIDs: [String],
+        completedCourseIDs: Set<String>,
+        genEdCourseIDs: Set<String>,
+        languagePlan: ForeignLanguagePlan?
+    ) -> DegreeResolution {
+        var result = DegreeResolution()
+        let available = completedCourseIDs.sorted() + plannedCourseIDs.filter { !completedCourseIDs.contains($0) }
+        var used: Set<String> = []
+        for kind in DegreeRequirementKind.allCases where kinds.contains(kind) {
+            if kind == .foreignLanguage {
+                resolveLanguage(languagePlan, planned: Set(plannedCourseIDs), completed: completedCourseIDs, into: &result)
+                continue
+            }
+            if let course = available.first(where: {
+                eligibility.isEligible($0, for: kind) && !genEdCourseIDs.contains($0) && !used.contains($0)
+            }) {
+                used.insert(course)
+                result.satisfiedBy[kind] = course
+            } else {
+                result.placeholdersNeeded.append(kind)
+            }
+        }
+        return result
+    }
+
+    /// From the placement's starting level, or the level after the highest
+    /// course in the subject already planned or earned (111 counts as 102,
+    /// 212 as 232), through 232.
+    private func resolveLanguage(_ plan: ForeignLanguagePlan?, planned: Set<String>, completed: Set<String>, into result: inout DegreeResolution) {
+        guard let plan else { return }
+        let taken = planned.union(completed)
+        let levels = taken.compactMap { id -> Int? in
+            guard let (subject, number) = DegreeEligibility.subjectAndNumber(id), subject == plan.subject else { return nil }
+            switch number {
+            case 111: return 102
+            case 212: return 232
+            default: return Self.sequence.contains(number) ? number : nil
+            }
+        }
+        let earned = completed.compactMap { id -> Int? in
+            guard let (subject, number) = DegreeEligibility.subjectAndNumber(id), subject == plan.subject else { return nil }
+            return number == 212 ? 232 : number == 111 ? 102 : number
+        }
+        guard let placementStart = plan.placement.startingNumber, !levels.contains(232) else {
+            result.languageComplete = plan.placement == .placedOut || earned.contains(232)
+            return
+        }
+        let highest = levels.max().flatMap { Self.sequence.firstIndex(of: $0) }
+        let start = max(Self.sequence.firstIndex(of: placementStart) ?? 0, highest.map { $0 + 1 } ?? 0)
+        for number in Self.sequence[start...] {
+            let id = "\(plan.subject)\(number)"
+            if taken.contains(id) { continue }
+            if coursesByID[id] != nil {
+                result.languageCoursesToAdd.append(id)
+            } else {
+                result.missingLanguageLevels.append(number)
+                result.placeholdersNeeded.append(.foreignLanguage)
+            }
+        }
+    }
+}

@@ -54,6 +54,10 @@ public struct DegreeEligibility: Codable, Hashable, Sendable {
 
     public static let empty = DegreeEligibility(rules: [:], languageSubjects: [])
 
+    /// Course numbers of the language sequence the planner reads: 101 → 102
+    /// → 231 → 232, plus the intensive 111 (= 101 + 102) and 212 (= 231 + 232).
+    public static let languageSequenceNumbers: Set<Int> = [101, 102, 111, 212, 231, 232]
+
     /// Whether `courseID` ("MATH231") counts toward `kind`. The foreign
     /// language is a sequence, not a list, so it is never eligible here.
     public func isEligible(_ courseID: String, for kind: DegreeRequirementKind) -> Bool {
@@ -69,7 +73,7 @@ public struct DegreeEligibility: Codable, Hashable, Sendable {
     }
 
     /// "PHIL101" → ("PHIL", 101); "BIO140L" → ("BIO", 140).
-    static func subjectAndNumber(_ courseID: String) -> (String, Int)? {
+    public static func subjectAndNumber(_ courseID: String) -> (String, Int)? {
         let subject = courseID.prefix { $0.isLetter }
         let digits = courseID.dropFirst(subject.count).prefix { $0.isNumber }
         guard !subject.isEmpty, let number = Int(digits) else { return nil }

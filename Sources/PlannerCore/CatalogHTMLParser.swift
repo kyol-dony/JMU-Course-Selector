@@ -260,6 +260,33 @@ public struct JMUHTMLCatalogParser: Sendable {
         )
     }
 
+    /// Courses on a subject's course listing page (`/courses/span/`): one
+    /// per `div.courseblock`, with its title, credits (a range reads its
+    /// lower bound) and the "Prerequisites:" line as raw prerequisite text.
+    public static func subjectCourses(in html: String) -> [Course] {
+        html.components(separatedBy: #"<div class="courseblock""#).dropFirst().compactMap { block -> Course? in
+            guard let code = block.firstMatch(for: #"^\s*data-coursecode="([^"]+)""#).flatMap({ $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }),
+                  !code.isEmpty
+            else { return nil }
+            let title = block.firstMatch(for: #"(?is)<span\b[^>]*\bdetail-title\b[^>]*>(.*?)</span>"#)
+                .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil } ?? code
+            let hours = block.firstMatch(for: #"(?is)<span\b[^>]*\bdetail-hours_html\b[^>]*>(.*?)</span>"#)
+                .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil } ?? ""
+            let credits = hours.firstMatch(for: #"(\d+)"#).flatMap { $0.count > 1 ? Int($0[1]) : nil } ?? 3
+            let prerequisites = block.firstMatch(for: #"(?is)<div\b[^>]*\bcourseblockextra\b[^>]*>(\s*Prerequisites?:.*?)</div>"#)
+                .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
+            return Course(
+                id: code.replacingOccurrences(of: " ", with: ""),
+                code: code,
+                title: title,
+                credits: credits,
+                availability: [.fall, .spring],
+                prerequisites: [],
+                rawPrerequisiteText: prerequisites
+            )
+        }
+    }
+
     /// The B.A./B.S. rows of a program page's "Degree Requirements" table
     /// (`table.tbl_degmajreq`): Foreign Language, Philosophy, Scientific
     /// Literacy and Quantitative, in table order, each at most once. A row's

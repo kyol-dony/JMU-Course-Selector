@@ -133,6 +133,23 @@ struct CatalogRepository {
             }
         }
 
+        // No program page lists most foreign-language sequence courses (no
+        // SPAN below 300), so read them from each language's subject page.
+        let languageSubjects = bundledDegreeEligibility().languageSubjects
+        for subject in languageSubjects {
+            try Task.checkCancellation()
+            guard let url = URL(string: "https://catalog.jmu.edu/courses/\(subject.lowercased())/"),
+                  let html = try? await Self.fetchHTML(from: url)
+            else { continue }
+            for course in JMUHTMLCatalogParser.subjectCourses(in: html) where coursesByID[course.id] == nil {
+                guard let (_, number) = DegreeEligibility.subjectAndNumber(course.id),
+                      DegreeEligibility.languageSequenceNumbers.contains(number)
+                else { continue }
+                coursesByID[course.id] = course
+            }
+            try await Task.sleep(for: .milliseconds(150))
+        }
+
         let detailEnrichments = try await fetchCourseDetailEnrichments(for: Array(coursesByID.values))
         for enrichment in detailEnrichments.values {
             guard var course = coursesByID[enrichment.courseID] else { continue }
@@ -271,7 +288,9 @@ struct CatalogRepository {
     /// v21 keeps the lab of a "BIO 150 & 150L" row, takes credits from each
     /// course's own page, and turns "any 300- or 400-level finance course"
     /// into an elective pool.
-    private static let cacheSchemaVersion = 21
+    /// v22 adds each program's B.A./B.S. degree requirements and the
+    /// foreign-language sequence courses read from subject pages.
+    private static let cacheSchemaVersion = 22
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

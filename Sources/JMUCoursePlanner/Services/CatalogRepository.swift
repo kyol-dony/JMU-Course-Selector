@@ -109,7 +109,7 @@ struct CatalogRepository {
                 ?? seedProgram.flatMap { existing in existing.kind == .major ? 120 : nil }
                 ?? (entry.kind == .major ? 120 : nil)
 
-            refreshedPrograms.append(Program(
+            var program = Program(
                 id: id,
                 title: requirements?.title ?? seedProgram?.title ?? entry.title,
                 degreeType: seedProgram?.degreeType ?? entry.degreeType,
@@ -124,11 +124,30 @@ struct CatalogRepository {
                 verificationStatus: parsedRequirements.isEmpty ? .unverified : .partial,
                 requirementDataComplete: hasSchedulableCourses,
                 sourceNote: sourceNote(for: entry, parsedRequirements: parsedRequirements, failed: failedPrograms.contains(entry.title))
-            ))
+            )
+            program.degreeRequirements = requirements?.degreeRequirements ?? []
+            refreshedPrograms.append(program)
 
             if index + 1 < entries.count {
                 try await Task.sleep(for: .milliseconds(150))
             }
+        }
+
+        // No program page lists most foreign-language sequence courses (no
+        // SPAN below 300), so read them from each language's subject page.
+        let languageSubjects = bundledDegreeEligibility().languageSubjects
+        for subject in languageSubjects {
+            try Task.checkCancellation()
+            guard let url = URL(string: "https://catalog.jmu.edu/courses/\(subject.lowercased())/"),
+                  let html = try? await Self.fetchHTML(from: url)
+            else { continue }
+            for course in JMUHTMLCatalogParser.subjectCourses(in: html) where coursesByID[course.id] == nil {
+                guard let (_, number) = DegreeEligibility.subjectAndNumber(course.id),
+                      DegreeEligibility.languageSequenceNumbers.contains(number)
+                else { continue }
+                coursesByID[course.id] = course
+            }
+            try await Task.sleep(for: .milliseconds(150))
         }
 
         let detailEnrichments = try await fetchCourseDetailEnrichments(for: Array(coursesByID.values))
@@ -272,7 +291,12 @@ struct CatalogRepository {
     /// v22 reads 0-credit courses, ignores a rule stated for students who
     /// skip an option ("who do not choose the licensure option"), and keeps
     /// remarks such as "Two enrollments of one credit each".
-    private static let cacheSchemaVersion = 22
+    /// v23 (on the degree-requirements branch) adds each program's B.A./B.S.
+    /// degree requirements and the foreign-language sequence courses read
+    /// from subject pages.
+    /// v24 combines both: caches from v22 lack degree data, v23 lacks
+    /// repeated enrollments.
+    private static let cacheSchemaVersion = 24
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())
@@ -284,8 +308,21 @@ struct CatalogRepository {
             programs: catalog.programs,
             courses: catalog.courses,
             apCreditRules: catalog.apCreditRules,
-            prereqRuleOverlay: status.overlay
+            prereqRuleOverlay: status.overlay,
+            degreeEligibility: bundledDegreeEligibility()
         )
+    }
+
+    /// The Registrar's B.A./B.S. degree course list. A missing or unreadable
+    /// file leaves degree requirements without eligible courses rather than
+    /// failing the catalog load.
+    func bundledDegreeEligibility() -> DegreeEligibility {
+        let candidates = [
+            Bundle.main.url(forResource: "degree_requirement_courses", withExtension: "json"),
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appending(path: "Data/degree_requirement_courses.json")
+        ].compactMap { $0 }
+        guard let url = candidates.first(where: { fileManager.fileExists(atPath: $0.path) }) else { return .empty }
+        return (try? DegreeEligibility.load(from: url)) ?? .empty
     }
 
     private func bundledPrereqOverlayURL() throws -> URL {

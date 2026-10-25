@@ -12,6 +12,7 @@ struct PartialRegenerationRequest: Sendable {
     let transferCredits: [TransferCredit]
     let additionalPrograms: [Program]
     let earnedHoursAtStart: Double?
+    var languagePlan: ForeignLanguagePlan? = nil
 }
 
 struct PartialRegenerationState: Equatable, Sendable {

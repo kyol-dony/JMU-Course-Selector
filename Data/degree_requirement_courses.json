@@ -1,0 +1,37 @@
+{
+  "source": "https://www.jmu.edu/registrar/ba_and_bs_degree_courses.shtml",
+  "rules": {
+    "philosophy": {
+      "anySubjects": ["PHIL"],
+      "courses": {},
+      "excluded": ["PHIL120", "PHIL150"],
+      "minimumCredits": 3
+    },
+    "scientificLiteracy": {
+      "anySubjects": ["ANTH", "BIO", "CHEM", "ECON", "GEOG", "GEOL", "ISAT", "ISCI", "PHYS", "POSC", "SOCI"],
+      "courses": {
+        "ASTR": [120, 121, 220, 221, 297, 301, 320, 480],
+        "CS": [139, 149, 159, 240, 261, 345],
+        "IA": [241, 400],
+        "KIN": [202]
+      },
+      "excluded": [],
+      "minimumCredits": 3
+    },
+    "quantitative": {
+      "anySubjects": ["MATH"],
+      "courses": {
+        "BIO": [454, 456],
+        "CS": [227, 327, 449, 452],
+        "HTH": [320],
+        "HSA": [366],
+        "ISAT": [151, 251],
+        "IA": [340],
+        "KIN": [411]
+      },
+      "excluded": [],
+      "minimumCredits": 3
+    }
+  },
+  "languageSubjects": ["ARAB", "ASL", "CHIN", "FR", "GER", "GRK", "ITAL", "JAPN", "KOR", "LAT", "PERS", "PORT", "RUS", "SPAN"]
+}

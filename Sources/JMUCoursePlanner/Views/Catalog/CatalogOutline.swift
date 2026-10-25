@@ -9,6 +9,7 @@ struct CatalogOutline: Equatable {
         enum Content: Equatable {
             case requirement(RequirementCategory)
             case generalEducation([RequirementCategory])
+            case degree(DegreeRequirement)
         }
 
         let id: String
@@ -55,6 +56,17 @@ struct CatalogOutline: Equatable {
                 content: .generalEducation(genEd)
             )]))
         }
+        if !program.degreeRequirements.isEmpty {
+            sections.append(Section(id: "degree", title: "Degree", entries: program.degreeRequirements.map { requirement in
+                Entry(
+                    id: requirement.kind.categoryID,
+                    name: DegreeRequirementText.name(requirement.kind),
+                    creditsText: requirement.kind == .foreignLanguage ? "Through 232" : "\(requirement.creditsText) cr",
+                    hasCourseList: false,
+                    content: .degree(requirement)
+                )
+            }))
+        }
         self.sections = sections
     }
 
@@ -88,6 +100,36 @@ enum RequirementRuleText {
         case .chooseCredits(let credits): "Choose \(credits) credits"
         case .chooseGroups(let count): count == 1 ? "Choose 1 option" : "Choose \(count) options"
         case .unknown: "See catalog"
+        }
+    }
+}
+
+/// A B.A./B.S. degree requirement in plain words, as the catalog tab shows it.
+enum DegreeRequirementText {
+    static func name(_ kind: DegreeRequirementKind) -> String {
+        switch kind {
+        case .philosophy: "Philosophy"
+        case .foreignLanguage: "Foreign Language"
+        case .scientificLiteracy: "Scientific Literacy"
+        case .quantitative: "Quantitative"
+        }
+    }
+
+    static func rule(for requirement: DegreeRequirement) -> String {
+        requirement.kind == .foreignLanguage ? "Through 232" : "Choose 3 credits"
+    }
+
+    /// Which courses count, from the Registrar's B.A./B.S. degree course list.
+    static func eligibility(for kind: DegreeRequirementKind) -> String {
+        switch kind {
+        case .philosophy:
+            "Any PHIL course except PHIL 120 and PHIL 150, not also used for General Education."
+        case .foreignLanguage:
+            "Any foreign language, including American Sign Language, through the 232 level. Where you start depends on placement."
+        case .scientificLiteracy:
+            "Any ANTH, BIO, CHEM, ECON, GEOG, GEOL, ISAT, ISCI, PHYS, POSC or SOCI course, or selected ASTR, CS, IA and KIN courses, not also used for General Education."
+        case .quantitative:
+            "Any MATH course, or selected BIO, CS, HSA, HTH, IA, ISAT and KIN courses, not also used for General Education."
         }
     }
 }

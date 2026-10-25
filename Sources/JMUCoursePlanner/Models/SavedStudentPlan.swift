@@ -33,6 +33,8 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
     var currentSemester: SemesterPlan? = nil
     var setupCompleted: Bool = false
     var planningStart: SemesterIdentity? = nil
+    /// A B.A. student's language and placement; nil until setup asks.
+    var foreignLanguage: ForeignLanguagePlan? = nil
     var updatedAt: Date
 
     init(
@@ -64,7 +66,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case studentYear, academicRecords, currentSemester, setupCompleted, planningStart
+        case studentYear, academicRecords, currentSemester, setupCompleted, planningStart, foreignLanguage
         case id, name, programID, concentrationID, minors, minorProgramIDs
         case workload, apScores, transferCredits, pathways, activePathwayID, overrides, updatedAt
     }
@@ -76,6 +78,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
         currentSemester = try container.decodeIfPresent(SemesterPlan.self, forKey: .currentSemester)
         setupCompleted = try container.decodeIfPresent(Bool.self, forKey: .setupCompleted) ?? false
         planningStart = try container.decodeIfPresent(SemesterIdentity.self, forKey: .planningStart)
+        foreignLanguage = try container.decodeIfPresent(ForeignLanguagePlan.self, forKey: .foreignLanguage)
         self.id = try container.decode(UUID.self, forKey: .id)
         self.name = try container.decode(String.self, forKey: .name)
         self.programID = try container.decodeIfPresent(String.self, forKey: .programID)
@@ -110,6 +113,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
         try container.encodeIfPresent(currentSemester, forKey: .currentSemester)
         try container.encode(setupCompleted, forKey: .setupCompleted)
         try container.encodeIfPresent(planningStart, forKey: .planningStart)
+        try container.encodeIfPresent(foreignLanguage, forKey: .foreignLanguage)
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encodeIfPresent(programID, forKey: .programID)

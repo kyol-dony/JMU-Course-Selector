@@ -30,6 +30,7 @@ cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 cp "$ROOT_DIR/Data/catalog_seed.json" "$APP_RESOURCES/catalog_seed.json"
 cp "$ROOT_DIR/Data/prereq_coreq_overrides.json" "$APP_RESOURCES/prereq_coreq_overrides.json"
+cp "$ROOT_DIR/Data/degree_requirement_courses.json" "$APP_RESOURCES/degree_requirement_courses.json"
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

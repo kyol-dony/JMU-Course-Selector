@@ -155,7 +155,7 @@ final class PlanStore: ObservableObject {
             // AP / dual-enrollment awards count as completed before the first
             // term so prereq/coreq checks see them the same way the schedule
             // generator does.
-            completedAtStart: effectiveAcademicHistory.completedCourseIDs,
+            completedAtStart: prerequisiteCreditAtStart,
             workload: plan.workload,
             earnedHoursAtStart: earnedHoursContext,
             prerequisiteAnalysis: placeholderPrerequisiteAnalysis ?? .empty
@@ -175,7 +175,7 @@ final class PlanStore: ObservableObject {
             result = ConflictDetector(catalog: catalog).placeholderPrerequisiteAnalysis(
                 for: activePathway,
                 activeProgramTitle: effectiveActiveProgram?.title,
-                completedAtStart: effectiveAcademicHistory.completedCourseIDs,
+                completedAtStart: prerequisiteCreditAtStart,
                 workload: plan.workload,
                 earnedHoursAtStart: earnedHoursContext
             )
@@ -213,7 +213,8 @@ final class PlanStore: ObservableObject {
                 concentrationID: plan.concentrationID,
                 pathway: activePathway,
                 transferCredits: effectiveAcademicHistory.effectiveCredits,
-                additionalPrograms: selectedMinorPrograms()
+                additionalPrograms: selectedMinorPrograms(),
+                languagePlan: plan.foreignLanguage
             )
         } else {
             result = nil
@@ -396,6 +397,62 @@ final class PlanStore: ObservableObject {
         autosave()
     }
 
+    /// Setup opens at this step instead of the start; cleared once shown.
+    @Published var setupResumeStep: SetupStep?
+
+    /// What to run once a B.A. student answers the language question that
+    /// generating or regenerating stopped to ask.
+    enum PendingLanguageAction: Equatable {
+        case generate
+        case regenerate(after: SemesterIdentity)
+    }
+    @Published var pendingLanguageAction: PendingLanguageAction?
+
+    /// Courses that count as done before the first planned semester when
+    /// checking prerequisites: earned credit, plus the language levels a
+    /// placement skips.
+    var prerequisiteCreditAtStart: Set<String> {
+        effectiveAcademicHistory.completedCourseIDs.union(plan.foreignLanguage?.placementCreditCourseIDs() ?? [])
+    }
+
+    /// Opens setup at the language step only; the generation that needed
+    /// the answer runs once it is given.
+    private func askForLanguage(then action: PendingLanguageAction) {
+        pendingLanguageAction = action
+        setupResumeStep = .language
+        setupSheetPresented = true
+    }
+
+    /// Runs the generation or regeneration that stopped to ask the language.
+    func continueAfterLanguageAnswer() async {
+        await resume(takePendingLanguageAction())
+    }
+
+    /// Clears and returns the pending action, so closing the sheet can't
+    /// race the Continue button that runs it.
+    func takePendingLanguageAction() -> PendingLanguageAction? {
+        defer { pendingLanguageAction = nil }
+        return pendingLanguageAction
+    }
+
+    func resume(_ action: PendingLanguageAction?) async {
+        guard let action, plan.foreignLanguage != nil else { return }
+        switch action {
+        case .generate: await generateSchedules()
+        case .regenerate(let cutoff): await regenerateActivePathway(after: cutoff)
+        }
+    }
+
+    /// Whether a declared major's degree requires a foreign language.
+    var requiresForeignLanguage: Bool {
+        ForeignLanguagePlan.isRequired(by: [activeProgram].compactMap { $0 } + selectedMinorPrograms())
+    }
+
+    func setForeignLanguage(_ language: ForeignLanguagePlan?) {
+        plan.foreignLanguage = language
+        autosave()
+    }
+
     func setWorkload(_ workload: WorkloadPreference) {
         plan.workload = workload
         autosave()
@@ -477,6 +534,12 @@ final class PlanStore: ObservableObject {
 
     func generateSchedules() async {
         guard canEditSchedule else { return }
+        // A plan saved before the language question existed is left alone
+        // until it is built again; then setup asks first.
+        if requiresForeignLanguage, plan.foreignLanguage == nil {
+            askForLanguage(then: .generate)
+            return
+        }
         guard let catalog, let programID = plan.programID else {
             errorMessage = "Choose a major before generating a plan."
             return
@@ -505,6 +568,7 @@ final class PlanStore: ObservableObject {
         let earnedHours = earnedHoursContext
         let planningStart = plan.planningStart ?? SemesterIdentity.current()
         let additionalPrograms = selectedMinorPrograms()
+        let languagePlan = plan.foreignLanguage
 
         let result: Result<[Pathway], Error> = await Task.detached(priority: .userInitiated) {
             do {
@@ -517,6 +581,7 @@ final class PlanStore: ObservableObject {
                     additionalPrograms: additionalPrograms,
                     preservedSemester: preservedSemester,
                     earnedHoursAtStart: earnedHours,
+                    languagePlan: languagePlan,
                     progress: { [weak self] current, total, name in
                         Task { @MainActor in
                             self?.scheduleGenerationProgress = ScheduleGenerationProgress(
@@ -552,6 +617,10 @@ final class PlanStore: ObservableObject {
     /// that bypass the board's interaction lock.
     func regenerateActivePathway(after cutoff: SemesterIdentity) async {
         guard canEditSchedule else { return }
+        if requiresForeignLanguage, plan.foreignLanguage == nil {
+            askForLanguage(then: .regenerate(after: cutoff))
+            return
+        }
         guard let catalog, let programID = plan.programID, majorSelectionComplete,
               let source = activePathway else {
             errorMessage = "Choose a major and a pathway before regenerating."
@@ -571,7 +640,8 @@ final class PlanStore: ObservableObject {
             concentrationID: plan.concentrationID,
             strategy: .resolve(pathwayID: source.id, index: plan.pathways.firstIndex(where: { $0.id == source.id }) ?? 0),
             workload: plan.workload, transferCredits: creditResult.credits,
-            additionalPrograms: selectedMinorPrograms(), earnedHoursAtStart: earnedHoursContext)
+            additionalPrograms: selectedMinorPrograms(), earnedHoursAtStart: earnedHoursContext,
+            languagePlan: plan.foreignLanguage)
         errorMessage = nil
         partialRegeneration = .init(operationID: operationID, pathwayID: source.id, cutoff: cutoff,
                                     progress: .init(current: 0, total: 1, pathwayName: "Preparing"))
@@ -761,7 +831,7 @@ final class PlanStore: ObservableObject {
             in: activePathway,
             overrides: plan.overrides,
             activeProgramTitle: effectiveActiveProgram?.title,
-            completedAtStart: effectiveAcademicHistory.completedCourseIDs,
+            completedAtStart: prerequisiteCreditAtStart,
             workload: plan.workload,
             earnedHoursAtStart: earnedHoursContext
         )
@@ -784,7 +854,7 @@ final class PlanStore: ObservableObject {
         let revision = verdictRevision
         let overrides = plan.overrides
         let title = effectiveActiveProgram?.title
-        let completed = effectiveAcademicHistory.completedCourseIDs
+        let completed = prerequisiteCreditAtStart
         let earnedHours = earnedHoursContext
         let workload = plan.workload
         let worker = Task.detached(priority: .userInitiated) {

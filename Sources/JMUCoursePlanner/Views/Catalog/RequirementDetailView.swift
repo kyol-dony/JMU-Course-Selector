@@ -35,6 +35,8 @@ struct RequirementDetailView: View {
                         }
                         .padding(.top, DesignTokens.Spacing.s)
                     }
+                case .degree(let requirement):
+                    degreeDetail(requirement)
                 }
             }
             .padding(DesignTokens.Spacing.xl)
@@ -42,6 +44,39 @@ struct RequirementDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .id(entry.id)
+    }
+
+    /// A degree requirement has no fixed course list: its rule, the
+    /// Registrar's eligibility in words, and the program's footnote.
+    private func degreeDetail(_ requirement: DegreeRequirement) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.s) {
+            Text(entry.name)
+                .font(DesignTokens.Typography.heading)
+                .foregroundStyle(DesignTokens.Colors.textPrimary)
+            HStack(spacing: DesignTokens.Spacing.s) {
+                Text(DegreeRequirementText.rule(for: requirement))
+                    .font(DesignTokens.Typography.small)
+                    .foregroundStyle(DesignTokens.Colors.brandPurple)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(DesignTokens.Colors.brandPurpleSoft))
+                Text(requirement.kind == .foreignLanguage ? "\(requirement.creditsText) credits, by placement" : "\(requirement.creditsText) credits")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textSecondary)
+                    .monospacedDigit()
+            }
+            Text(DegreeRequirementText.eligibility(for: requirement.kind))
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(DesignTokens.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let note = requirement.note, !note.isEmpty {
+                Text(note)
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+        }
     }
 
     private func header(_ category: RequirementCategory, font: Font) -> some View {

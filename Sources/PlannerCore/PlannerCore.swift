@@ -269,6 +269,8 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
     public var verificationStatus: VerificationStatus
     public var requirementDataComplete: Bool
     public var sourceNote: String
+    /// The B.A./B.S. rows of the program's "Degree Requirements" table.
+    public var degreeRequirements: [DegreeRequirement] = []
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -285,6 +287,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         case verificationStatus
         case requirementDataComplete
         case sourceNote
+        case degreeRequirements
     }
 
     public init(
@@ -335,6 +338,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         verificationStatus = try container.decode(VerificationStatus.self, forKey: .verificationStatus)
         requirementDataComplete = try container.decode(Bool.self, forKey: .requirementDataComplete)
         sourceNote = try container.decode(String.self, forKey: .sourceNote)
+        degreeRequirements = try container.decodeIfPresent([DegreeRequirement].self, forKey: .degreeRequirements) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -353,6 +357,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         try container.encode(verificationStatus, forKey: .verificationStatus)
         try container.encode(requirementDataComplete, forKey: .requirementDataComplete)
         try container.encode(sourceNote, forKey: .sourceNote)
+        try container.encode(degreeRequirements, forKey: .degreeRequirements)
     }
 }
 
@@ -366,6 +371,8 @@ public struct Catalog: Codable, Sendable {
     }
     public var apCreditRules: [TransferCreditRule]
     public var prereqRuleOverlay: PrereqRuleOverlay
+    /// The Registrar's B.A./B.S. degree course list, attached at load.
+    public var degreeEligibility: DegreeEligibility
     private var coursesByIDStorage: [String: Course]
     private var programsByIDStorage: [String: Program]
 
@@ -374,19 +381,21 @@ public struct Catalog: Codable, Sendable {
         programs: [Program],
         courses: [Course],
         apCreditRules: [TransferCreditRule],
-        prereqRuleOverlay: PrereqRuleOverlay = .empty
+        prereqRuleOverlay: PrereqRuleOverlay = .empty,
+        degreeEligibility: DegreeEligibility = .empty
     ) {
         self.source = source
         self.programs = programs
         self.courses = courses
         self.apCreditRules = apCreditRules
         self.prereqRuleOverlay = prereqRuleOverlay
+        self.degreeEligibility = degreeEligibility
         self.coursesByIDStorage = Self.index(courses)
         self.programsByIDStorage = Self.index(programs)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case source, programs, courses, apCreditRules, prereqRuleOverlay
+        case source, programs, courses, apCreditRules, prereqRuleOverlay, degreeEligibility
     }
 
     public init(from decoder: Decoder) throws {
@@ -396,6 +405,7 @@ public struct Catalog: Codable, Sendable {
         self.courses = try c.decode([Course].self, forKey: .courses)
         self.apCreditRules = try c.decode([TransferCreditRule].self, forKey: .apCreditRules)
         self.prereqRuleOverlay = try c.decodeIfPresent(PrereqRuleOverlay.self, forKey: .prereqRuleOverlay) ?? .empty
+        self.degreeEligibility = try c.decodeIfPresent(DegreeEligibility.self, forKey: .degreeEligibility) ?? .empty
         self.coursesByIDStorage = Self.index(courses)
         self.programsByIDStorage = Self.index(programs)
     }
@@ -407,6 +417,7 @@ public struct Catalog: Codable, Sendable {
         try c.encode(courses, forKey: .courses)
         try c.encode(apCreditRules, forKey: .apCreditRules)
         try c.encode(prereqRuleOverlay, forKey: .prereqRuleOverlay)
+        try c.encode(degreeEligibility, forKey: .degreeEligibility)
     }
 
     public var coursesByID: [String: Course] {
@@ -888,6 +899,7 @@ public struct ScheduleGenerator: Sendable {
         additionalPrograms: [Program] = [],
         preservedSemester: SemesterPlan? = nil,
         earnedHoursAtStart: Double? = nil,
+        languagePlan: ForeignLanguagePlan? = nil,
         progress: (@Sendable (Int, Int, String) -> Void)? = nil
     ) throws -> [Pathway] {
         let context = try preservedSemester.map {
@@ -895,7 +907,8 @@ public struct ScheduleGenerator: Sendable {
         }
         return try generate(for: programID, concentrationID: concentrationID, workload: workload,
                             transferCredits: transferCredits, starting: start, additionalPrograms: additionalPrograms,
-                            context: context, source: nil, strategy: nil, earnedHoursAtStart: earnedHoursAtStart, progress: progress)
+                            context: context, source: nil, strategy: nil, earnedHoursAtStart: earnedHoursAtStart,
+                            languagePlan: languagePlan, progress: progress)
     }
 
     public func regeneratePathway(
@@ -908,20 +921,22 @@ public struct ScheduleGenerator: Sendable {
         transferCredits: [TransferCredit],
         additionalPrograms: [Program] = [],
         earnedHoursAtStart: Double? = nil,
+        languagePlan: ForeignLanguagePlan? = nil,
         progress: (@Sendable (Int, Int, String) -> Void)? = nil
     ) throws -> Pathway {
         let context = try AnchoredScheduleContext(source: source, through: cutoff)
         return try generate(for: programID, concentrationID: concentrationID, workload: workload,
                             transferCredits: transferCredits, starting: context.startingSemester,
                             additionalPrograms: additionalPrograms, context: context, source: source,
-                            strategy: strategy, earnedHoursAtStart: earnedHoursAtStart, progress: progress)[0]
+                            strategy: strategy, earnedHoursAtStart: earnedHoursAtStart,
+                            languagePlan: languagePlan, progress: progress)[0]
     }
 
     private func generate(
         for programID: String, concentrationID: String?, workload: WorkloadPreference,
         transferCredits: [TransferCredit], starting start: SemesterIdentity, additionalPrograms: [Program],
         context: AnchoredScheduleContext?, source: Pathway?, strategy: ScheduleGenerationStrategy?,
-        earnedHoursAtStart: Double?, progress: (@Sendable (Int, Int, String) -> Void)?
+        earnedHoursAtStart: Double?, languagePlan: ForeignLanguagePlan?, progress: (@Sendable (Int, Int, String) -> Void)?
     ) throws -> [Pathway] {
         try Task.checkCancellation()
         let prefix = context?.semesters ?? []
@@ -949,9 +964,14 @@ public struct ScheduleGenerator: Sendable {
             completed: completed,
             placeholders: &placeholders,
             anchors: reservations,
-            anticipatedCourses: anticipatedCourses
+            anticipatedCourses: anticipatedCourses,
+            languagePlan: languagePlan
         )
-        var primaryList = lists.primary
+        // Degree requirements belong to the primary program's list: language
+        // courses first, since the sequence spans four semesters.
+        var primaryList = lists.degree.filter { !PathwayPlaceholder.isPlaceholder($0) }
+            + lists.primary
+            + lists.degree.filter(PathwayPlaceholder.isPlaceholder)
         let extraLists = lists.extras
         // JMU degrees require 120 CRH total. If the primary major's declared
         // requirements fall short, top up with Open Elective placeholders so
@@ -963,8 +983,10 @@ public struct ScheduleGenerator: Sendable {
         // Both entry points share selection, lab expansion, variant ordering and
         // semester construction. Full generation retains its legacy gap allocation.
         if source == nil {
-            let originalGap = openElectiveGap(for: program, additionalPrograms: additionalPrograms)
-            let general = AcademicCreditCalculator.generalHours(credits: transferCredits, current: preservedSemester, programs: [program] + additionalPrograms, catalog: catalog)
+            let originalGap = openElectiveGap(for: program, additionalPrograms: additionalPrograms, languagePlan: languagePlan,
+                                              completedCourseIDs: Set(transferCredits.flatMap(\.courseIDs)))
+            let general = AcademicCreditCalculator.generalHours(credits: transferCredits, current: preservedSemester, programs: [program] + additionalPrograms, catalog: catalog,
+                                                                alsoRequired: Set(lists.degreeCredited))
             let shortfall = AcademicCreditCalculator.requirementCreditShortfall(credits: transferCredits, current: preservedSemester, programs: [program] + additionalPrograms, catalog: catalog)
             primaryList.append(contentsOf: openElectivePlaceholders(gap: max(0, Double(originalGap) - general + shortfall), placeholders: &placeholders))
         }
@@ -1027,7 +1049,8 @@ public struct ScheduleGenerator: Sendable {
             try Task.checkCancellation()
             let semesters = try buildSemesters(
                 courseIDs: variant,
-                completedAtStart: completed,
+                // A language placement stands in for the levels below it.
+                completedAtStart: completed.union(languagePlan?.placementCreditCourseIDs() ?? []),
                 workload: workload,
                 starting: context?.startingSemester ?? start,
                 placeholders: placeholders,
@@ -1990,22 +2013,31 @@ public struct ScheduleGenerator: Sendable {
     /// Deliberately ignores transfer credit so the schedule generator and
     /// progress calculator always agree on the same gap — a minor course
     /// satisfied by AP/transfer still counts toward the degree total.
-    public func openElectiveGap(for program: Program, additionalPrograms: [Program]) -> Int {
+    ///
+    /// `completedCourseIDs` (transfer credit) only shapes the B.A./B.S. degree
+    /// requirements: a transferred SPAN 231 means only SPAN 232 is planned,
+    /// and its own hours count as degree credit, not general credit.
+    public func openElectiveGap(for program: Program, additionalPrograms: [Program], languagePlan: ForeignLanguagePlan? = nil,
+                                completedCourseIDs: Set<String> = []) -> Int {
         guard program.kind == .major else { return 0 }
         var placeholders: [String: PlaceholderSpec] = [:]
         let lists = plannedProgramLists(
             for: program, additionalPrograms: additionalPrograms, completed: [], placeholders: &placeholders,
-            anticipatedCourses: anticipatedCourses(for: [program] + additionalPrograms)
+            anticipatedCourses: anticipatedCourses(for: [program] + additionalPrograms),
+            languagePlan: languagePlan, degreeCompleted: completedCourseIDs
         )
         // Courses that also fill one of the primary major's elective-pool
-        // slots count once toward 120, so they don't shrink the gap.
-        let additionalCredits = lists.extras.joined()
+        // slots count once toward 120, so they don't shrink the gap. Degree
+        // requirement courses (B.A./B.S.) take 120-credit room the same way,
+        // including ones already earned.
+        let additionalCredits = (lists.extras.joined() + lists.degree)
             .filter { !lists.sharedCourseIDs.contains($0) }
             .reduce(0) { $0 + Int(credits(for: $1, placeholders: placeholders)) }
+            + lists.degreeCredited.reduce(0) { $0 + (catalog.coursesByID[$1]?.credits ?? 0) }
         // What the generator schedules for these programs, labs included.
         // A course that fills two requirements appears here once.
         let scheduled = withLabs(
-            Self.interleaveByProportion([lists.primary] + lists.extras), completed: [],
+            Self.interleaveByProportion([lists.degree + lists.primary] + lists.extras), completed: [],
             placeholders: &placeholders,
             labPairing: LabPairing(catalog: catalog, activeProgramTitle: program.title)
         )
@@ -2033,8 +2065,10 @@ public struct ScheduleGenerator: Sendable {
         completed: Set<String>,
         placeholders: inout [String: PlaceholderSpec],
         anchors: AnchoredScheduleContext? = nil,
-        anticipatedCourses: Set<String> = []
-    ) -> (primary: [String], extras: [[String]], sharedCourseIDs: Set<String>, reusedCredits: Int) {
+        anticipatedCourses: Set<String> = [],
+        languagePlan: ForeignLanguagePlan? = nil,
+        degreeCompleted: Set<String>? = nil
+    ) -> (primary: [String], extras: [[String]], sharedCourseIDs: Set<String>, reusedCredits: Int, degree: [String], degreeCredited: [String]) {
         var plannedCourseIDs: Set<String> = []
         var reusedCredits = 0
         var primary = requiredCourseIDs(
@@ -2082,7 +2116,74 @@ public struct ScheduleGenerator: Sendable {
             placeholders[id] = nil
             return true
         }
-        return (primary, extras, shared, reusedCredits)
+        let degree = degreeRequirementItems(
+            programs: [program] + additionalPrograms,
+            planned: primary + extras.joined(),
+            completed: degreeCompleted ?? completed,
+            languagePlan: languagePlan,
+            placeholders: &placeholders,
+            anchors: anchors
+        )
+        return (primary, extras, shared, reusedCredits, degree.items, degree.credited)
+    }
+
+    /// The B.A./B.S. degree requirement items to add to a plan: the
+    /// language courses still needed, then one pick-a-course placeholder per
+    /// requirement no planned course meets (spec §6.3). A degree placeholder
+    /// an anchored regeneration keeps already stands for its requirement.
+    private func degreeRequirementItems(
+        programs: [Program],
+        planned: [String],
+        completed: Set<String>,
+        languagePlan: ForeignLanguagePlan?,
+        placeholders: inout [String: PlaceholderSpec],
+        anchors: AnchoredScheduleContext?
+    ) -> (items: [String], credited: [String]) {
+        let anchoredKinds = Set((anchors?.placeholders ?? [:]).values.compactMap { spec in
+            DegreeRequirementKind.allCases.first { $0.categoryID == spec.categoryID }
+        })
+        let kinds = DegreeRequirementResolver.kinds(for: programs).filter { $0 == .foreignLanguage || !anchoredKinds.contains($0) }
+        guard !kinds.isEmpty else { return ([], []) }
+        let eligibility = catalog.degreeEligibility
+        let concrete = uniqueCourseIDs(planned.filter { !PathwayPlaceholder.isPlaceholder($0) })
+        let genEd = GenEdAssignment.courses(
+            categories: programs.flatMap(\.requirements),
+            courseIDs: completed.sorted() + uniqueCourseIDs(planned),
+            fixed: anchors?.resolvedPlaceholders ?? [:],
+            degreeKinds: Set(kinds),
+            eligibility: eligibility
+        )
+        let resolution = DegreeRequirementResolver(catalog: catalog).resolve(
+            kinds: kinds, plannedCourseIDs: concrete, completedCourseIDs: completed,
+            genEdCourseIDs: genEd, languagePlan: languagePlan
+        )
+        let unavailable = Set(resolution.satisfiedBy.values).union(genEd).union(concrete).union(completed)
+        var missingLevels = resolution.missingLanguageLevels.makeIterator()
+        var items = resolution.languageCoursesToAdd
+        for kind in resolution.placeholdersNeeded {
+            let id = unusedPlaceholderID(categoryID: kind.categoryID, startingAt: 0, placeholders: placeholders,
+                                         reservedIDs: anchors?.reservedPlaceholderIDs ?? [])
+            let name: String
+            let alternates: [String]
+            if kind == .foreignLanguage {
+                let level = missingLevels.next()
+                name = "Foreign Language \(level.map(String.init) ?? "") (B.A.)".replacingOccurrences(of: "  ", with: " ")
+                alternates = []
+            } else {
+                name = kind.placeholderName
+                alternates = catalog.courses.map(\.id).filter { eligibility.isEligible($0, for: kind) && !unavailable.contains($0) }
+            }
+            placeholders[id] = PlaceholderSpec(categoryID: kind.categoryID, categoryName: name, alternates: alternates, credits: 3)
+            items.append(id)
+        }
+        // Earned courses the degree requirements use: their hours are
+        // degree credit, not general credit.
+        let languageEarned = completed.filter { id in
+            guard let languagePlan, let (subject, number) = DegreeEligibility.subjectAndNumber(id) else { return false }
+            return subject == languagePlan.subject && DegreeEligibility.languageSequenceNumbers.contains(number)
+        }
+        let credited = Set(resolution.satisfiedBy.values).intersection(completed).union(languageEarned)
+        return (items, credited.sorted())
     }
 
     /// Build Open Elective placeholders to cover `gap` CRH — the shortfall
@@ -2732,7 +2833,8 @@ public struct ProgressCalculator: Sendable {
         concentrationID: String? = nil,
         pathway: Pathway,
         transferCredits: [TransferCredit],
-        additionalPrograms: [Program] = []
+        additionalPrograms: [Program] = [],
+        languagePlan: ForeignLanguagePlan? = nil
     ) throws -> GraduationProgress {
         guard let program = catalog.programsByID[programID] else {
             throw PlannerError.programNotFound(programID)
@@ -2804,7 +2906,8 @@ public struct ProgressCalculator: Sendable {
         // placeholder slot (the resolved credits stop appearing in
         // pathway.placeholders).
         let openElectiveGap = ScheduleGenerator(catalog: catalog)
-            .openElectiveGap(for: effectiveProgram, additionalPrograms: additionalPrograms)
+            .openElectiveGap(for: effectiveProgram, additionalPrograms: additionalPrograms, languagePlan: languagePlan,
+                             completedCourseIDs: Set(transferCredits.flatMap(\.courseIDs)))
         if openElectiveGap > 0 {
             let resolvedIDs = Set(pathway.resolvedPlaceholders.keys)
             let unresolvedOpenElectiveCredits = pathway.placeholders
@@ -2824,6 +2927,41 @@ public struct ProgressCalculator: Sendable {
                 // they're never catalog-verified.
                 verificationStatus: .partial
             ))
+        }
+
+        // One row per B.A./B.S. degree requirement of every declared major.
+        // A course used for Gen Ed never meets one; an unresolved
+        // placeholder counts nothing.
+        let degreeKinds = DegreeRequirementResolver.kinds(for: [effectiveProgram] + additionalPrograms)
+        if !degreeKinds.isEmpty {
+            let resolver = DegreeRequirementResolver(catalog: catalog)
+            let earned = Set(transferCredits.flatMap(\.courseIDs))
+            let genEd = GenEdAssignment.courses(
+                categories: ([effectiveProgram] + additionalPrograms).flatMap(\.requirements),
+                courseIDs: earned.sorted() + pathway.semesters.flatMap(\.courseIDs),
+                fixed: pathway.resolvedPlaceholders,
+                degreeKinds: Set(degreeKinds),
+                eligibility: catalog.degreeEligibility
+            )
+            let resolution = resolver.resolve(kinds: degreeKinds, plannedCourseIDs: pathwayCourseIDs, completedCourseIDs: earned,
+                                              genEdCourseIDs: genEd, languagePlan: languagePlan)
+            for kind in degreeKinds {
+                let required: Int
+                let completed: Int
+                if kind == .foreignLanguage {
+                    (required, completed) = resolver.languageProgress(plan: languagePlan, courseIDs: completedCourseIDs)
+                } else {
+                    required = 3
+                    completed = resolution.satisfiedBy[kind].map { min(coursesByID[$0]?.credits ?? 3, 3) } ?? 0
+                }
+                categories.append(CategoryProgress(
+                    id: kind.categoryID,
+                    name: kind.progressName,
+                    completedCredits: Double(completed),
+                    requiredCredits: required,
+                    verificationStatus: .verified
+                ))
+            }
         }
 
         // Add a category row per minor / second-major requirement, prefixed

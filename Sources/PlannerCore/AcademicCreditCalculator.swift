@@ -5,9 +5,13 @@ public struct AcademicCreditTotals: Sendable {
     public var projectedHours: Double
 }
 public enum AcademicCreditCalculator {
-    public static func generalHours(credits: [TransferCredit], current: SemesterPlan?, programs: [Program], catalog: Catalog) -> Double {
+    /// `alsoRequired`: courses outside the programs' lists that still meet a
+    /// requirement (a transferred SPAN 231 toward the B.A. language
+    /// requirement), so their hours are not general credit.
+    public static func generalHours(credits: [TransferCredit], current: SemesterPlan?, programs: [Program], catalog: Catalog,
+                                    alsoRequired: Set<String> = []) -> Double {
         let requirements = programs.flatMap(\.requirements)
-        let requiredIDs = Set(requirements.flatMap { $0.courseOptions.flatMap { $0 } })
+        let requiredIDs = Set(requirements.flatMap { $0.courseOptions.flatMap { $0 } }).union(alsoRequired)
         var allocatedIDs: Set<String> = []
         let knownRequired = credits.reduce(0.0) { sum, credit in
             let required = Set(credit.courseIDs).intersection(requiredIDs).subtracting(allocatedIDs)

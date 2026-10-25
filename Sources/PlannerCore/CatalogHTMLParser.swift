@@ -38,6 +38,8 @@ public struct HTMLProgramRequirements: Sendable {
     public var concentrationSelectionRequired: Bool
     public var courses: [Course]
     public var totalCredits: Int?
+    /// The B.A./B.S. rows of the page's "Degree Requirements" table.
+    public var degreeRequirements: [DegreeRequirement]
 
     public init(
         title: String?,
@@ -45,7 +47,8 @@ public struct HTMLProgramRequirements: Sendable {
         concentrations: [Concentration] = [],
         concentrationSelectionRequired: Bool = false,
         courses: [Course],
-        totalCredits: Int?
+        totalCredits: Int?,
+        degreeRequirements: [DegreeRequirement] = []
     ) {
         self.title = title
         self.requirements = requirements
@@ -53,6 +56,7 @@ public struct HTMLProgramRequirements: Sendable {
         self.concentrationSelectionRequired = concentrationSelectionRequired
         self.courses = courses
         self.totalCredits = totalCredits
+        self.degreeRequirements = degreeRequirements
     }
 }
 
@@ -251,8 +255,75 @@ public struct JMUHTMLCatalogParser: Sendable {
             concentrations: concentrations,
             concentrationSelectionRequired: split.concentrationSelectionRequired,
             courses: coursesByID.values.sorted { $0.code < $1.code },
-            totalCredits: parseProgramTotal(from: html)
+            totalCredits: parseProgramTotal(from: html),
+            degreeRequirements: Self.degreeRequirements(in: html)
         )
+    }
+
+    /// Courses on a subject's course listing page (`/courses/span/`): one
+    /// per `div.courseblock`, with its title, credits (a range reads its
+    /// lower bound) and the "Prerequisites:" line as raw prerequisite text.
+    public static func subjectCourses(in html: String) -> [Course] {
+        html.components(separatedBy: #"<div class="courseblock""#).dropFirst().compactMap { block -> Course? in
+            guard let code = block.firstMatch(for: #"^\s*data-coursecode="([^"]+)""#).flatMap({ $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }),
+                  !code.isEmpty
+            else { return nil }
+            let title = block.firstMatch(for: #"(?is)<span\b[^>]*\bdetail-title\b[^>]*>(.*?)</span>"#)
+                .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil } ?? code
+            let hours = block.firstMatch(for: #"(?is)<span\b[^>]*\bdetail-hours_html\b[^>]*>(.*?)</span>"#)
+                .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil } ?? ""
+            let credits = hours.firstMatch(for: #"(\d+)"#).flatMap { $0.count > 1 ? Int($0[1]) : nil } ?? 3
+            let prerequisites = block.firstMatch(for: #"(?is)<div\b[^>]*\bcourseblockextra\b[^>]*>(\s*Prerequisites?:.*?)</div>"#)
+                .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]) : nil }
+            return Course(
+                id: code.replacingOccurrences(of: " ", with: ""),
+                code: code,
+                title: title,
+                credits: credits,
+                availability: [.fall, .spring],
+                prerequisites: [],
+                rawPrerequisiteText: prerequisites
+            )
+        }
+    }
+
+    /// The B.A./B.S. rows of a program page's "Degree Requirements" table
+    /// (`table.tbl_degmajreq`): Foreign Language, Philosophy, Scientific
+    /// Literacy and Quantitative, in table order, each at most once. A row's
+    /// `<sup>` footnote becomes its note. Other rows (General Education,
+    /// Major requirements, University electives, Total) are informational.
+    static func degreeRequirements(in html: String) -> [DegreeRequirement] {
+        guard let table = html.range(
+            of: #"(?is)<table\b[^>]*class="[^"]*\btbl_degmajreq\b[^"]*"[^>]*>.*?</table>"#,
+            options: .regularExpression
+        ) else { return [] }
+        let nextTable = html.range(of: "<table", options: .caseInsensitive, range: table.upperBound..<html.endIndex)?.lowerBound ?? html.endIndex
+        let notes = footnotes(after: table.upperBound, before: nextTable, in: html)
+        var seen: Set<DegreeRequirementKind> = []
+        var result: [DegreeRequirement] = []
+        for row in String(html[table]).matches(for: #"(?is)<tr\b[^>]*>(.*?)</tr>"#) where row.count > 1 {
+            let cells = row[1].matches(for: #"(?is)<td\b[^>]*>(.*?)</td>"#).compactMap { $0.count > 1 ? $0[1] : nil }
+            guard let labelHTML = cells.first, cells.count > 1 else { continue }
+            let label = HTMLCleaner.clean(
+                labelHTML.replacingOccurrences(of: #"(?is)<sup\b[^>]*>.*?</sup>"#, with: " ", options: .regularExpression)
+            ).lowercased()
+            let kind: DegreeRequirementKind
+            if label.contains("foreign language") { kind = .foreignLanguage }
+            else if label.contains("philosoph") { kind = .philosophy }
+            else if label.contains("scientific literacy") { kind = .scientificLiteracy }
+            else if label.contains("quantitative") { kind = .quantitative }
+            else { continue }
+            guard seen.insert(kind).inserted else { continue }
+            let marks = labelHTML.matches(for: #"(?is)<sup\b[^>]*>(.*?)</sup>"#)
+                .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]).split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } : [] }
+            let note = marks.compactMap { notes[$0] }.joined(separator: " ")
+            result.append(DegreeRequirement(
+                kind: kind,
+                creditsText: HTMLCleaner.clean(cells[cells.count - 1]),
+                note: note.isEmpty ? nil : note
+            ))
+        }
+        return result
     }
 
     private func adjustedConcentrationRequirements(

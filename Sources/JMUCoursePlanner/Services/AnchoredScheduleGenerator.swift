@@ -16,6 +16,7 @@ struct LocalAnchoredScheduleGenerator: AnchoredScheduleGenerating {
                 concentrationID: request.concentrationID, strategy: request.strategy,
                 workload: request.workload, transferCredits: request.transferCredits,
                 additionalPrograms: request.additionalPrograms, earnedHoursAtStart: request.earnedHoursAtStart,
+                languagePlan: request.languagePlan,
                 progress: { current, total, name in progress(.init(current: current, total: total, pathwayName: name)) })
         }
         return try await withTaskCancellationHandler {

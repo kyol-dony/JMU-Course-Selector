@@ -36,10 +36,21 @@ struct SetupSheet: View {
         }
         .frame(minWidth: 880, idealWidth: 920, minHeight: 640, idealHeight: 680)
         .background(DesignTokens.Colors.surface)
-        .onAppear { if let year = store.plan.studentYear { flow.selectYear(year) } }
+        .onAppear {
+            if let year = store.plan.studentYear { flow.selectYear(year) }
+            flow.needsLanguage = store.requiresForeignLanguage
+            flow.languageOnly = store.pendingLanguageAction != nil
+            if let step = store.setupResumeStep {
+                flow.resume(at: step)
+                store.setupResumeStep = nil
+            }
+        }
+        .onChange(of: store.requiresForeignLanguage) { _, required in flow.needsLanguage = required }
         .onDisappear {
             importController.cancel()
             yearAdvanceTask?.cancel()
+            // Closing a language-only sheet without Continue drops the request.
+            store.pendingLanguageAction = nil
         }
         .onChange(of: importController.state) { _, state in
             if state == .reviewing { navigate { $0.importReady() } }
@@ -167,6 +178,8 @@ struct SetupSheet: View {
             case .minor:
                 SetupStepMinor(catalog: catalog)
                     .padding(.horizontal, DesignTokens.Spacing.xxl)
+            case .language:
+                scrolling { SetupStepLanguage(catalog: catalog) }
             case .transfer:
                 scrolling { SetupStepTransfer(catalog: catalog) }
             case .transcript:
@@ -264,6 +277,18 @@ struct SetupSheet: View {
                 .buttonStyle(.dtPrimary)
                 .keyboardShortcut(.defaultAction)
                 .disabled(importController.draft == nil || reviewHasBlockingIssues)
+        case .language where flow.languageOnly:
+            // Asked only to finish a generation the student already started.
+            Button {
+                let action = store.takePendingLanguageAction()
+                dismiss()
+                Task { await store.resume(action) }
+            } label: {
+                Label("Continue", systemImage: "wand.and.stars")
+            }
+            .buttonStyle(.dtPrimary)
+            .keyboardShortcut(.defaultAction)
+            .disabled(store.plan.foreignLanguage == nil)
         case .workload:
             Button {
                 Task {
@@ -296,6 +321,7 @@ struct SetupSheet: View {
         switch flow.step {
         case .year: flow.year != nil
         case .major: catalog != nil && store.majorSelectionComplete
+        case .language: catalog != nil && store.plan.foreignLanguage != nil
         default: catalog != nil
         }
     }
@@ -324,6 +350,8 @@ struct SetupSheet: View {
             return ("Choose a major to continue", false)
         case .major where !store.majorSelectionComplete:
             return ("Choose a concentration to continue", false)
+        case .language where store.plan.foreignLanguage == nil:
+            return ("Choose a language to continue", false)
         case .review where reviewHasBlockingIssues:
             return ("Resolve the flagged rows to continue", false)
         default:

@@ -362,6 +362,157 @@ struct CatalogRequirementStructureTests {
         #expect(licensure.courseOptions == [["IECE480"], ["IECE481"]])
     }
 
+    @Test func creditsThatMayIncludeTheCoursesBelowAreAChoice() throws {
+        // Engineering B.S. "ENGR Technical Electives": the 19 courses listed are
+        // a menu for 12 credits, not all required.
+        let categories = parseSnippet(
+            Self.header("ENGR Technical Electives")
+            + Self.comment("12 credits of ENGR Technical Electives may include (but are not limited to):", hours: "12")
+            + Self.course("ENGR 345", "Foundations of Computer Engineering") + Self.course("ENGR 360", "Structural Analysis")
+            + Self.course("ENGR 387", "Brewery Engineering") + Self.course("ENGR 426", "Product Development")
+            + Self.course("ENGR 440", "Mechatronics")
+        )
+        #expect(categories.count == 1)
+        let electives = try #require(categories.first)
+        #expect(electives.requiredCredits == 12)
+        #expect(electives.selection == .chooseCredits(12))
+        #expect(electives.courseOptions.count == 4)
+        #expect(electives.courseOptions.allSatisfy { Set($0) == ["ENGR345", "ENGR360", "ENGR387", "ENGR426", "ENGR440"] })
+    }
+
+    @Test func suggestedListsAreTheMenuOfTheChoiceBeforeThem() throws {
+        // Physics B.S., Applied Physics: "Additional Courses" takes 9 credits;
+        // the lists under "Suggested Areas of Interest" are where they come from.
+        let html = """
+        <h1>Example, B.S.</h1><h2>Major Requirements</h2>
+        <table class="sc_courselist"><tbody>\(Self.header("Additional Courses"))\(Self.comment("Complete 9 credits approved by the head of the Department of Physics and Astronomy.", hours: "9"))</tbody></table>
+        <h3>Suggested Areas of Interest to Complete the 9 Credit Hours Required (Minimum)</h3>
+        <p>Students are strongly encouraged to select their courses from the areas below.</p>
+        <table class="sc_courselist"><tbody>\(Self.header("Biophysics Courses"))\(Self.course("PHYS 326", "Biophysics"))\(Self.course("PHYS 364", "Modeling"))\(Self.header("Geophysics Courses"))\(Self.course("PHYS 337", "Geophysics"))</tbody></table>
+        """
+        let categories = JMUHTMLCatalogParser().parseProgramRequirements(
+            html, kind: .major, sourceURL: URL(string: "https://catalog.jmu.edu/programs/x/")!
+        ).requirements
+        #expect(categories.map(\.name) == ["Additional Courses"])
+        let additional = try #require(categories.first)
+        #expect(additional.requiredCredits == 9)
+        #expect(additional.selection == .chooseCredits(9))
+        #expect(!additional.courseOptions.isEmpty)
+        #expect(additional.courseOptions.allSatisfy { Set($0) == ["PHYS326", "PHYS364", "PHYS337"] })
+    }
+
+    @Test func choiceLinesAndOverlaysBecomeConstrainedSlots() throws {
+        // English B.A. "Restricted Electives": three text-only choice lines
+        // (7 courses, 21 credits) and three overlay lines that some of those
+        // courses must meet, with the named lists printed below.
+        func list(_ heading: String, _ codes: [String]) -> String {
+            "<h3>\(heading)</h3><table class=\"sc_courselist\"><tbody>" + codes.map { Self.course($0, $0) }.joined() + "</tbody></table>"
+        }
+        let html = """
+        <h1>Example, B.A.</h1><h2>Major Requirements</h2>
+        <table class="sc_courselist"><tbody>
+        \(Self.header("Core Courses"))\(Self.course("ENG 221", "Literature and Ideas"))\(Self.comment("Subtotal", hours: "3"))
+        \(Self.header("Restricted Electives"))
+        \(Self.comment("In addition to the core courses above, students must:"))
+        \(Self.comment("Choose one course at the 200 or 300 level", hours: "3"))
+        \(Self.comment("Choose four courses from the 300 level", hours: "12"))
+        \(Self.comment("Choose two approved 400-level courses from the &quot;Advanced Studies in...&quot; courses", hours: "6"))
+        \(Self.comment("See list of courses below to meet intermediate and advanced studies overlay requirements:"))
+        \(Self.comment("One course at the 300 or 400 level, pre-1700"))
+        \(Self.comment("One course at the 300 or 400 level, pre-1900"))
+        \(Self.comment("One course from the Identity, Diversity and Power selections"))
+        \(Self.comment("Subtotal", hours: "21"))
+        </tbody></table>
+        \(list("300 or 400 Level, Pre-1700", ["ENG 301", "ENG 401"]))
+        \(list("300 or 400 Level, Pre-1900", ["ENG 301", "ENG 325", "ENG 401"]))
+        \(list("Identity, Diversity and Power", ["ENG 359", "ENG 408"]))
+        \(list("400 Level", ["ENG 401", "ENG 403", "ENG 408"]))
+        """
+        let categories = JMUHTMLCatalogParser().parseProgramRequirements(
+            html, kind: .major, sourceURL: URL(string: "https://catalog.jmu.edu/programs/x/")!
+        ).requirements
+        #expect(categories.map(\.name) == ["Core Courses", "Restricted Electives"])
+        let electives = try #require(categories.last)
+        #expect(electives.requiredCredits == 21)
+        let slots = electives.courseOptions
+        #expect(slots.count == 7)
+        #expect(slots.contains([ElectivePool.token(subject: "ENG", minimumNumber: 200, maximumNumber: 399)]))
+        #expect(slots.filter { $0 == [ElectivePool.token(subject: "ENG", minimumNumber: 300, maximumNumber: 399)] }.count == 1)
+        // Each overlay holds one of the four 300-level slots.
+        #expect(slots.contains(["ENG301"]))
+        #expect(slots.contains(["ENG301", "ENG325"]))
+        #expect(slots.contains(["ENG359"]))
+        #expect(slots.filter { $0 == ["ENG401", "ENG403", "ENG408"] }.count == 2)
+        #expect(Set(electives.electivePoolSlots ?? []).count == 2)
+    }
+
+    private func parseConcentrations(intro: String, lists: [(String, [String])]) -> HTMLProgramRequirements {
+        let concentrations = lists.map { heading, codes in
+            "<h3>\(heading)</h3><table class=\"sc_courselist\"><tbody>" + codes.map { Self.course($0, $0) }.joined() + "</tbody></table>"
+        }.joined()
+        let html = """
+        <h1>Example, B.A.</h1><h2>Major Requirements</h2>
+        <table class="sc_courselist"><tbody>\(Self.header("Core Courses"))\(Self.course("ENG 221", "Literature and Ideas"))</tbody></table>
+        <h2>Concentrations</h2><p>\(intro)</p>\(concentrations)
+        """
+        return JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: URL(string: "https://catalog.jmu.edu/programs/x/")!)
+    }
+
+    @Test func optionalConcentrationListsAreChoices() throws {
+        // English B.A.: a concentration is nine credits from its list, if chosen.
+        let english = parseConcentrations(
+            intro: "In consultation with their advisors, students may choose nine credits of courses at the 300- or 400-level that acquaint them with the scope of one of the fields below.",
+            lists: [("World Literature", ["ENG 305", "ENG 306", "ENG 358", "ENG 360"]), ("Print Culture", ["ENG 313", "ENG 358", "ENG 415"])]
+        )
+        #expect(!english.concentrationSelectionRequired)
+        let world = try #require(english.concentrations.first { $0.name == "World Literature" }?.requirements)
+        #expect(world.count == 1)
+        #expect(world.first?.selection == .chooseCredits(9))
+        #expect(world.first?.requiredCredits == 9)
+        #expect(world.first?.courseOptions.allSatisfy { Set($0) == ["ENG305", "ENG306", "ENG358", "ENG360"] } == true)
+
+        // Sociology B.A.: "four or more courses from the following concentration groupings".
+        let sociology = parseConcentrations(
+            intro: "The sociology program encourages majors to select electives that create a coherent program of study suited to their special needs and interests. Such a focus would involve four or more courses from the following concentration groupings:",
+            lists: [("Markets and Cultures Concentration", ["SOCI 306", "SOCI 386", "SOCI 310", "SOCI 320", "SOCI 330"])]
+        )
+        #expect(!sociology.concentrationSelectionRequired)
+        let markets = try #require(sociology.concentrations.first?.requirements)
+        #expect(markets.count == 1)
+        #expect(markets.first?.selection == .chooseCourses(4))
+        #expect(markets.first?.requiredCredits == 12)
+    }
+
+    @Test func sectionsRepeatingATemplateAreTracks() throws {
+        // Modern Foreign Languages B.A.: a generic table, then one table per
+        // language with the same sections.
+        func language(_ name: String, _ subject: String) -> String {
+            """
+            <h2>\(name)</h2><table class="sc_courselist"><tbody>
+            \(Self.header("Language Foundations"))\(Self.course("\(subject) 300", "Language for Living"))\(Self.course("\(subject) 301", "Pop Culture"))
+            \(Self.header("Electives"))\(Self.comment("Choose three additional courses from the following list:", hours: "9"))
+            \(Self.course("\(subject) 330", "A"))\(Self.course("\(subject) 340", "B"))\(Self.course("\(subject) 350", "C"))\(Self.course("\(subject) 360", "D"))
+            </tbody></table>
+            """
+        }
+        let html = """
+        <h1>Modern Foreign Languages, B.A.</h1><h2>Major Requirements</h2>
+        <table class="sc_courselist"><tbody>
+        \(Self.header("Language Foundations"))\(Self.comment("300: Language for Living", hours: "3"))\(Self.comment("Subtotal", hours: "15"))
+        \(Self.header("Electives"))\(Self.comment("Choose 9 credits from the following:", hours: "9"))\(Self.comment("Subtotal", hours: "9"))
+        </tbody></table>
+        \(language("French", "FR"))\(language("Spanish", "SPAN"))
+        """
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: .major, sourceURL: URL(string: "https://catalog.jmu.edu/programs/x/")!)
+        #expect(parsed.concentrationSelectionRequired)
+        #expect(parsed.concentrations.map(\.name) == ["French", "Spanish"])
+        #expect(parsed.requirements.isEmpty)
+        let french = try #require(parsed.concentrations.first?.requirements)
+        #expect(french.map(\.name) == ["Language Foundations", "Electives"])
+        #expect(french.first?.courseOptions == [["FR300"], ["FR301"]])
+        #expect(french.last?.selection == .chooseCourses(3))
+    }
+
     @Test func nestedParenthesesBecomeOneRemark() {
         // Sport Communication minor: "SMAD 295 Practicum in Media Arts and Design ((taken for 3 credits))"
         let cleaned = JMUHTMLCatalogParser.cleanCourseTitle("Practicum in Media Arts and Design ((taken for 3 credits))")

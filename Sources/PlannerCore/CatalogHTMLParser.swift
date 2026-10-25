@@ -179,12 +179,20 @@ public struct JMUHTMLCatalogParser: Sendable {
         var categories: [RequirementCategory] = []
         let blocks = requirementBlocks(in: requirementSlice)
         var split = splitConcentrationBlocks(blocks)
+        // "Students may choose nine credits ... in one of the fields below":
+        // a concentration is optional and takes that much from its list.
+        let concentrationRule = optionalConcentrationRule(in: blocks)
+        if concentrationRule != nil { split.concentrationSelectionRequired = false }
 
         // "Choose one of the following options" groups of "Option N:" blocks
         // are alternatives: each option becomes its own track, inside the
         // concentration that holds it or, with none, beside the shared core.
         if split.concentrationRuns.isEmpty {
-            if let options = optionVariants(in: split.shared) {
+            if let tracks = repeatedSectionTracks(in: split.shared) {
+                split.shared = tracks.shared
+                split.concentrationRuns = tracks.runs
+                split.concentrationSelectionRequired = true
+            } else if let options = optionVariants(in: split.shared) {
                 split.shared = options.common
                 split.concentrationRuns = options.variants
                 split.concentrationSelectionRequired = true
@@ -198,6 +206,7 @@ public struct JMUHTMLCatalogParser: Sendable {
             }
         }
 
+        var sharedParsed: [(block: RequirementBlock, category: RequirementCategory)] = []
         for block in split.shared {
             if let parsed = category(from: block, catoid: catoid, usedCategoryIDs: &usedCategoryIDs, coursesByID: &coursesByID) {
                 // Once requirements split into tracks, a course-less row that
@@ -208,9 +217,10 @@ public struct JMUHTMLCatalogParser: Sendable {
                    parsed.name.lowercased().contains("option") {
                     continue
                 }
-                categories.append(parsed)
+                sharedParsed.append((block, parsed))
             }
         }
+        categories = foldingLevelChoices(foldingSuggestedLists(sharedParsed, coursesByID: coursesByID), coursesByID: coursesByID).map(\.category)
 
         let pageSubjects = Set(coursesByID.values.compactMap { ElectivePool.subjectAndNumber(of: $0.code)?.subject })
         categories = Self.foldingSubjectElectivePools(categories, subjects: pageSubjects)
@@ -235,16 +245,17 @@ public struct JMUHTMLCatalogParser: Sendable {
                 parsedRequirements.removeFirst()
             }
             let requirements = Self.foldingSubjectElectivePools(adjustedConcentrationRequirements(
-                from: mergingOptionGroups(parsedRequirements),
+                from: foldingLevelChoices(foldingSuggestedLists(mergingOptionGroups(parsedRequirements), coursesByID: coursesByID), coursesByID: coursesByID),
                 totalCredits: concentrationTotalCredits(in: run.blocks)
             ), subjects: pageSubjects)
-            guard !requirements.isEmpty else { return nil }
+            let ruled = concentrationRule.map { Self.applying($0, toConcentration: requirements, coursesByID: coursesByID) } ?? requirements
+            guard !ruled.isEmpty else { return nil }
             let cleanName = JMUHTMLCatalogParser.cleanConcentrationName(run.name)
             let displayName = cleanName.isEmpty ? run.name : cleanName
             return Concentration(
                 id: uniqueID(slug(from: displayName), used: &usedConcentrationIDs),
                 name: displayName,
-                requirements: requirements,
+                requirements: ruled,
                 verificationStatus: .partial
             )
         }
@@ -879,7 +890,12 @@ public struct JMUHTMLCatalogParser: Sendable {
                             currentHasOptionRows = true
                             continue
                         }
-                        if let areaHeader = currentAreaHeader, !isSectionHeader, !Self.isCreditAllowanceText(commentHeading) {
+                        // "12 credits of ENGR Technical Electives may include:" over a
+                        // list is the section's rule; the courses are its menu.
+                        let allowanceIntroducesList = Self.isCreditAllowanceText(commentHeading)
+                            && Self.introducesCourseList(commentHeading) && !currentHasCourses
+                        if let areaHeader = currentAreaHeader, !isSectionHeader,
+                           !Self.isCreditAllowanceText(commentHeading) || allowanceIntroducesList {
                             if !currentHasCourses {
                                 currentLines.append(commentHeading)
                                 currentMarks += commentMarks
@@ -1049,6 +1065,244 @@ public struct JMUHTMLCatalogParser: Sendable {
             note: "Any \(match[2].uppercased()) course numbered \(minimum) or above that isn't already required.",
             electivePoolSlots: Array(0..<slots)
         )
+    }
+
+    /// Lists under a "Suggested ..." heading ("Suggested Areas of Interest to
+    /// Complete the 9 Credit Hours") are where an open choice before them
+    /// ("Complete 9 credits approved by the department") draws from, not
+    /// requirements of their own. Their courses become that choice's menu;
+    /// with no open choice before them they are dropped.
+    private func foldingSuggestedLists(
+        _ parsed: [(block: RequirementBlock, category: RequirementCategory)],
+        coursesByID: [String: Course]
+    ) -> [(block: RequirementBlock, category: RequirementCategory)] {
+        func isSuggestion(_ block: RequirementBlock) -> Bool {
+            [block.heading, block.enclosingHeading ?? ""].contains {
+                $0.range(of: #"(?i)\bsuggested\b"#, options: .regularExpression) != nil
+            }
+        }
+        func isOpenChoice(_ category: RequirementCategory) -> Bool {
+            guard category.courseOptions.isEmpty, category.requiredCredits > 0 else { return false }
+            switch category.selection {
+            case .chooseCredits, .chooseCourses: return true
+            default: return false
+            }
+        }
+        var result: [(block: RequirementBlock, category: RequirementCategory)] = []
+        var openChoice: Int?
+        var menus: [Int: [[String]]] = [:]
+        for entry in parsed {
+            if isSuggestion(entry.block) {
+                if let openChoice {
+                    let groups = entry.category.choices.isEmpty ? entry.category.courseOptions : entry.category.choices
+                    menus[openChoice, default: []] += groups
+                }
+                continue
+            }
+            if isOpenChoice(entry.category) { openChoice = result.count }
+            result.append(entry)
+        }
+        for (index, groups) in menus {
+            var seen: Set<[String]> = []
+            let choices = groups.filter { !$0.isEmpty && seen.insert($0).inserted }
+            var category = result[index].category
+            category.choices = choices
+            category.courseOptions = RequirementSelection.slots(
+                choices: choices, selection: category.selection,
+                credits: { coursesByID[$0]?.credits ?? 3 }
+            ) ?? []
+            result[index].category = category
+        }
+        return result
+    }
+
+    /// A requirement with no course list whose rows say what to choose by
+    /// level ("Choose four courses from the 300 level", 12), as English B.A.'s
+    /// Restricted Electives does, gets one slot per course: a pool of the
+    /// program's subject at that level, or the list a line names ("two
+    /// approved 400-level courses" from "400 Level"). An overlay line ("One
+    /// course at the 300 or 400 level, pre-1700") that the same courses must
+    /// meet narrows one of those slots to its list. Lists a line names are
+    /// menus, not requirements of their own.
+    private func foldingLevelChoices(
+        _ parsed: [(block: RequirementBlock, category: RequirementCategory)],
+        coursesByID: [String: Course]
+    ) -> [(block: RequirementBlock, category: RequirementCategory)] {
+        struct LevelChoice { var count: Int; var levels: ClosedRange<Int>; var credits: Int; var list: Int? }
+        func words(_ text: String) -> Set<String> {
+            Set(text.lowercased().replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+                .split(separator: " ").map(String.init))
+        }
+        func levels(in text: String) -> ClosedRange<Int>? {
+            guard let match = text.lowercased().firstMatch(for: #"\b([1-4])00(?:\s*-?\s*(?:or|and|to|/)\s*([1-4])00)?\s*-?\s*level"#),
+                  match.count > 1, let low = Int(match[1]) else { return nil }
+            let high = match.count > 2 ? Int(match[2]) ?? low : low
+            return (min(low, high) * 100)...(max(low, high) * 100 + 99)
+        }
+        func number(of courseID: String) -> Int? {
+            coursesByID[courseID].flatMap { ElectivePool.subjectAndNumber(of: $0.code)?.number }
+        }
+
+        var result = parsed
+        var named: Set<Int> = []
+        for index in parsed.indices {
+            let (block, category) = parsed[index]
+            guard category.courseOptions.isEmpty else { continue }
+            let rows = Self.commentRows(in: block.body)
+            // The list after this requirement whose heading's words the line
+            // holds, the most specific one first.
+            func list(namedIn line: String) -> Int? {
+                let lineWords = words(line)
+                return parsed.indices
+                    .filter { $0 > index && !parsed[$0].category.courseOptions.isEmpty && parsed[$0].block.areaHeader == nil }
+                    .filter { words(parsed[$0].category.name).isSubset(of: lineWords) }
+                    .max { words(parsed[$0].category.name).count < words(parsed[$1].category.name).count }
+            }
+            var choices: [LevelChoice] = []
+            for row in rows {
+                guard let credits = row.hours,
+                      let rule = Self.selectionRule(text: row.text, hasMultiCourseGroups: false),
+                      case .chooseCourses(let count) = rule,
+                      let range = levels(in: row.text)
+                else { continue }
+                choices.append(LevelChoice(count: count, levels: range, credits: credits, list: list(namedIn: row.text)))
+            }
+            guard !choices.isEmpty else { continue }
+            let overlays = rows.filter { $0.hours == nil && $0.text.range(of: #"(?i)^\s*one course\b"#, options: .regularExpression) != nil }
+                .compactMap { list(namedIn: $0.text) }
+
+            // The program's subject: the one most of the named lists' courses share.
+            let listed = (choices.compactMap(\.list) + overlays).flatMap { parsed[$0].category.courseOptions.flatMap { $0 } }
+            let subjects = (listed.isEmpty ? Array(coursesByID.keys) : listed).compactMap { coursesByID[$0].flatMap { ElectivePool.subjectAndNumber(of: $0.code)?.subject } }
+            guard let subject = Dictionary(grouping: subjects, by: { $0 }).max(by: { $0.value.count < $1.value.count })?.key else { continue }
+
+            var slots: [(options: [String], levels: ClosedRange<Int>, isPool: Bool, group: Int)] = []
+            for (group, choice) in choices.enumerated() {
+                for _ in 0..<max(choice.count, 1) {
+                    if let list = choice.list {
+                        let courses = parsed[list].category.courseOptions.flatMap { $0 }
+                        let inRange = courses.filter { number(of: $0).map(choice.levels.contains) ?? false }
+                        slots.append((inRange.isEmpty ? courses : inRange, choice.levels, false, group))
+                    } else {
+                        slots.append(([ElectivePool.token(subject: subject, minimumNumber: choice.levels.lowerBound, maximumNumber: choice.levels.upperBound)], choice.levels, true, group))
+                    }
+                }
+            }
+            // Each overlay narrows a pool slot of the largest group it can.
+            let groupSizes = choices.map(\.count)
+            for overlay in overlays {
+                let courses = parsed[overlay].category.courseOptions.flatMap { $0 }
+                let candidates = slots.indices.filter { slot in
+                    slots[slot].isPool && courses.contains { number(of: $0).map(slots[slot].levels.contains) ?? false }
+                }
+                guard let slot = candidates.max(by: { groupSizes[slots[$0].group] < groupSizes[slots[$1].group] }) else { continue }
+                var seen: Set<String> = []
+                slots[slot].options = courses.filter { (number(of: $0).map(slots[slot].levels.contains) ?? false) && seen.insert($0).inserted }
+                slots[slot].isPool = false
+            }
+            named.formUnion(choices.compactMap(\.list) + overlays)
+
+            var updated = category
+            updated.requiredCredits = choices.reduce(0) { $0 + $1.credits }
+            updated.selection = .unknown
+            updated.choices = []
+            updated.courseOptions = slots.map(\.options)
+            let poolSlots = slots.indices.filter { slots[$0].isPool }
+            updated.electivePoolSlots = poolSlots.isEmpty ? nil : poolSlots
+            result[index].category = updated
+        }
+        return result.indices.filter { !named.contains($0) }.map { result[$0] }
+    }
+
+    /// A table's instruction rows in order: text and hours.
+    private static func commentRows(in body: String) -> [(text: String, hours: Int?)] {
+        body.matches(for: #"(?is)<tr\b[^>]*>(.*?)</tr>"#).compactMap { row in
+            guard let comment = row[0].firstMatch(for: #"(?is)<span\b[^>]*class="[^"]*\bcourselistcomment\b[^"]*"[^>]*>(.*?)</span>"#),
+                  comment.count > 1 else { return nil }
+            let text = HTMLCleaner.clean(comment[1].replacingOccurrences(of: #"(?is)<sup\b[^>]*>.*?</sup>"#, with: " ", options: .regularExpression))
+            let hours = row[0].firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>(.*?)</td>"#)
+                .flatMap { $0.count > 1 ? hoursColumnCredits(HTMLCleaner.clean($0[1])) : nil }
+            return (text, hours)
+        }
+    }
+
+    /// Sections that repeat an earlier section's area headers are tracks, one
+    /// of which the student follows: Modern Foreign Languages B.A. gives a
+    /// generic table (Language Foundations, Exploring Languages and Cultures,
+    /// Electives), then the same table for Arabic, French, German, Italian and
+    /// Spanish. The generic table is only a template and is dropped. Needs
+    /// two or more repeated headers and two or more tracks.
+    private func repeatedSectionTracks(in blocks: [RequirementBlock]) -> (shared: [RequirementBlock], runs: [(name: String, blocks: [RequirementBlock])])? {
+        let starts = blocks.indices.filter { blocks[$0].isStructuralHeading }
+        let sections = starts.enumerated().map { offset, start in
+            start..<(offset + 1 < starts.count ? starts[offset + 1] : blocks.endIndex)
+        }
+        func headers(_ section: Range<Int>) -> Set<String> {
+            Set(blocks[section].compactMap { $0.areaHeader?.lowercased() })
+        }
+        for (position, template) in sections.enumerated() {
+            let pattern = headers(template)
+            guard pattern.count >= 2 else { continue }
+            let level = blocks[template.lowerBound].level
+            let tracks = sections[(position + 1)...].filter {
+                blocks[$0.lowerBound].level == level && headers($0).isSuperset(of: pattern)
+            }
+            guard tracks.count >= 2 else { continue }
+            let removed = Set(([template] + tracks).flatMap { Array($0) })
+            return (
+                shared: blocks.indices.filter { !removed.contains($0) }.map { blocks[$0] },
+                runs: tracks.map { (name: blocks[$0.lowerBound].heading, blocks: Array(blocks[$0])) }
+            )
+        }
+        return nil
+    }
+
+    /// The amount an optional concentration takes, from the concentrations
+    /// section's intro: "students may choose nine credits of courses ... one
+    /// of the fields below" (9 credits), "encourages ... four or more courses
+    /// from the following concentration groupings" (4 courses). Nil when the
+    /// intro doesn't make concentrations optional or names no amount.
+    private func optionalConcentrationRule(in blocks: [RequirementBlock]) -> RequirementSelection? {
+        guard let intro = blocks.first(where: {
+            $0.isStructuralHeading && ($0.heading.lowercased().contains("concentrations") || isConcentrationSectionHeading($0))
+        }) else { return nil }
+        let text = HTMLCleaner.clean(intro.body)
+        guard text.range(of: #"(?i)\b(?:may|encourag\w*|suggest\w*|optional)\b"#, options: .regularExpression) != nil else { return nil }
+        if let match = text.lowercased().firstMatch(for: #"\b(\d+|two|three|four|five|six)\s+or\s+more\s+courses\b"#), match.count > 1 {
+            let count = Int(match[1]) ?? ["two": 2, "three": 3, "four": 4, "five": 5, "six": 6][match[1]] ?? 0
+            return count > 0 ? .chooseCourses(count) : nil
+        }
+        if case .chooseCredits(let credits)? = Self.selectionRule(text: text, hasMultiCourseGroups: false) {
+            return .chooseCredits(credits)
+        }
+        return nil
+    }
+
+    /// A concentration that is only course lists takes `rule` from all of
+    /// them. One that states its own choice ("Choose three of the
+    /// following") keeps it.
+    static func applying(_ rule: RequirementSelection, toConcentration requirements: [RequirementCategory], coursesByID: [String: Course]) -> [RequirementCategory] {
+        guard var first = requirements.first,
+              requirements.allSatisfy({ category in
+                  switch category.selection {
+                  case .allRequired, .unknown: return !category.courseOptions.isEmpty
+                  default: return false
+                  }
+              })
+        else { return requirements }
+        var seen: Set<String> = []
+        let courses = requirements.flatMap { $0.courseOptions.flatMap { $0 } }.filter { seen.insert($0).inserted }
+        let choices = courses.map { [$0] }
+        first.selection = rule
+        first.choices = choices
+        first.courseOptions = RequirementSelection.slots(choices: choices, selection: rule, credits: { coursesByID[$0]?.credits ?? 3 }) ?? []
+        switch rule {
+        case .chooseCredits(let credits): first.requiredCredits = credits
+        case .chooseCourses(let count): first.requiredCredits = count * ScheduleGenerator.electivePoolSlotCredits
+        default: break
+        }
+        first.courseRemarks = requirements.reduce(into: [:]) { $0.merge($1.courseRemarks) { a, _ in a } }
+        return [first]
     }
 
     /// "Finance electives include any 300- level or 400-level finance
@@ -1654,6 +1908,11 @@ public struct JMUHTMLCatalogParser: Sendable {
             if lowerBound > 0 { return .chooseCredits(lowerBound) }
             if let upperBound, upperBound > 0 { return .chooseCredits(upperBound) }
         }
+        // "12 credits of ENGR Technical Electives may include:" over a list.
+        if let match = lower.firstMatch(for: #"^\s*"# + number + #"\s+credit(?:s|\s+hours?)?\s+(?:of|in|from)\b[^.]*(?:may include|following)"#),
+           match.count > 1, let credits = value(match[1]), credits > 0 {
+            return .chooseCredits(credits)
+        }
         if lower.contains("one of the following") || lower.range(of: #"\bselect one\b"#, options: .regularExpression) != nil {
             return hasMultiCourseGroups ? .chooseGroups(1) : .chooseCourses(1)
         }
@@ -1950,6 +2209,12 @@ public struct JMUHTMLCatalogParser: Sendable {
     /// "9 credits of MATH electives at MATH 310 or above": a credit
     /// allowance with no course list, its own requirement.
     private static let creditAllowancePattern = #"(?i)^\s*(\d+)\s+credits?\s+(?:of|in)\b"#
+
+    /// A line that leads into the course rows under it ("... may include
+    /// (but are not limited to):", "... from the following:").
+    static func introducesCourseList(_ text: String) -> Bool {
+        text.range(of: #"(?i)(?:\bmay include\b|\bfollowing\b)[^.]*:?\s*$|:\s*$"#, options: .regularExpression) != nil
+    }
 
     private static func isCreditAllowanceText(_ text: String) -> Bool {
         text.range(of: creditAllowancePattern, options: .regularExpression) != nil

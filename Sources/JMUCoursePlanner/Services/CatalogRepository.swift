@@ -296,7 +296,11 @@ struct CatalogRepository {
     /// from subject pages.
     /// v24 combines both: caches from v22 lack degree data, v23 lacks
     /// repeated enrollments.
-    private static let cacheSchemaVersion = 24
+    /// v25 reads course menus as menus: "12 credits of ... may include:"
+    /// lists, "Suggested Areas" lists, English B.A.'s level choice lines and
+    /// overlays, optional concentrations that take N credits or courses from
+    /// their list, and per-language tracks.
+    private static let cacheSchemaVersion = 25
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

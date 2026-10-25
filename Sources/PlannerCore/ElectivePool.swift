@@ -11,19 +11,23 @@ public enum ElectivePool {
     /// Highest course number a pool reaches: 500+ are graduate courses.
     public static let maximumNumber = 499
 
-    public static func token(subject: String, minimumNumber: Int) -> String {
-        "\(prefix)\(subject.uppercased()):\(minimumNumber)"
+    /// "pool:ENG:300", or "pool:ENG:300:399" when the pool stops below the
+    /// graduate range ("four courses from the 300 level").
+    public static func token(subject: String, minimumNumber: Int, maximumNumber: Int = maximumNumber) -> String {
+        let base = "\(prefix)\(subject.uppercased()):\(minimumNumber)"
+        return maximumNumber < Self.maximumNumber ? "\(base):\(maximumNumber)" : base
     }
 
     public static func isToken(_ id: String) -> Bool {
         id.hasPrefix(prefix)
     }
 
-    static func rule(from token: String) -> (subject: String, minimumNumber: Int)? {
+    static func rule(from token: String) -> (subject: String, minimumNumber: Int, maximumNumber: Int)? {
         guard isToken(token) else { return nil }
         let parts = token.dropFirst(prefix.count).split(separator: ":")
-        guard parts.count == 2, let minimum = Int(parts[1]) else { return nil }
-        return (String(parts[0]), minimum)
+        guard parts.count == 2 || parts.count == 3, let minimum = Int(parts[1]) else { return nil }
+        let maximum = parts.count == 3 ? Int(parts[2]) ?? Self.maximumNumber : Self.maximumNumber
+        return (String(parts[0]), minimum, min(maximum, Self.maximumNumber))
     }
 
     /// Subject and number of a course code ("MATH 411" -> MATH, 411).
@@ -58,7 +62,7 @@ public extension Catalog {
                     guard let first = option.first, let rule = ElectivePool.rule(from: first) else { return option }
                     slots.insert(index)
                     let pool = sortedCourses
-                        .filter { $0.1 == rule.subject && (rule.minimumNumber...ElectivePool.maximumNumber).contains($0.2) }
+                        .filter { $0.1 == rule.subject && (rule.minimumNumber...max(rule.maximumNumber, rule.minimumNumber)).contains($0.2) }
                         .map(\.0)
                     let extras = option.dropFirst().filter { !pool.contains($0) }
                     return (pool + extras).filter { !required.contains($0) }

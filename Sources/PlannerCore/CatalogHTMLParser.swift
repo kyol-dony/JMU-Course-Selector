@@ -368,7 +368,8 @@ public struct JMUHTMLCatalogParser: Sendable {
         let hours = article[1]
             .firstMatch(for: #"(?is)<span\b[^>]*class="[^"]*\bdetail-hours_html\b[^"]*"[^>]*>(.*?)</span>"#)
             .flatMap { $0.count > 1 ? HTMLCleaner.clean($0[1]).replacingOccurrences(of: "Credits", with: "") : nil }
-        let credits = hours.flatMap(Self.hoursColumnCredits)
+        // Unlike a table's hours column, "0" here is a real 0-credit course.
+        let credits = hours?.range(of: #"^\s*0\s*$"#, options: .regularExpression) != nil ? 0 : hours.flatMap(Self.hoursColumnCredits)
         let maximum = hours?.firstMatch(for: #"^\s*\d+\s*[-–]\s*(\d+)"#)?.dropFirst().first.flatMap { Int($0) }
 
         guard description?.isEmpty == false || prerequisiteText?.isEmpty == false else { return nil }
@@ -1416,9 +1417,9 @@ public struct JMUHTMLCatalogParser: Sendable {
         // Under a section header the instruction rows state the rule; with
         // none, the header itself may be the instruction ("Choose at least
         // one organismal diversity course from the following list:").
-        let ruleText = block.areaHeader == nil ? legacyHeading
+        let ruleText = Self.withoutOtherOptionSentences(block.areaHeader == nil ? legacyHeading
             : block.descriptionLines.isEmpty ? block.heading
-            : block.descriptionLines.joined(separator: " ")
+            : block.descriptionLines.joined(separator: " "))
         let selection: RequirementSelection
         if let rule = Self.selectionRule(text: ruleText, hasMultiCourseGroups: hasMultiCourseGroups) {
             selection = rule
@@ -1492,6 +1493,17 @@ public struct JMUHTMLCatalogParser: Sendable {
             catalogDescription: description,
             courseRemarks: remarks
         )
+    }
+
+    /// Drops sentences about what students who skip this option do instead
+    /// ("Students who do not choose the licensure option will choose 24
+    /// credits of electives"): they state the other path's rule.
+    static func withoutOtherOptionSentences(_ text: String) -> String {
+        let sentences = text.components(separatedBy: ". ")
+        let kept = sentences.filter {
+            $0.range(of: #"(?i)\b(?:who|that)\s+(?:do|does|are|is)\s+not\b|\bnot\s+(?:pursuing|seeking|choosing)\b"#, options: .regularExpression) == nil
+        }
+        return kept.joined(separator: ". ")
     }
 
     /// An "Option 1:" label row: the start of one group of courses taken together.
@@ -1909,7 +1921,7 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func choiceCreditHours(heading: String, body: String) -> Int? {
-        let text = HTMLCleaner.clean("\(heading) \(body)").lowercased()
+        let text = Self.withoutOtherOptionSentences(HTMLCleaner.clean("\(heading) \(body)")).lowercased()
         if let match = text.firstMatch(for: #"(?i)(?:choose|select)\s+(\d+)\s+credit\s*hours?"#),
            match.count > 1,
            let credits = Int(match[1]) {
@@ -1939,7 +1951,7 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func choiceSelectionCount(heading: String, body: String) -> Int? {
-        let text = HTMLCleaner.clean("\(heading) \(body)").lowercased()
+        let text = Self.withoutOtherOptionSentences(HTMLCleaner.clean("\(heading) \(body)")).lowercased()
         if text.contains("one of the following") || text.contains("select one") {
             return 1
         }

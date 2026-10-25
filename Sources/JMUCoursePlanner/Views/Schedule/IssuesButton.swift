@@ -139,6 +139,9 @@ struct IssuesButton: View {
 
     private func subject(for warning: ConflictWarning) -> String {
         if warning.isSemesterLevel { return warning.semester.displayName }
+        if let repeated = placeholders[warning.courseID]?.repeatOf {
+            return catalog.coursesByID[repeated]?.code ?? repeated
+        }
         if PathwayPlaceholder.isPlaceholder(warning.courseID) {
             return placeholders[warning.courseID]?.categoryName ?? "Placeholder"
         }

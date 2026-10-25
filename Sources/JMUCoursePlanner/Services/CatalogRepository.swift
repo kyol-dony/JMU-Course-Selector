@@ -269,7 +269,10 @@ struct CatalogRepository {
     /// v21 keeps the lab of a "BIO 150 & 150L" row, takes credits from each
     /// course's own page, and turns "any 300- or 400-level finance course"
     /// into an elective pool.
-    private static let cacheSchemaVersion = 21
+    /// v22 reads 0-credit courses, ignores a rule stated for students who
+    /// skip an option ("who do not choose the licensure option"), and keeps
+    /// remarks such as "Two enrollments of one credit each".
+    private static let cacheSchemaVersion = 22
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

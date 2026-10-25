@@ -14,6 +14,14 @@ enum ScheduleItemLookup {
         )
     }
 
+    /// "2nd time" for a repeat slot; nil for anything else.
+    static func enrollmentLabel(for id: String, in pathway: Pathway?) -> String? {
+        guard let number = pathway?.enrollmentNumber(of: id) else { return nil }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .ordinal
+        return "\(formatter.string(from: NSNumber(value: number)) ?? "\(number)") time"
+    }
+
     static func accent(for course: Course, slots: [String: Int]) -> Color {
         CourseClassificationPalette.color(
             for: CourseClassificationPalette.classification(forCode: course.code),
@@ -363,7 +371,33 @@ struct SemesterColumnView: View {
     @ViewBuilder
     private func item(id: String, index: Int) -> some View {
         let appearance: CourseChip.Appearance = session?.itemID == id ? .ghost : .normal
-        if PathwayPlaceholder.isPlaceholder(id) {
+        if let spec = store.activePathway?.placeholders[id], let repeated = spec.repeatOf,
+           let course = catalog.coursesByID[repeated] {
+            // A later enrollment of a course taken more than once: that
+            // course again, with nothing to choose.
+            let label = ScheduleItemLookup.enrollmentLabel(for: id, in: store.activePathway)
+            CourseChip(
+                course: course,
+                creditOverride: spec.credits,
+                accentColor: ScheduleItemLookup.accent(for: course, slots: classificationSlots),
+                isHighlighted: isHighlighted(courseID: repeated),
+                isAffected: drag.affectedCourseIDs.contains(id),
+                appearance: appearance,
+                onRemove: { store.removeCourse(id) },
+                accessory: chipTag(for: id),
+                enrollmentLabel: label
+            )
+            .modifier(dragModifier(id: id, index: index) { store.showCourse(repeated) })
+            .contextMenu {
+                MoveToMenu(itemID: id, currentSemester: semester.id)
+                Divider()
+                Button("Remove \(course.code)\(label.map { " (\($0))" } ?? "")", role: .destructive) { store.removeCourse(id) }
+            }
+            .accessibilityActions { moveActions(for: id) }
+            .onContinuousHover { phase in
+                if case .active = phase { store.prefetchDropVerdicts(for: id) }
+            }
+        } else if PathwayPlaceholder.isPlaceholder(id) {
             let spec = ScheduleItemLookup.placeholderSpec(for: id, in: store.activePathway)
             PlaceholderChip(spec: spec, appearance: appearance, accessory: chipTag(for: id))
                 .modifier(dragModifier(id: id, index: index) { openPlaceholderPicker(id: id, spec: spec) })

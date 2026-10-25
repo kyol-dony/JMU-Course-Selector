@@ -422,7 +422,16 @@ struct ScheduleBoardView: View {
         if let session = drag.session {
             let appearance: CourseChip.Appearance = drag.isReturning ? .normal : .lifted
             Group {
-                if PathwayPlaceholder.isPlaceholder(session.itemID) {
+                if let spec = store.activePathway?.placeholders[session.itemID], let repeated = spec.repeatOf,
+                   let course = store.catalog?.coursesByID[repeated] {
+                    CourseChip(
+                        course: course,
+                        creditOverride: spec.credits,
+                        accentColor: ScheduleItemLookup.accent(for: course, slots: slots),
+                        appearance: appearance,
+                        enrollmentLabel: ScheduleItemLookup.enrollmentLabel(for: session.itemID, in: store.activePathway)
+                    )
+                } else if PathwayPlaceholder.isPlaceholder(session.itemID) {
                     PlaceholderChip(
                         spec: ScheduleItemLookup.placeholderSpec(for: session.itemID, in: store.activePathway),
                         appearance: appearance

@@ -275,6 +275,10 @@ final class PlanStore: ObservableObject {
     /// active pathway. Returns the catalog course for normal IDs. Used by views
     /// that render course chips so they don't blow up on placeholder IDs.
     func course(forID id: String) -> Course? {
+        // A repeat slot is its course again.
+        if let repeated = activePathway?.placeholders[id]?.repeatOf, let course = catalog?.coursesByID[repeated] {
+            return course
+        }
         if PathwayPlaceholder.isPlaceholder(id),
            let spec = activePathway?.placeholders[id] {
             return Course(
@@ -737,6 +741,9 @@ final class PlanStore: ObservableObject {
     }
 
     private func scheduleItemName(_ id: String) -> String {
+        if let repeated = activePathway?.placeholders[id]?.repeatOf {
+            return course(forID: repeated)?.code ?? repeated
+        }
         if PathwayPlaceholder.isPlaceholder(id) {
             return activePathway?.placeholders[id]?.categoryName ?? "Choose course"
         }

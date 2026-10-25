@@ -82,6 +82,8 @@ struct CatalogHTMLParserTests {
         #expect(credits("3") == (3, 3))
         #expect(credits("4-12") == (4, 12))
         #expect(credits("0-3") == (3, 3))
+        // MUS 195 Recital Attendance
+        #expect(credits("0") == (0, 0))
         #expect(credits("") == (nil, nil))
     }
 

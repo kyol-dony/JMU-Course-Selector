@@ -20,6 +20,8 @@ struct CourseChip: View {
     var onRemove: (() -> Void)?
     /// Optional content under the title, such as a warning tag.
     var accessory: AnyView? = nil
+    /// "2nd time" on a later enrollment of a course taken more than once.
+    var enrollmentLabel: String? = nil
 
     @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -42,6 +44,11 @@ struct CourseChip: View {
                         .font(DesignTokens.Typography.bodyEmphasized)
                         .foregroundStyle(DesignTokens.Colors.textPrimary)
                         .monospacedDigit()
+                    if let enrollmentLabel {
+                        Text(enrollmentLabel)
+                            .font(DesignTokens.Typography.small)
+                            .foregroundStyle(DesignTokens.Colors.textSecondary)
+                    }
                     Spacer(minLength: 0)
                     Text("\(CreditHoursFormatter.string(creditOverride ?? Double(course.credits))) cr")
                         .font(DesignTokens.Typography.small)

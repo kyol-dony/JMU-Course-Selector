@@ -472,12 +472,18 @@ public struct PlaceholderSpec: Codable, Hashable, Sendable {
     public var categoryName: String
     public var alternates: [String]
     public var credits: Double
+    /// Set on a later enrollment of a course the requirement takes more than
+    /// once ("Taken twice"). The slot is that course again, never a choice,
+    /// and is never swapped for its course ID, which stays unique in a plan.
+    /// Plans saved before repeats decode it as nil.
+    public var repeatOf: String?
 
-    public init(categoryID: String, categoryName: String, alternates: [String], credits: Double) {
+    public init(categoryID: String, categoryName: String, alternates: [String], credits: Double, repeatOf: String? = nil) {
         self.categoryID = categoryID
         self.categoryName = categoryName
         self.alternates = alternates
         self.credits = credits
+        self.repeatOf = repeatOf
     }
 }
 
@@ -1102,6 +1108,7 @@ public struct ScheduleGenerator: Sendable {
         // satisfy a Statistics elective without scheduling it twice.
         var seen = plannedCourseIDs
         var result: [String] = []
+        var repeatedCourseIDs: Set<String> = []
         for category in program.requirements {
             if Task.isCancelled { break }
             let lowerName = legacyKeywordText(category)
@@ -1211,11 +1218,23 @@ public struct ScheduleGenerator: Sendable {
                     available.contains($0) && !consumed.contains($0)
                 }) {
                     consumed.insert(match)
+                    // A course an earlier requirement already repeats on its
+                    // own ("lessons in jazz" after "lessons in the primary
+                    // instrument") is taken again here in full.
+                    let repeatsSeparately = option.count == 1 && repeatedCourseIDs.contains(match)
+                        && repeatedEnrollment(of: match, in: category) != nil
                     // Scheduled once, for whichever requirement lists it outright.
-                    if (seen.contains(match) || anticipatedCourses.contains(match)) && !completed.contains(match) {
+                    if (seen.contains(match) || anticipatedCourses.contains(match)) && !completed.contains(match) && !repeatsSeparately {
                         categoryReusedCredits += optionCredits
                     }
                     plannedCredits += Double(optionCredits)
+                    if option.count == 1 {
+                        plannedCredits += appendRepeats(
+                            of: match, in: category, firstTakenHere: !repeatsSeparately,
+                            anchors: anchors, seen: &seen, result: &result, placeholders: &placeholders,
+                            repeatedCourseIDs: &repeatedCourseIDs
+                        )
+                    }
                     continue
                 }
 
@@ -1238,12 +1257,57 @@ public struct ScheduleGenerator: Sendable {
                         result.append(pick)
                     }
                     consumed.insert(pick)
+                    plannedCredits += appendRepeats(
+                        of: pick, in: category, firstTakenHere: true,
+                        anchors: anchors, seen: &seen, result: &result, placeholders: &placeholders,
+                        repeatedCourseIDs: &repeatedCourseIDs
+                    )
                 }
                 plannedCredits += Double(optionCredits)
             }
         }
         plannedCourseIDs.formUnion(result.filter { !PathwayPlaceholder.isPlaceholder($0) })
         return result
+    }
+
+    /// How many times `category` takes `courseID`, from its catalog remark.
+    private func repeatedEnrollment(of courseID: String, in category: RequirementCategory) -> RepeatedEnrollment? {
+        category.courseRemarks[courseID]?.lazy.compactMap(RepeatedEnrollment.init(remark:)).first
+    }
+
+    /// Repeat slots for the later enrollments of a course `category` takes
+    /// more than once. `firstTakenHere` is false when this requirement needs
+    /// all its enrollments on top of another requirement's. Enrollments a
+    /// kept part of the plan already holds count. Returns the credits added.
+    private func appendRepeats(
+        of courseID: String,
+        in category: RequirementCategory,
+        firstTakenHere: Bool,
+        anchors: AnchoredScheduleContext?,
+        seen: inout Set<String>,
+        result: inout [String],
+        placeholders: inout [String: PlaceholderSpec],
+        repeatedCourseIDs: inout Set<String>
+    ) -> Double {
+        guard let enrollment = repeatedEnrollment(of: courseID, in: category) else { return 0 }
+        repeatedCourseIDs.insert(courseID)
+        let kept = (anchors?.placeholders ?? [:]).values.filter { $0.repeatOf == courseID && $0.categoryID == category.id }.count
+        let needed = enrollment.count - (firstTakenHere ? 1 : 0) - kept
+        guard needed > 0 else { return 0 }
+        let credits = Double(enrollment.creditsEach ?? catalog.coursesByID[courseID]?.credits ?? Self.electivePoolSlotCredits)
+        for _ in 0..<needed {
+            let id = unusedPlaceholderID(categoryID: "\(category.id)-repeat", startingAt: 0, placeholders: placeholders, reservedIDs: anchors?.reservedPlaceholderIDs ?? [])
+            seen.insert(id)
+            result.append(id)
+            placeholders[id] = PlaceholderSpec(
+                categoryID: category.id,
+                categoryName: category.name,
+                alternates: [],
+                credits: credits,
+                repeatOf: courseID
+            )
+        }
+        return credits * Double(needed)
     }
 
     private func appendSelectableElectivePlaceholders(
@@ -1456,6 +1520,19 @@ public struct ScheduleGenerator: Sendable {
         return labFor
     }
 
+    /// Each repeat slot's previous enrollment of the same course: the course
+    /// itself, then the repeats in list order.
+    static func previousEnrollments(in courseIDs: [String], placeholders: [String: PlaceholderSpec]) -> [String: String] {
+        var last: [String: String] = [:]
+        var previous: [String: String] = [:]
+        for id in courseIDs {
+            guard let repeated = placeholders[id]?.repeatOf else { continue }
+            previous[id] = last[repeated] ?? repeated
+            last[repeated] = id
+        }
+        return previous
+    }
+
     private func buildSemesters(
         courseIDs: [String],
         completedAtStart: Set<String>,
@@ -1477,6 +1554,7 @@ public struct ScheduleGenerator: Sendable {
         var emptySemesterCount = 0
         let resolver = PrereqRuleResolver(catalog: catalog)
         let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
+        let previousEnrollment = Self.previousEnrollments(in: courseIDs, placeholders: placeholders)
         // Unresolved slots already placed (here or in the preserved prefix)
         // can conditionally supply a later course's prerequisite. Courses
         // admitted that way stay constraints for the rest of the build, but
@@ -1537,8 +1615,15 @@ public struct ScheduleGenerator: Sendable {
                         return nil
                     }
                     courseCredits = spec.credits
-                    courseAvailability = nil
-                    prerequisiteExpr = .empty
+                    if let repeated = spec.repeatOf {
+                        // A repeat follows the enrollment before it, one a
+                        // semester, in the terms the course is offered.
+                        courseAvailability = catalog.coursesByID[repeated]?.availability
+                        prerequisiteExpr = previousEnrollment[courseID].map(PrereqExpr.course) ?? .empty
+                    } else {
+                        courseAvailability = nil
+                        prerequisiteExpr = .empty
+                    }
                 } else if let course = catalog.coursesByID[courseID] {
                     courseCredits = Double(course.credits)
                     courseAvailability = course.availability
@@ -2660,6 +2745,11 @@ public struct ProgressCalculator: Sendable {
         let pathwayCourseIDs = pathway.semesters.flatMap(\.courseIDs).filter { !PathwayPlaceholder.isPlaceholder($0) }
         let completedCourseIDs = Set(pathwayCourseIDs).union(transferCredits.flatMap(\.courseIDs))
         let coursesByID = catalog.coursesByID
+        // A repeat slot is a planned enrollment of a course its requirement
+        // takes more than once, not an unfilled choice.
+        let repeatSlots = pathway.semesters.flatMap(\.courseIDs).compactMap { id in
+            pathway.placeholders[id].flatMap { $0.repeatOf == nil ? nil : $0 }
+        }
 
         func progressRow(category: RequirementCategory, idPrefix: String = "", namePrefix: String = "") -> CategoryProgress {
             // Each course fills at most one option, so slots sharing a menu
@@ -2681,12 +2771,15 @@ public struct ProgressCalculator: Sendable {
                     let enrolled = pathway.semesters.first { $0.courseIDs.contains(completed) }?.creditOverrides[completed]
                     return total + (earned ?? enrolled ?? Double(course.credits))
                 }
+            let repeatCredits = repeatSlots
+                .filter { $0.categoryID == category.id && completedCourseIDs.contains($0.repeatOf ?? "") }
+                .reduce(0.0) { $0 + $1.credits }
             let id = idPrefix.isEmpty ? category.id : "\(idPrefix)::\(category.id)"
             let name = namePrefix.isEmpty ? category.name : "\(namePrefix): \(category.name)"
             return CategoryProgress(
                 id: id,
                 name: name,
-                completedCredits: min(completedCredits, Double(category.requiredCredits)),
+                completedCredits: min(completedCredits + repeatCredits, Double(category.requiredCredits)),
                 requiredCredits: category.requiredCredits,
                 verificationStatus: category.verificationStatus
             )

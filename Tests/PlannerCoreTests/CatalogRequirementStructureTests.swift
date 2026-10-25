@@ -351,6 +351,17 @@ struct CatalogRequirementStructureTests {
         #expect(slot == ["FIN420", "ACTG313", "BLAW360"])
     }
 
+    @Test func aSentenceAboutTheOtherOptionIsNotTheRule() throws {
+        // Inclusive Early Childhood Education B.S. "Licensure Requirements or Electives"
+        let licensure = try #require(parseSnippet(
+            Self.header("Licensure Requirements or Electives", hours: "24")
+            + Self.comment("Students who do not choose the licensure option will choose 24 credits of electives.")
+            + Self.course("IECE 480", "Student Teaching") + Self.course("IECE 481", "Seminar")
+        ).first)
+        #expect(licensure.selection != .chooseCredits(24))
+        #expect(licensure.courseOptions == [["IECE480"], ["IECE481"]])
+    }
+
     @Test func nestedParenthesesBecomeOneRemark() {
         // Sport Communication minor: "SMAD 295 Practicum in Media Arts and Design ((taken for 3 credits))"
         let cleaned = JMUHTMLCatalogParser.cleanCourseTitle("Practicum in Media Arts and Design ((taken for 3 credits))")

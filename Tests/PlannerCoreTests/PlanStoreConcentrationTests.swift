@@ -36,7 +36,7 @@ struct PlanStoreConcentrationTests {
                 )
             ]
         )
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = Catalog.fixture(courses: [cs149, cs159], program: program)
         store.plan.programID = program.id
         store.plan.pathways = [
@@ -68,7 +68,7 @@ struct PlanStoreConcentrationTests {
 
     @Test("selecting a major with concentrations requires concentration")
     func majorWithConcentrationsRequiresSelection() {
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = Catalog.fixture(
             courses: [],
             program: Program.fixture(
@@ -96,7 +96,7 @@ struct PlanStoreConcentrationTests {
 
     @Test("removing a course resolved from an open-elective placeholder restores the placeholder")
     func removingResolvedOpenElectiveRestoresPlaceholder() throws {
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = Catalog.fixture(
             courses: [
                 Course(id: "ART200", code: "ART 200", title: "Studio Art", credits: 3, availability: [.fall, .spring], prerequisites: [])
@@ -145,7 +145,7 @@ struct PlanStoreConcentrationTests {
 
     @Test("removing a resolved course rebuilds a missing placeholder spec from stale data")
     func removingResolvedCourseRebuildsMissingSpec() throws {
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = Catalog.fixture(
             courses: [
                 Course(id: "ART200", code: "ART 200", title: "Studio Art", credits: 3, availability: [.fall, .spring], prerequisites: [])
@@ -204,7 +204,7 @@ struct PlanStoreConcentrationTests {
             requirementDataComplete: true,
             sourceNote: "Fixture"
         )
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = Catalog.fixture(courses: [], program: statistics)
 
         store.selectProgram(statistics)
@@ -229,7 +229,7 @@ struct PlanStoreConcentrationTests {
             title: "Some Major",
             requirements: [literature]
         )
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = Catalog.fixture(
             courses: [
                 Course(id: "ENG221", code: "ENG 221", title: "Literature Survey", credits: 3, availability: [.fall, .spring], prerequisites: [])
@@ -279,7 +279,7 @@ struct PlanStoreConcentrationTests {
             ]
         )
         let chemistry = Program.fixture(id: "chemistry-bs", title: "Chemistry, B.S.", requirements: [])
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = Catalog(
             source: CatalogSource(catalogYear: "Fixture", issueDate: .distantPast, retrievedDate: .distantPast, sourceURLs: [], retrievalNotes: []),
             programs: [physics, chemistry],

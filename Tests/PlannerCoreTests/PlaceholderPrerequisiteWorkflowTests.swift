@@ -18,7 +18,7 @@ struct PlaceholderPrerequisiteWorkflowTests {
     }
 
     private func store(_ catalog: Catalog, _ path: Pathway) -> (PlanStore, UndoManager) {
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = catalog
         store.plan.programID = F.programID
         store.plan.pathways = [path]

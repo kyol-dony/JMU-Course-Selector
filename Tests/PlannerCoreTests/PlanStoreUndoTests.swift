@@ -12,7 +12,7 @@ struct PlanStoreUndoTests {
     static let fall27 = SemesterIdentity(year: 2027, term: .fall)
 
     private func makeStore(groupsByEvent: Bool = false) -> (PlanStore, UndoManager) {
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = Catalog.fixture(
             courses: [
                 Course(id: "CS149", code: "CS 149", title: "Intro Programming", credits: 3, availability: [.fall, .spring], prerequisites: []),

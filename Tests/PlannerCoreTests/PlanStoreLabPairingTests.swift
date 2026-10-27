@@ -11,7 +11,7 @@ struct PlanStoreLabPairingTests {
     static let genEd = PathwayPlaceholder.id(categoryID: "gened-c3pp", optionIndex: 0)
 
     private func makeStore(fall: [String] = [], spring: [String] = []) -> (PlanStore, UndoManager) {
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = LabPairingTests.catalog()
         store.plan.pathways = [Pathway(
             id: "path",

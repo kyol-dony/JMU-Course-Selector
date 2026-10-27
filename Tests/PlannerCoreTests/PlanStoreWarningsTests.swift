@@ -11,7 +11,7 @@ struct PlanStoreWarningsTests {
     static let fall27 = SemesterIdentity(year: 2027, term: .fall)
 
     func makeStore() -> PlanStore {
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = Catalog.fixture(
             courses: [
                 Course(id: "MATH231", code: "MATH 231", title: "Calculus I", credits: 4, availability: [.fall, .spring], prerequisites: []),

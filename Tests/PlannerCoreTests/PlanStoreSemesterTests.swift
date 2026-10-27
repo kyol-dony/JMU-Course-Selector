@@ -14,7 +14,7 @@ struct PlanStoreSemesterTests {
     static let placeholderID = PathwayPlaceholder.id(categoryID: "gened", optionIndex: 0)
 
     private func makeStore() -> (PlanStore, UndoManager) {
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = Catalog.fixture(
             courses: [Course(id: "CS149", code: "CS 149", title: "Intro", credits: 3, availability: [.fall, .spring], prerequisites: [])],
             program: Program.fixture(id: "p", title: "P", requirements: [])

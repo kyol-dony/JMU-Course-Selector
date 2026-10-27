@@ -49,7 +49,7 @@ struct PlaceholderDependencyPresentationTests {
 
     @Test func openPickerRevisionUpdatesSupportingLabels() throws {
         let f = F.makeInput(slots: [["A", "B"]], dependencies: [.course("A")])
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = f.catalog
         var pathway = f.input.pathway
         pathway.semesters.append(SemesterPlan(id: Self.fall27, courseIDs: []))

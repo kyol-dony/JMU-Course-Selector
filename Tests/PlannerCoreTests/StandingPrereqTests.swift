@@ -446,7 +446,7 @@ struct StandingSemesterDeleteTests {
             default: SemesterPlan(id: id, courseIDs: ["FILL"])
             }
         })
-        let store = PlanStore()
+        let store = PlanStore.temporary()
         store.catalog = StandingWarningTests.catalog()
         store.plan.pathways = [pathway]
         store.plan.activePathwayID = pathway.id

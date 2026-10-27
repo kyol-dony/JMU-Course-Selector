@@ -45,7 +45,7 @@ final class PlanStore: ObservableObject {
     private var partialGenerationTask: Task<Pathway, any Error>?
     private let anchoredGenerator: any AnchoredScheduleGenerating
 
-    private let storageDirectory: URL?
+    let storageDirectory: URL?
     init(storageDirectory: URL? = nil, anchoredGenerator: any AnchoredScheduleGenerating = LocalAnchoredScheduleGenerator()) {
         self.storageDirectory = storageDirectory
         self.anchoredGenerator = anchoredGenerator

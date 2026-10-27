@@ -207,6 +207,40 @@ struct OptionChoicePlanTests {
         #expect(plan.pathways[0].placeholders[newSlot]?.categoryID == "\(mathRequirement.id)--option-2--0")
     }
 
+    /// The old Option 1 listed its "one of MATH 411/431/434/435" slot
+    /// before its three elective slots; the new Option 1 has the elective
+    /// part first. Slots follow their courses, not their position.
+    @Test func migrationMapsRealOptionOneSlotsByContent() throws {
+        let math = try Self.realProgram("_live_math_bs.html", id: "math-bs", kind: .major)
+        let catalog = Self.realCatalog([math])
+        let requirement = try Self.realMathRequirement(try #require(catalog.programsByID["math-bs"]))
+        let pool = try #require(requirement.options?[0].parts[0].courseOptions.first)
+        let oneOf = ["MATH411", "MATH431", "MATH434", "MATH435"]
+        func old(_ k: Int) -> String { "__pl::option-1::\(k)" }
+        func spec(_ alternates: [String]) -> PlaceholderSpec {
+            PlaceholderSpec(categoryID: "option-1", categoryName: "Option 1", alternates: alternates, credits: 3)
+        }
+        var plan = SavedStudentPlan(
+            programID: "math-bs", concentrationID: "\(Self.mathTrack)-option-1",
+            pathways: [Pathway(id: "path-1", name: "Balanced", semesters: [
+                SemesterPlan(id: Self.fall26, courseIDs: ["MATH411", old(1)]),
+                SemesterPlan(id: Self.spring27, courseIDs: [old(2), old(3)])
+            ], placeholders: [old(0): spec(oneOf), old(1): spec(pool), old(2): spec(pool), old(3): spec(pool)],
+               resolvedPlaceholders: [old(0): "MATH411"])]
+        )
+        plan = OptionChoiceMigration.migrate(plan, catalog: catalog, completed: [])
+        let pathway = plan.pathways[0]
+        func new(_ part: Int, _ index: Int) -> String { Self.slot("option-1", part: part, index, requirement: requirement.id) }
+        #expect(pathway.resolvedPlaceholders == [new(1, 0): "MATH411"])
+        #expect(pathway.placeholders[new(1, 0)]?.categoryID == "\(requirement.id)--option-1--1")
+        #expect(pathway.placeholders[new(1, 0)]?.alternates == oneOf)
+        #expect(pathway.semesters[0].courseIDs == ["MATH411", new(0, 0)])
+        #expect(pathway.semesters[1].courseIDs == [new(0, 1), new(0, 2)])
+        for index in 0..<3 {
+            #expect(pathway.placeholders[new(0, index)]?.categoryID == "\(requirement.id)--option-1--0")
+        }
+    }
+
     /// An upgrade first opens the plan on the bundled seed, whose Math B.S.
     /// has no requirements or concentrations, then on the refreshed catalog.
     /// The old "Option 2" concentration must survive the seed so the

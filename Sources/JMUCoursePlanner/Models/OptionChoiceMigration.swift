@@ -31,8 +31,9 @@ enum OptionChoiceMigration {
     /// concentration whose id is the old id's longest prefix) with an option
     /// whose id is the old id's suffix; set optionChoices[key], set
     /// concentrationID to that concentration (or nil), and rewrite pathway
-    /// placeholders: old categoryID == option.id, slot k → the k-th slot
-    /// across the chosen option's materialized parts, in semesters,
+    /// placeholders: old categoryID == option.id, each old slot → the slot
+    /// of the chosen option's materialized parts whose menu matches its own
+    /// (`slotMapping`), in semesters,
     /// `placeholders` (spec categoryID too) and `resolvedPlaceholders` keys.
     /// Also fills a default choice (`RequirementOption.defaultOptionID`) for
     /// every option requirement without one. Idempotent.
@@ -111,14 +112,16 @@ enum OptionChoiceMigration {
         let slots = parts.flatMap { part in part.courseOptions.indices.map { (part: part, index: $0) } }
         let oldPrefix = PathwayPlaceholder.prefix + found.option.id + "::"
 
-        func target(_ oldID: String) -> (id: String, part: RequirementCategory)? {
-            guard oldID.hasPrefix(oldPrefix), let k = Int(oldID.dropFirst(oldPrefix.count)), slots.indices.contains(k) else { return nil }
-            let slot = slots[k]
-            return (PathwayPlaceholder.id(categoryID: slot.part.id, optionIndex: slot.index), slot.part)
-        }
-
         for pathwayIndex in plan.pathways.indices {
             var pathway = plan.pathways[pathwayIndex]
+            let oldIDs = Set(pathway.placeholders.keys).union(pathway.resolvedPlaceholders.keys)
+                .union(pathway.semesters.flatMap(\.courseIDs))
+                .filter { $0.hasPrefix(oldPrefix) && Int($0.dropFirst(oldPrefix.count)) != nil }
+            let mapping = slotMapping(oldIDs, in: pathway, to: slots.map { $0.part.courseOptions[$0.index] })
+            func target(_ oldID: String) -> (id: String, part: RequirementCategory)? {
+                guard let slot = mapping[oldID].map({ slots[$0] }) else { return nil }
+                return (PathwayPlaceholder.id(categoryID: slot.part.id, optionIndex: slot.index), slot.part)
+            }
             for semesterIndex in pathway.semesters.indices {
                 pathway.semesters[semesterIndex].courseIDs = pathway.semesters[semesterIndex].courseIDs.map { target($0)?.id ?? $0 }
             }
@@ -142,5 +145,40 @@ enum OptionChoiceMigration {
             )
             plan.pathways[pathwayIndex] = pathway
         }
+    }
+
+    /// Sends each old slot to the new slot whose menu matches its own best
+    /// (by shared courses over all courses), so a reordered option keeps its
+    /// slots: the old Option 1 put "one of MATH 411/431/434/435" before its
+    /// electives, the new one after them. Slots matching nothing (an
+    /// unresolved elective pool, a slot without a spec) take the remaining
+    /// new slots in order.
+    private static func slotMapping(_ oldIDs: Set<String>, in pathway: Pathway, to newSlots: [[String]]) -> [String: Int] {
+        func order(_ id: String) -> Int { Int(id.components(separatedBy: "::").last ?? "") ?? 0 }
+        let old = oldIDs.sorted { order($0) < order($1) }
+        let menus = old.map { id in
+            Set(pathway.placeholders[id]?.alternates ?? []).union(pathway.resolvedPlaceholders[id].map { [$0] } ?? [])
+        }
+        var pairs: [(score: Double, old: Int, new: Int)] = []
+        for (oldIndex, menu) in menus.enumerated() where !menu.isEmpty {
+            for (newIndex, slot) in newSlots.enumerated() {
+                let shared = menu.intersection(slot).count
+                guard shared > 0 else { continue }
+                pairs.append((Double(shared) / Double(menu.union(slot).count), oldIndex, newIndex))
+            }
+        }
+        pairs.sort { ($0.score, -$0.old, -$0.new) > ($1.score, -$1.old, -$1.new) }
+        var mapping: [String: Int] = [:]
+        var used: Set<Int> = []
+        for pair in pairs where mapping[old[pair.old]] == nil && !used.contains(pair.new) {
+            mapping[old[pair.old]] = pair.new
+            used.insert(pair.new)
+        }
+        var free = newSlots.indices.filter { !used.contains($0) }.makeIterator()
+        for id in old where mapping[id] == nil {
+            guard let next = free.next() else { break }
+            mapping[id] = next
+        }
+        return mapping
     }
 }

@@ -76,6 +76,45 @@ struct ElectivePoolTests {
         #expect(trackElectives.courseOptions.first?.contains("MATH410") == false)
     }
 
+    @Test("an option's required-courses part takes its credits from the catalog's courses")
+    func optionPartCreditsComeFromCourses() throws {
+        // The page's estimate (6) for CHEM 241 & 241L, a 3- and a 1-credit
+        // course; a slot of alternatives counts its largest course.
+        let option1 = RequirementOption(id: "option-1", label: "Option 1", parts: [
+            RequirementCategory(id: "required-courses", name: "Required courses", requiredCredits: 6,
+                                courseOptions: [["CHEM241"], ["CHEM241L"]], selection: .allRequired)
+        ])
+        let option2 = RequirementOption(id: "option-2", label: "Option 2", parts: [
+            RequirementCategory(id: "required-courses", name: "Required courses", requiredCredits: 12,
+                                courseOptions: [["PHYS140", "PHYS240"], ["CHEM131"]], selection: .allRequired),
+            RequirementCategory(id: "choose", name: "Choose one", requiredCredits: 3,
+                                courseOptions: [["CHEM241", "PHYS240"]], selection: .chooseCourses(1))
+        ])
+        let option3 = RequirementOption(id: "option-3", label: "Option 3", parts: [
+            RequirementCategory(id: "required-courses", name: "Required courses", requiredCredits: 5,
+                                courseOptions: [["CHEM131"], ["CHEM999"]], selection: .allRequired)
+        ])
+        let options = RequirementCategory(
+            id: "choose-one-of-the-following-options", name: "Options", requiredCredits: 4,
+            courseOptions: [["CHEM241"], ["CHEM241L"]], selection: .allRequired, options: [option1, option2, option3]
+        )
+        let minor = Program(
+            id: "chem", title: "Chem", degreeType: nil, kind: .minor, college: "X", department: "X", catalogPage: nil, totalCredits: nil,
+            requirements: [options], verificationStatus: .partial, requirementDataComplete: true, sourceNote: "Fixture"
+        )
+        let extra = [Self.course("CHEM 241"), Self.course("CHEM 241L", credits: 1), Self.course("PHYS 140"),
+                     Self.course("PHYS 240", credits: 4), Self.course("CHEM 131")]
+        let resolved = try #require(Self.catalog(programs: [minor], extraCourses: extra).resolvingElectivePools().programsByID["chem"])
+        let parts = try #require(resolved.requirements.first?.options).map(\.parts)
+        #expect(parts[0][0].requiredCredits == 4)
+        #expect(parts[1][0].requiredCredits == 7)
+        // Only required courses are summed; a choice keeps its own credits.
+        #expect(parts[1][1].requiredCredits == 3)
+        // CHEM 999 isn't in the catalog: the page's estimate stays.
+        #expect(parts[2][0].requiredCredits == 5)
+        #expect(resolved.requirements.first?.requiredCredits == 4)
+    }
+
     @Test("a concentration's pool also excludes the program's own required courses")
     func resolvesConcentrationPool() throws {
         var major = Program.fixture(id: "m", title: "Math", requirements: [

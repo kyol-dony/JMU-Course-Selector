@@ -43,8 +43,11 @@ public extension Catalog {
     /// Replaces elective-pool tokens with every catalog course in the pool's
     /// subject and number range, minus courses the program (or the pool's
     /// concentration) already requires outright: core courses aren't
-    /// electives. Records the slots in `electivePoolSlots`. Idempotent.
+    /// electives. Records the slots in `electivePoolSlots`. Also gives each
+    /// option part of required courses the credits of those courses (each
+    /// slot's largest), which the page parser can only estimate. Idempotent.
     func resolvingElectivePools() -> Catalog {
+        let coursesByID = coursesByID
         let sortedCourses = courses
             .compactMap { course in ElectivePool.subjectAndNumber(of: course.code).map { (course.id, $0.subject, $0.number) } }
             .sorted { $0.0 < $1.0 }
@@ -77,7 +80,15 @@ public extension Catalog {
                 // the surrounding requirements are excluded.
                 category.options = category.options?.map { option in
                     var option = option
-                    option.parts = resolve(option.parts, excluding: required)
+                    option.parts = resolve(option.parts, excluding: required).map { part in
+                        var part = part
+                        let slotCredits = part.courseOptions.map { $0.compactMap { coursesByID[$0]?.credits }.max() }
+                        if part.selection == .allRequired, (part.electivePoolSlots ?? []).isEmpty,
+                           !slotCredits.isEmpty, !slotCredits.contains(nil) {
+                            part.requiredCredits = slotCredits.reduce(0) { $0 + ($1 ?? 0) }
+                        }
+                        return part
+                    }
                     return option
                 }
                 return category

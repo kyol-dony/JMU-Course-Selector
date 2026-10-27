@@ -1150,8 +1150,12 @@ public struct ScheduleGenerator: Sendable {
         var seen = plannedCourseIDs
         var result: [String] = []
         var repeatedCourseIDs: Set<String> = []
-        for category in program.requirements {
+        // Courses the parts of one option requirement have counted, by
+        // requirement: a course meets one part only.
+        var optionConsumed: [String: Set<String>] = [:]
+        for category in Self.specificOptionPartsFirst(program.requirements) {
             if Task.isCancelled { break }
+            let optionRequirementID = OptionPartID.parse(category.id)?.requirementID
             let lowerName = legacyKeywordText(category)
             let rule = behavior(for: category)
             // Required categories are mandatory in full — every option must
@@ -1195,6 +1199,7 @@ public struct ScheduleGenerator: Sendable {
                 for: category,
                 completed: completed,
                 plannedCourseIDs: plannedCourseIDs.union(anticipatedCourses),
+                claimedBySiblingParts: optionConsumed[optionRequirementID ?? ""] ?? [],
                 seen: &seen,
                 result: &result,
                 placeholders: &placeholders,
@@ -1245,6 +1250,8 @@ public struct ScheduleGenerator: Sendable {
             // category. Other programs/categories can still use their concrete
             // equivalence, but another row here needs a distinct choice.
             var consumed = Set((anchors?.resolvedPlaceholders ?? [:]).filter { reservedIDs.contains($0.key) }.values)
+                .union(optionConsumed[optionRequirementID ?? ""] ?? [])
+            defer { if let optionRequirementID { optionConsumed[optionRequirementID] = consumed } }
             for (idx, option) in category.courseOptions.enumerated() {
                 if hasCreditLimit && plannedCredits >= Double(category.requiredCredits) { break }
                 // Pool slots reserve their share of the allowance rather than
@@ -1311,6 +1318,28 @@ public struct ScheduleGenerator: Sendable {
         return result
     }
 
+    /// `requirements` with each option's elective-pool parts moved after
+    /// its other parts, so a "choose two" or required part claims a course
+    /// before a pool ("MATH 310 or above") whose menu lists it too.
+    static func specificOptionPartsFirst(_ requirements: [RequirementCategory]) -> [RequirementCategory] {
+        var ordered: [RequirementCategory] = []
+        var pools: [RequirementCategory] = []
+        for (index, category) in requirements.enumerated() {
+            let requirementID = OptionPartID.parse(category.id)?.requirementID
+            if requirementID != nil, !(category.electivePoolSlots ?? []).isEmpty {
+                pools.append(category)
+            } else {
+                ordered.append(category)
+            }
+            let next = requirements.indices.contains(index + 1) ? OptionPartID.parse(requirements[index + 1].id)?.requirementID : nil
+            if requirementID == nil || next != requirementID {
+                ordered += pools
+                pools = []
+            }
+        }
+        return ordered + pools
+    }
+
     /// How many times `category` takes `courseID`, from its catalog remark.
     private func repeatedEnrollment(of courseID: String, in category: RequirementCategory) -> RepeatedEnrollment? {
         category.courseRemarks[courseID]?.lazy.compactMap(RepeatedEnrollment.init(remark:)).first
@@ -1351,10 +1380,13 @@ public struct ScheduleGenerator: Sendable {
         return credits * Double(needed)
     }
 
+    /// `claimedBySiblingParts`: courses another part of the same option
+    /// already counts, which don't count here too.
     private func appendSelectableElectivePlaceholders(
         for category: RequirementCategory,
         completed: Set<String>,
         plannedCourseIDs: Set<String>,
+        claimedBySiblingParts: Set<String> = [],
         seen: inout Set<String>,
         result: inout [String],
         placeholders: inout [String: PlaceholderSpec],
@@ -1380,12 +1412,13 @@ public struct ScheduleGenerator: Sendable {
         guard totalEligibleCredits > category.requiredCredits else { return false }
 
         let satisfiedCourseIDs = completed.union(plannedCourseIDs)
-        let fulfilledCredits = uniqueCourseIDs(category.courseOptions.flatMap { $0 })
+        let countable = uniqueCourseIDs(category.courseOptions.flatMap { $0 }).filter { !claimedBySiblingParts.contains($0) }
+        let fulfilledCredits = countable
             .filter(satisfiedCourseIDs.contains)
             .reduce(0) { $0 + (catalog.coursesByID[$1]?.credits ?? fallbackOptionCredits) }
         // Courses another requirement schedules count here without being
         // scheduled again.
-        reusedCredits += uniqueCourseIDs(category.courseOptions.flatMap { $0 })
+        reusedCredits += countable
             .filter { plannedCourseIDs.contains($0) && !completed.contains($0) }
             .reduce(0) { $0 + (catalog.coursesByID[$1]?.credits ?? fallbackOptionCredits) }
         let reservedHours = anchors?.placeholders.filter {
@@ -2876,16 +2909,17 @@ public struct ProgressCalculator: Sendable {
             pathway.placeholders[id].flatMap { $0.repeatOf == nil ? nil : $0 }
         }
 
-        func progressRow(category: RequirementCategory, idPrefix: String = "", namePrefix: String = "") -> CategoryProgress {
-            // Each course fills at most one option, so slots sharing a menu
-            // ("choose two", elective pools) need different courses. Options
-            // with the shortest menus claim their course first.
-            var consumed: Set<String> = []
+        // Each course fills at most one option, so slots sharing a menu
+        // ("choose two", elective pools) need different courses. Options
+        // with the shortest menus claim their course first. `consumed`
+        // carries the courses an earlier part of the same option counted.
+        func progressRow(category: RequirementCategory, consumed: inout Set<String>, idPrefix: String = "", namePrefix: String = "") -> CategoryProgress {
             // "Or take both": the group meets the part only as a whole. One
             // member alone is an ordinary course in the part's slots.
             let groupMeetsPart = category.alternativeGroup.map { group in
                 !group.isEmpty && group.allSatisfy { completedCourseIDs.contains($0) }
             } ?? false
+            if groupMeetsPart { consumed.formUnion(category.alternativeGroup ?? []) }
             let completedCredits = groupMeetsPart ? Double(category.requiredCredits) : category.courseOptions
                 .sorted { $0.count < $1.count }
                 .reduce(0.0) { total, options in
@@ -2922,10 +2956,30 @@ public struct ProgressCalculator: Sendable {
         // Electives"). The umbrella has zero `courseOptions` because the
         // parser can't extract any course IDs from it, so surfacing it as a
         // requirement just inflates the denominator and confuses the user.
+        // Rows in catalog order. The parts of one option requirement share
+        // their courses: a course counts for one part only, and required and
+        // choose parts claim theirs before the elective pools, whose menus
+        // ("MATH 310 or above") list those courses too.
+        func progressRows(_ categories: [RequirementCategory], idPrefix: String = "", namePrefix: String = "") -> [CategoryProgress] {
+            let isPool = { (category: RequirementCategory) in !(category.electivePoolSlots ?? []).isEmpty }
+            var consumedByRequirement: [String: Set<String>] = [:]
+            var rows: [Int: CategoryProgress] = [:]
+            for index in categories.indices.filter({ !isPool(categories[$0]) }) + categories.indices.filter({ isPool(categories[$0]) }) {
+                let category = categories[index]
+                var consumed: Set<String> = []
+                let requirementID = OptionPartID.parse(category.id)?.requirementID
+                if let requirementID { consumed = consumedByRequirement[requirementID] ?? [] }
+                rows[index] = progressRow(category: category, consumed: &consumed, idPrefix: idPrefix, namePrefix: namePrefix)
+                if let requirementID { consumedByRequirement[requirementID] = consumed }
+            }
+            return categories.indices.compactMap { rows[$0] }
+        }
+
+        let primaryCategories = effectiveProgram.requirements.filter { !$0.courseOptions.isEmpty }
         var categories = foldedRows(
-            effectiveProgram.requirements.filter { !$0.courseOptions.isEmpty },
-            optionRequirements: optionRequirements,
-            row: { progressRow(category: $0) }
+            primaryCategories,
+            rows: progressRows(primaryCategories),
+            optionRequirements: optionRequirements
         )
 
         // Mirror ScheduleGenerator's 120-CRH top-up: surface an "Open
@@ -3004,12 +3058,13 @@ public struct ProgressCalculator: Sendable {
             // own copy still knows each option requirement's name.
             var extraOptionRequirements = catalog.programsByID[extra.id].map(Self.optionRequirements(in:)) ?? [:]
             extraOptionRequirements.merge(Self.optionRequirements(in: extra)) { _, own in own }
+            let extraCategories = extra.requirements.filter { !$0.courseOptions.isEmpty }
             categories += foldedRows(
-                extra.requirements.filter { !$0.courseOptions.isEmpty },
+                extraCategories,
+                rows: progressRows(extraCategories, idPrefix: extra.id, namePrefix: prefix),
                 optionRequirements: extraOptionRequirements,
                 idPrefix: extra.id,
-                namePrefix: prefix,
-                row: { progressRow(category: $0, idPrefix: extra.id, namePrefix: prefix) }
+                namePrefix: prefix
             )
         }
 
@@ -3034,15 +3089,14 @@ public struct ProgressCalculator: Sendable {
     /// "<requirement name> (<option label>)", and the parts' credits summed.
     private func foldedRows(
         _ categories: [RequirementCategory],
+        rows: [CategoryProgress],
         optionRequirements: [String: RequirementCategory],
         idPrefix: String = "",
-        namePrefix: String = "",
-        row: (RequirementCategory) -> CategoryProgress
+        namePrefix: String = ""
     ) -> [CategoryProgress] {
         var result: [CategoryProgress] = []
         var foldedIndex: [String: Int] = [:]
-        for category in categories {
-            let rowForCategory = row(category)
+        for (category, rowForCategory) in zip(categories, rows) {
             guard let part = OptionPartID.parse(category.id) else {
                 result.append(rowForCategory)
                 continue

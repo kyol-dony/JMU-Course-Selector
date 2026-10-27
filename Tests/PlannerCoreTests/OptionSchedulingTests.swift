@@ -168,4 +168,47 @@ struct OptionSchedulingTests {
         #expect(rows.first?.requiredCredits == 12)
         #expect(rows.first?.completedCredits == 6)
     }
+
+    // MARK: - The real Math B.S. shape
+
+    // Its elective pools ("MATH 310 or above") list every MATH 3xx/4xx
+    // course, the "choose two" and "one of 411/431/434/435" courses too.
+
+    static func realRow(_ courseIDs: [String], option: String) throws -> CategoryProgress {
+        let (catalog, requirement) = try RealCatalogFixtures.mathOptionsOnly()
+        let progress = try ProgressCalculator(catalog: catalog).progress(
+            programID: "math-bs", pathway: pathway(courseIDs), transferCredits: [],
+            optionChoices: [RequirementOption.choiceKey(programID: "math-bs", requirementID: requirement.id): option]
+        )
+        return try #require(progress.categories.first { $0.id == requirement.id })
+    }
+
+    @Test("a course counts once across an option's parts")
+    func optionPartsShareTheirCourses() throws {
+        let option2 = try Self.realRow(["MATH440", "MATH441"], option: "option-2")
+        #expect(option2.requiredCredits == 12)
+        #expect(option2.completedCredits == 6)
+        #expect(try Self.realRow(["MATH431"], option: "option-1").completedCredits == 3)
+        // A third "choose two" course goes on to an elective slot.
+        #expect(try Self.realRow(["MATH440", "MATH441", "MATH448"], option: "option-2").completedCredits == 9)
+        #expect(try Self.realRow(["MATH426", "MATH427", "MATH310", "MATH440"], option: "option-2").completedCredits == 12)
+    }
+
+    @Test("a transferred choose-two course leaves the rest of the option scheduled")
+    func transferredCourseCountsForOnePart() throws {
+        let (catalog, requirement) = try RealCatalogFixtures.mathOptionsOnly()
+        let transfer = TransferCredit(sourceDescription: "Transfer", courseIDs: ["MATH440"], credits: 3)
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: "math-bs", workload: .heavy, transferCredits: [transfer],
+            optionChoices: [RequirementOption.choiceKey(programID: "math-bs", requirementID: requirement.id): "option-2"]
+        ).first)
+        let scheduled = pathway.semesters.flatMap(\.courseIDs)
+        let optionCredits = scheduled.reduce(0.0) { total, id in
+            if let spec = pathway.placeholders[id] {
+                return spec.categoryID.hasPrefix("\(requirement.id)--option-2--") ? total + spec.credits : total
+            }
+            return total
+        }
+        #expect(optionCredits == 9, "\(scheduled)")
+    }
 }

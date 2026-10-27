@@ -8,6 +8,13 @@ struct RequirementDetailView: View {
     var entry: CatalogOutline.Entry
     var catalog: Catalog
     var slotMap: [String: Int]
+    /// For a requirement with options: the plan's chosen option id, nil when
+    /// the program isn't in the plan (or the plan doesn't use this
+    /// requirement).
+    var chosenOptionID: (RequirementCategory) -> String? = { _ in nil }
+    /// Switches the plan to an option of a requirement; nil when the program
+    /// isn't in the plan.
+    var onUseOption: ((RequirementCategory, String) -> Void)?
 
     private let columns = [
         GridItem(.flexible(), spacing: 10, alignment: .top),
@@ -86,7 +93,7 @@ struct RequirementDetailView: View {
                 .foregroundStyle(DesignTokens.Colors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: DesignTokens.Spacing.s) {
-                Text(RequirementRuleText.label(for: category))
+                Text(category.options == nil ? RequirementRuleText.label(for: category) : "Choose 1 option")
                     .font(DesignTokens.Typography.small)
                     .foregroundStyle(DesignTokens.Colors.brandPurple)
                     .padding(.horizontal, 8)
@@ -116,7 +123,15 @@ struct RequirementDetailView: View {
     @ViewBuilder
     private func courses(_ category: RequirementCategory) -> some View {
         let blocks = Self.blocks(for: category)
-        if blocks.isEmpty {
+        if category.options != nil {
+            OptionColumnsView(
+                category: category,
+                chosenOptionID: chosenOptionID(category),
+                onUse: onUseOption.map { use in { optionID in use(category, optionID) } },
+                catalog: catalog,
+                slotMap: slotMap
+            )
+        } else if blocks.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "info.circle")
                     .font(.system(size: 11))
@@ -142,8 +157,10 @@ struct RequirementDetailView: View {
 
     /// "9 credits · 4 options"; all-required lists count courses instead.
     private func summary(_ category: RequirementCategory) -> String {
-        let count = Self.blocks(for: category).count
         let credits = "\(category.requiredCredits) credit\(category.requiredCredits == 1 ? "" : "s")"
+        // The columns show what each option holds.
+        if category.options != nil { return credits }
+        let count = Self.blocks(for: category).count
         guard count > 0 else { return credits }
         if case .allRequired = category.selection {
             return "\(credits) · \(count) course\(count == 1 ? "" : "s")"

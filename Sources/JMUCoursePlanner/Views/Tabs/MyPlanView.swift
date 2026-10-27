@@ -246,25 +246,66 @@ struct MyPlanView: View {
                             let requirement = store.requirementForProgressRow(category.id)
                             let isOpenElective = category.id == ScheduleGenerator.openElectiveCategoryID
                             let rows = isOpenElective ? openElectiveContributions() : contributions(for: requirement)
-                            RequirementProgressRow(
-                                category: category,
-                                requirement: requirement,
-                                remainingCourseCodes: remainingCodes(for: requirement),
-                                contributions: rows,
-                                isOpenElective: isOpenElective,
-                                contributionList: { rows in AnyView(contributionList(rows: rows)) },
-                                onTap: {
-                                    store.scheduleCategoryFilter = category.id
-                                    withAnimation(.easeOut(duration: 0.15)) {
-                                        store.selectedTab = .schedule
+                            VStack(alignment: .trailing, spacing: 0) {
+                                RequirementProgressRow(
+                                    category: category,
+                                    requirement: requirement,
+                                    remainingCourseCodes: remainingCodes(for: requirement),
+                                    contributions: rows,
+                                    isOpenElective: isOpenElective,
+                                    contributionList: { rows in AnyView(contributionList(rows: rows)) },
+                                    onTap: {
+                                        store.scheduleCategoryFilter = category.id
+                                        withAnimation(.easeOut(duration: 0.15)) {
+                                            store.selectedTab = .schedule
+                                        }
                                     }
+                                )
+                                if let ref = optionRequirement(forRow: category.id) {
+                                    switchOptionMenu(ref)
                                 }
-                            )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    /// The option requirement a progress row stands for, resolved the way
+    /// `requirementForProgressRow` resolves it: a major's row is the
+    /// requirement id, a minor's is "<programID>::<requirement id>".
+    private func optionRequirement(forRow rowID: String) -> OptionRequirementRef? {
+        guard store.requirementForProgressRow(rowID)?.options != nil else { return nil }
+        return store.optionRequirements().first { ref in
+            (ref.programID == store.plan.programID && ref.requirement.id == rowID)
+                || rowID == "\(ref.programID)::\(ref.requirement.id)"
+        }
+    }
+
+    /// "Option 2 · Switch option": a menu of the other options.
+    private func switchOptionMenu(_ ref: OptionRequirementRef) -> some View {
+        let options = ref.requirement.options ?? []
+        let chosenID = store.plan.optionChoices[ref.choiceKey]
+        let current = options.first { $0.id == chosenID } ?? options.first
+        return HStack(spacing: DesignTokens.Spacing.s) {
+            if let current {
+                Text(current.label)
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textSecondary)
+            }
+            Menu("Switch option") {
+                ForEach(options.filter { $0.id != current?.id }, id: \.id) { option in
+                    Button(option.label) {
+                        Task { await store.switchOption(programID: ref.programID, requirementID: ref.requirement.id, to: option.id) }
+                    }
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(!store.canEditSchedule)
+        }
+        .padding(.horizontal, DesignTokens.Spacing.s)
     }
 
     private func remainingCodes(for category: RequirementCategory?) -> [String] {

@@ -149,7 +149,17 @@ struct CatalogView: View {
                     )
                     Divider()
                     if let entry = outline.sections.lazy.flatMap(\.entries).first(where: { $0.id == selectedEntryID }) {
-                        RequirementDetailView(entry: entry, catalog: catalog, slotMap: slotMap(for: program))
+                        RequirementDetailView(
+                            entry: entry,
+                            catalog: catalog,
+                            slotMap: slotMap(for: program),
+                            chosenOptionID: { chosenOptionID(of: $0, in: program) },
+                            onUseOption: isDeclared(program)
+                                ? { category, optionID in
+                                    Task { await store.switchOption(programID: program.id, requirementID: category.id, to: optionID) }
+                                }
+                                : nil
+                        )
                     } else {
                         EmptyState(
                             systemImage: "list.bullet.rectangle",
@@ -196,10 +206,28 @@ struct CatalogView: View {
         .padding(.vertical, DesignTokens.Spacing.l)
     }
 
+    /// The program is the plan's major (or second major) or one of its minors.
+    private func isDeclared(_ program: Program) -> Bool {
+        program.id == store.plan.programID || store.plan.minors.contains { $0.programID == program.id }
+    }
+
+    /// The option the plan uses for `category` of `program`; nil when the
+    /// plan has no such option requirement (the program isn't declared, or
+    /// the requirement belongs to a concentration the plan doesn't use).
+    private func chosenOptionID(of category: RequirementCategory, in program: Program) -> String? {
+        guard let ref = store.optionRequirements().first(where: { $0.programID == program.id && $0.requirement.id == category.id }),
+              let options = ref.requirement.options, let first = options.first
+        else { return nil }
+        let chosen = store.plan.optionChoices[ref.choiceKey]
+        return options.contains { $0.id == chosen } ? chosen : first.id
+    }
+
     /// One subject color per subject across the whole program, so a subject
     /// keeps its color from requirement to requirement.
     private func slotMap(for program: Program) -> [String: Int] {
-        let categories = program.requirements + program.concentrations.flatMap(\.requirements)
+        let top = program.requirements + program.concentrations.flatMap(\.requirements)
+        // An option requirement's courses live in its options' parts.
+        let categories = top + top.flatMap { ($0.options ?? []).flatMap(\.parts) }
         let codes = categories.flatMap { $0.choices.flatMap { $0 } + $0.courseOptions.flatMap { $0 } }
             .map { catalog.coursesByID[$0]?.code ?? $0 }
         return CourseClassificationPalette.slotMap(for: codes.map(CourseClassificationPalette.classification(forCode:)))

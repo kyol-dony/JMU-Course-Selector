@@ -1636,7 +1636,7 @@ final class PlanStore: ObservableObject {
     /// Where a plan meets its catalog: a former "Option N" concentration
     /// becomes the option choice before the concentration is checked, so
     /// the check doesn't discard the plan's schedule.
-    private func reconcilePlanWithCatalog() {
+    func reconcilePlanWithCatalog() {
         migrateOptionChoices()
         validateSelectedConcentration()
     }
@@ -1650,7 +1650,9 @@ final class PlanStore: ObservableObject {
     }
 
     private func validateSelectedConcentration() {
-        guard let activeProgram else { return }
+        // The bundled seed lists programs without their requirements; a
+        // concentration can't be judged until the real catalog arrives.
+        guard let activeProgram, activeProgram.hasRequirementData else { return }
         if activeProgram.concentrations.isEmpty {
             plan.concentrationID = nil
             return

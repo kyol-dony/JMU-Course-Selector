@@ -143,27 +143,51 @@ struct OptionChoicePlanTests {
         #expect(plan.optionChoices[Self.key(Self.minorID, "r")] == "option-2")
     }
 
+    // MARK: - Real catalog pages
+
+    static let mathTrack = "not-seeking-secondary-teaching-licensure"
+
+    /// A program parsed from a saved catalog page in the test folder.
+    static func realProgram(_ file: String, id: String, kind: ProgramKind) throws -> Program {
+        let testDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let html = try String(contentsOf: testDir.appendingPathComponent(file), encoding: .utf8)
+        let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: kind, sourceURL: URL(string: "https://catalog.jmu.edu/programs/x/")!)
+        return Program(
+            id: id, title: id, degreeType: nil, kind: kind, college: "X", department: "X", catalogPage: nil,
+            totalCredits: parsed.totalCredits, requirements: parsed.requirements, concentrations: parsed.concentrations,
+            concentrationSelectionRequired: parsed.concentrationSelectionRequired, verificationStatus: .verified,
+            requirementDataComplete: true, sourceNote: "Fixture"
+        )
+    }
+
+    /// `programs` with every MATH 3xx/4xx course the Math pools list, pools resolved.
+    static func realCatalog(_ programs: [Program]) -> Catalog {
+        let numbers = ["310", "315", "321", "322", "324", "325", "326", "327", "328", "340", "341", "354", "358", "364", "367",
+                       "368", "411", "415", "421", "423", "424", "426", "427", "428", "429", "431", "434", "435", "440", "441",
+                       "448", "449", "470", "475", "485", "497"]
+        return Catalog(
+            source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
+            programs: programs,
+            courses: numbers.map { Course(id: "MATH\($0)", code: "MATH \($0)", title: "MATH \($0)", credits: 3, availability: [.fall, .spring], prerequisites: []) },
+            apCreditRules: []
+        ).resolvingElectivePools()
+    }
+
+    /// The Math B.S. "not seeking licensure" option requirement, as parsed.
+    static func realMathRequirement(_ math: Program) throws -> RequirementCategory {
+        try #require(math.concentrations.first { $0.id == mathTrack }?.requirements.first { $0.options != nil })
+    }
+
     /// The real Math B.S. and Political Science minor pages, with plans
     /// saved under the old parse's "Option N" concentrations.
     @Test func migrationMovesRealCatalogPlans() throws {
-        let testDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        func program(_ file: String, id: String, kind: ProgramKind) throws -> Program {
-            let html = try String(contentsOf: testDir.appendingPathComponent(file), encoding: .utf8)
-            let parsed = JMUHTMLCatalogParser().parseProgramRequirements(html, kind: kind, sourceURL: URL(string: "https://catalog.jmu.edu/programs/x/")!)
-            return Program(
-                id: id, title: id, degreeType: nil, kind: kind, college: "X", department: "X", catalogPage: nil,
-                totalCredits: parsed.totalCredits, requirements: parsed.requirements, concentrations: parsed.concentrations,
-                concentrationSelectionRequired: parsed.concentrationSelectionRequired, verificationStatus: .verified,
-                requirementDataComplete: true, sourceNote: "Fixture"
-            )
-        }
-        let math = try program("_live_math_bs.html", id: "math-bs", kind: .major)
-        let posc = try program("_live_posc_minor.html", id: "posc-minor", kind: .minor)
+        let math = try Self.realProgram("_live_math_bs.html", id: "math-bs", kind: .major)
+        let posc = try Self.realProgram("_live_posc_minor.html", id: "posc-minor", kind: .minor)
         let catalog = Catalog(
             source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
             programs: [math, posc], courses: [], apCreditRules: []
         )
-        let track = "not-seeking-secondary-teaching-licensure"
+        let track = Self.mathTrack
         let mathRequirement = try #require(math.concentrations.first { $0.id == track }?.requirements.first { $0.options != nil })
         let poscRequirement = try #require(posc.requirements.first { $0.options != nil })
         let oldSlot = "__pl::option-2::0"
@@ -181,6 +205,44 @@ struct OptionChoicePlanTests {
         let newSlot = Self.slot("option-2", part: 0, 0, requirement: mathRequirement.id)
         #expect(plan.pathways[0].semesters[0].courseIDs == [newSlot])
         #expect(plan.pathways[0].placeholders[newSlot]?.categoryID == "\(mathRequirement.id)--option-2--0")
+    }
+
+    /// An upgrade first opens the plan on the bundled seed, whose Math B.S.
+    /// has no requirements or concentrations, then on the refreshed catalog.
+    /// The old "Option 2" concentration must survive the seed so the
+    /// migration can carry it over once the real catalog arrives.
+    @Test func legacyPlanSurvivesTheSeedBeforeTheRealCatalog() throws {
+        let math = try Self.realProgram("_live_math_bs.html", id: "math-bs", kind: .major)
+        let requirement = try Self.realMathRequirement(math)
+        let seed = Program(
+            id: "math-bs", title: "Mathematics, B.S.", degreeType: "B.S.", kind: .major, college: "X", department: "X",
+            catalogPage: 332, totalCredits: nil, requirements: [], verificationStatus: .unverified,
+            requirementDataComplete: false, sourceNote: "Seed"
+        )
+        let oldSlot = "__pl::option-2::2"
+        var legacy = SavedStudentPlan(
+            programID: "math-bs", concentrationID: "\(Self.mathTrack)-option-2",
+            pathways: [Pathway(id: "path-1", name: "Balanced", semesters: [SemesterPlan(id: Self.fall26, courseIDs: ["MATH440"])],
+                               placeholders: [oldSlot: PlaceholderSpec(categoryID: "option-2", categoryName: "Option 2",
+                                                                       alternates: ["MATH440", "MATH441", "MATH448", "MATH449"], credits: 3)],
+                               resolvedPlaceholders: [oldSlot: "MATH440"])],
+            activePathwayID: "path-1"
+        )
+        legacy.setupCompleted = true
+
+        let store = Self.makeStore(programs: [seed])
+        store.resume(legacy)
+        #expect(store.plan.concentrationID == "\(Self.mathTrack)-option-2")
+        #expect(store.plan.pathways.count == 1)
+
+        store.catalog = Self.realCatalog([math])
+        store.reconcilePlanWithCatalog()
+        #expect(store.plan.concentrationID == Self.mathTrack)
+        #expect(store.plan.optionChoices[Self.key("math-bs", requirement.id)] == "option-2")
+        #expect(store.plan.pathways.count == 1)
+        #expect(store.plan.activePathwayID == "path-1")
+        let newSlot = Self.slot("option-2", part: 1, 0, requirement: requirement.id)
+        #expect(store.plan.pathways.first?.resolvedPlaceholders == [newSlot: "MATH440"])
     }
 
     @Test func migrationFillsTheDefaultFromCompletedCourses() {

@@ -1,6 +1,15 @@
 import Foundation
 import PlannerCore
 
+extension Program {
+    /// False for the bundled seed's placeholder entries, which list a
+    /// program without its requirements or concentrations. A saved plan's
+    /// concentration and option are left alone until real data arrives.
+    var hasRequirementData: Bool {
+        requirementDataComplete && !(requirements.isEmpty && concentrations.isEmpty)
+    }
+}
+
 /// An option requirement of one declared program (the major, a second
 /// major, or a minor), as the plan sees it after concentration selection.
 struct OptionRequirementRef: Hashable {
@@ -29,14 +38,14 @@ enum OptionChoiceMigration {
     /// every option requirement without one. Idempotent.
     static func migrate(_ plan: SavedStudentPlan, catalog: Catalog, completed: Set<String>) -> SavedStudentPlan {
         var plan = plan
-        if let programID = plan.programID, let program = catalog.programsByID[programID],
+        if let programID = plan.programID, let program = catalog.programsByID[programID], program.hasRequirementData,
            let found = formerOption(plan.concentrationID, in: program) {
             plan.concentrationID = found.concentrationID
             carryOver(found, programID: programID, program: program, into: &plan)
         }
         for index in plan.minors.indices {
             let selection = plan.minors[index]
-            guard let program = catalog.programsByID[selection.programID],
+            guard let program = catalog.programsByID[selection.programID], program.hasRequirementData,
                   let found = formerOption(selection.concentrationID, in: program) else { continue }
             plan.minors[index].concentrationID = found.concentrationID
             carryOver(found, programID: selection.programID, program: program, into: &plan)

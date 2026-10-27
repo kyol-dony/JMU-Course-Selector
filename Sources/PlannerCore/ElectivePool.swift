@@ -68,6 +68,14 @@ public extension Catalog {
                     return (pool + extras).filter { !required.contains($0) }
                 }
                 category.electivePoolSlots = slots.isEmpty ? category.electivePoolSlots : slots.sorted()
+                // Option parts are requirements too; a part's own required
+                // courses are alternatives to the other options', so only
+                // the surrounding requirements are excluded.
+                category.options = category.options?.map { option in
+                    var option = option
+                    option.parts = resolve(option.parts, excluding: required)
+                    return option
+                }
                 return category
             }
         }

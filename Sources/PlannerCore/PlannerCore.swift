@@ -192,6 +192,12 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
     public var catalogDescription: String?
     /// Catalog remarks and footnotes per course ID, within this requirement.
     public var courseRemarks: [String: [String]]
+    /// Non-nil means "choose exactly one option": the requirement is made of
+    /// these options' parts, not of its own `courseOptions`.
+    public var options: [RequirementOption]?
+    /// "Or take both": these courses together meet the part instead of one
+    /// of its slots.
+    public var alternativeGroup: [String]?
 
     public init(
         id: String,
@@ -204,7 +210,9 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         selection: RequirementSelection = .unknown,
         choices: [[String]] = [],
         catalogDescription: String? = nil,
-        courseRemarks: [String: [String]] = [:]
+        courseRemarks: [String: [String]] = [:],
+        options: [RequirementOption]? = nil,
+        alternativeGroup: [String]? = nil
     ) {
         self.id = id
         self.name = name
@@ -217,11 +225,13 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         self.choices = choices
         self.catalogDescription = catalogDescription
         self.courseRemarks = courseRemarks
+        self.options = options
+        self.alternativeGroup = alternativeGroup
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, requiredCredits, courseOptions, verificationStatus, note, electivePoolSlots
-        case selection, choices, catalogDescription, courseRemarks
+        case selection, choices, catalogDescription, courseRemarks, options, alternativeGroup
     }
 
     public init(from decoder: Decoder) throws {
@@ -237,6 +247,8 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         choices = try c.decodeIfPresent([[String]].self, forKey: .choices) ?? []
         catalogDescription = try c.decodeIfPresent(String.self, forKey: .catalogDescription)
         courseRemarks = try c.decodeIfPresent([String: [String]].self, forKey: .courseRemarks) ?? [:]
+        options = try c.decodeIfPresent([RequirementOption].self, forKey: .options)
+        alternativeGroup = try c.decodeIfPresent([String].self, forKey: .alternativeGroup)
     }
 }
 

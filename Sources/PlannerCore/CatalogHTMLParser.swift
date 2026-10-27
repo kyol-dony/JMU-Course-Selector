@@ -184,26 +184,17 @@ public struct JMUHTMLCatalogParser: Sendable {
         let concentrationRule = optionalConcentrationRule(in: blocks)
         if concentrationRule != nil { split.concentrationSelectionRequired = false }
 
+        if split.concentrationRuns.isEmpty, let tracks = repeatedSectionTracks(in: split.shared) {
+            split.shared = tracks.shared
+            split.concentrationRuns = tracks.runs
+            split.concentrationSelectionRequired = true
+        }
         // "Choose one of the following options" groups of "Option N:" blocks
-        // are alternatives: each option becomes its own track, inside the
-        // concentration that holds it or, with none, beside the shared core.
-        if split.concentrationRuns.isEmpty {
-            if let tracks = repeatedSectionTracks(in: split.shared) {
-                split.shared = tracks.shared
-                split.concentrationRuns = tracks.runs
-                split.concentrationSelectionRequired = true
-            } else if let options = optionVariants(in: split.shared) {
-                split.shared = options.common
-                split.concentrationRuns = options.variants
-                split.concentrationSelectionRequired = true
-            }
-        } else {
-            split.concentrationRuns = split.concentrationRuns.flatMap { run in
-                guard let options = optionVariants(in: run.blocks) else { return [run] }
-                return options.variants.map { variant in
-                    (name: "\(run.name) - \(variant.name)", blocks: options.common + variant.blocks)
-                }
-            }
+        // become one requirement carrying the options, inside the
+        // concentration that holds them or among the shared requirements.
+        split.shared = foldingOptionGroups(in: split.shared)
+        split.concentrationRuns = split.concentrationRuns.map { run in
+            (name: run.name, blocks: foldingOptionGroups(in: run.blocks))
         }
 
         var sharedParsed: [(block: RequirementBlock, category: RequirementCategory)] = []
@@ -245,7 +236,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                 parsedRequirements.removeFirst()
             }
             let requirements = Self.foldingSubjectElectivePools(adjustedConcentrationRequirements(
-                from: foldingLevelChoices(foldingSuggestedLists(mergingOptionGroups(parsedRequirements), coursesByID: coursesByID), coursesByID: coursesByID),
+                from: foldingLevelChoices(foldingSuggestedLists(parsedRequirements, coursesByID: coursesByID), coursesByID: coursesByID),
                 totalCredits: concentrationTotalCredits(in: run.blocks)
             ), subjects: pageSubjects)
             let ruled = concentrationRule.map { Self.applying($0, toConcentration: requirements, coursesByID: coursesByID) } ?? requirements
@@ -666,15 +657,19 @@ public struct JMUHTMLCatalogParser: Sendable {
         var tableTotal: Int? = nil
         /// The footnotes printed under this block's course table, by number.
         var footnotes: [String: String] = [:]
-        /// Set on the blocks of one "Option N:" group, which merge into a
-        /// single requirement named for the option.
-        var optionGroup: String? = nil
-        /// The option's credit hours, from the "Choose one of the following
-        /// options" row that introduces the group.
-        var optionCredits: Int? = nil
+        /// Non-empty on the one block a "Choose one of the following options"
+        /// group folds into: each option's label and blocks. It becomes one
+        /// requirement carrying `options`.
+        var optionGroups: [OptionBlocks] = []
+        /// A block inside an option: it parses as one of the option's parts.
+        var isOptionPart = false
+        /// A "9 credits of MATH electives" row that came before the courses
+        /// of the requirement it was emitted after ("Option 1:", the row,
+        /// then the courses).
+        var allowancePrecedesCourses = false
         /// The table's area-header row this requirement sits under ("Methodology Core").
         var areaHeader: String? = nil
-        /// "Option 1:" rows inside a section split its courses into groups.
+        /// "Option 1:" rows inside a section split its courses into options.
         var hasOptionRows = false
         /// The text the requirement's ID and legacy calculations come from: the
         /// instruction line that used to be the heading, so IDs stay stable.
@@ -689,6 +684,12 @@ public struct JMUHTMLCatalogParser: Sendable {
         var subtotal: Int? = nil
         /// The page heading the table sits under, for naming prose-only rows.
         var enclosingHeading: String? = nil
+    }
+
+    /// One "Option N:" group: its label ("Option 2") and its blocks.
+    private struct OptionBlocks {
+        var label: String
+        var blocks: [RequirementBlock]
     }
 
     private func requirementBlocks(in html: String) -> [RequirementBlock] {
@@ -940,7 +941,8 @@ public struct JMUHTMLCatalogParser: Sendable {
                                 level: min(level + 1, 5),
                                 heading: commentHeading,
                                 body: rowHTML,
-                                isStructuralHeading: false
+                                isStructuralHeading: false,
+                                allowancePrecedesCourses: !currentHasCourses
                             ))
                         } else if startsRequirement {
                             flushComment()
@@ -997,52 +999,128 @@ public struct JMUHTMLCatalogParser: Sendable {
         return notes
     }
 
-    /// Folds the requirements of one "Option N:" group into a single
-    /// requirement named for the option, so the option reads as the one
-    /// 12-credit choice the catalog describes rather than several pieces.
-    private func mergingOptionGroups(
-        _ parsed: [(block: RequirementBlock, category: RequirementCategory)]
-    ) -> [(block: RequirementBlock, category: RequirementCategory)] {
-        var result: [(block: RequirementBlock, category: RequirementCategory)] = []
-        for entry in parsed {
-            guard let group = entry.block.optionGroup else {
-                result.append(entry)
-                continue
-            }
-            if let last = result.last, last.block.optionGroup == group {
-                var merged = last.category
-                let offset = merged.courseOptions.count
-                merged.courseOptions += entry.category.courseOptions
-                merged.courseRemarks.merge(entry.category.courseRemarks, uniquingKeysWith: +)
-                // The merged option shows every block's courses; no one block's
-                // rule covers them all, so the keyword fallback decides.
-                merged.choices += entry.category.choices.filter { !merged.choices.contains($0) }
-                merged.selection = .unknown
-                let descriptions = [merged.catalogDescription, entry.category.catalogDescription].compactMap { $0 }
-                merged.catalogDescription = descriptions.isEmpty ? nil : descriptions.joined(separator: " ")
-                let slots = (merged.electivePoolSlots ?? []) + (entry.category.electivePoolSlots ?? []).map { $0 + offset }
-                merged.electivePoolSlots = slots.isEmpty ? nil : slots
-                merged.requiredCredits = entry.block.optionCredits ?? merged.requiredCredits + entry.category.requiredCredits
-                merged.note = optionNote(merged.note, adding: entry)
-                result[result.count - 1].category = merged
-            } else {
-                var category = entry.category
-                category.id = slug(from: group)
-                category.name = group
-                category.requiredCredits = entry.block.optionCredits ?? category.requiredCredits
-                category.note = optionNote(nil, adding: entry)
-                result.append((entry.block, category))
-            }
+    /// The requirement a folded "Choose one of the following options" block
+    /// becomes: one option per group, each made of its blocks' requirements
+    /// in catalog order. Its ID comes from the intro line, its credits from
+    /// the intro's hours.
+    private func optionRequirement(
+        from block: RequirementBlock,
+        catoid: String,
+        usedCategoryIDs: inout Set<String>,
+        coursesByID: inout [String: Course]
+    ) -> RequirementCategory? {
+        var options: [RequirementOption] = []
+        for group in block.optionGroups {
+            let parts = optionParts(from: group.blocks, catoid: catoid, coursesByID: &coursesByID)
+            guard !parts.isEmpty else { continue }
+            options.append(RequirementOption(id: slug(from: group.label), label: group.label, parts: parts))
         }
-        return result
+        guard let first = options.first else { return nil }
+        var descriptionLines = block.descriptionLines
+        descriptionLines += block.instructionMarks.compactMap { block.footnotes[$0] }
+        let category = RequirementCategory(
+            id: uniqueID(slug(from: block.idSource ?? block.heading), used: &usedCategoryIDs),
+            name: block.heading,
+            requiredCredits: block.rowHours ?? first.parts.reduce(0) { $0 + $1.requiredCredits },
+            courseOptions: [],
+            verificationStatus: .partial,
+            catalogDescription: descriptionLines.isEmpty ? nil : descriptionLines.joined(separator: " ")
+        )
+        return Self.withOptions(options, on: category)
     }
 
-    private func optionNote(_ existing: String?, adding entry: (block: RequirementBlock, category: RequirementCategory)) -> String? {
-        // "Choose two of the following: ... Or take both of the following
-        // courses: MATH 426, MATH 427" can't be expressed as slots; say so.
-        guard HTMLCleaner.clean(entry.block.body).lowercased().contains("or take both") else { return existing }
-        let note = "Instead of choosing two, you can take both courses of the last listed pair. Other mixes may not count, so confirm with an advisor."
-        return [existing, note].compactMap { $0 }.joined(separator: " ")
+    /// Sets `options` and describes the first option in the legacy fields,
+    /// for readers that don't know options: its parts' slots and groups,
+    /// concatenated, and their selection when they all share one.
+    private static func withOptions(_ options: [RequirementOption], on category: RequirementCategory) -> RequirementCategory {
+        var category = category
+        category.options = options
+        guard let parts = options.first?.parts, let firstPart = parts.first else { return category }
+        category.courseOptions = []
+        category.choices = []
+        var poolSlots: [Int] = []
+        for part in parts {
+            poolSlots += (part.electivePoolSlots ?? []).map { $0 + category.courseOptions.count }
+            category.courseOptions += part.courseOptions
+            category.choices += part.choices
+            category.courseRemarks.merge(part.courseRemarks) { existing, _ in existing }
+        }
+        category.electivePoolSlots = poolSlots.isEmpty ? nil : poolSlots
+        category.selection = parts.allSatisfy { $0.selection == firstPart.selection } ? firstPart.selection : .unknown
+        return category
+    }
+
+    /// One option's blocks as its parts, in catalog order. A credit
+    /// allowance row that came before the courses of the block it was
+    /// emitted after goes back in front of it. The "Option N:" row's own
+    /// courses are a part of required courses. An "Or take both of the
+    /// following courses:" row's courses are the preceding part's
+    /// `alternativeGroup`, not a part of their own.
+    private func optionParts(from blocks: [RequirementBlock], catoid: String, coursesByID: inout [String: Course]) -> [RequirementCategory] {
+        var ordered: [RequirementBlock] = []
+        for block in blocks {
+            if block.allowancePrecedesCourses,
+               let owner = ordered.lastIndex(where: { !Self.isCreditAllowanceText($0.heading) }) {
+                ordered.insert(block, at: owner)
+            } else {
+                ordered.append(block)
+            }
+        }
+
+        var parts: [RequirementCategory] = []
+        var usedPartIDs: Set<String> = []
+        for var block in ordered {
+            if Self.isTakeBothText(block.heading) {
+                let group = registeredCourseIDs(in: block.body, catoid: catoid, coursesByID: &coursesByID)
+                if !group.isEmpty, !parts.isEmpty {
+                    parts[parts.count - 1].alternativeGroup = (parts[parts.count - 1].alternativeGroup ?? []) + group
+                }
+                continue
+            }
+            let split = splittingTakeBoth(block.body)
+            block.body = split.body
+            if isOptionHeading(block) {
+                block.heading = "Required courses"
+                block.idSource = nil
+            }
+            block.isOptionPart = true
+            guard var part = category(from: block, catoid: catoid, usedCategoryIDs: &usedPartIDs, coursesByID: &coursesByID) else {
+                continue
+            }
+            if let alternative = split.alternative {
+                let group = registeredCourseIDs(in: alternative, catoid: catoid, coursesByID: &coursesByID)
+                if !group.isEmpty { part.alternativeGroup = group }
+            }
+            parts.append(part)
+        }
+        return parts
+    }
+
+    /// "Or take both of the following courses:".
+    private static func isTakeBothText(_ text: String) -> Bool {
+        text.range(of: #"(?i)^\s*or\s+take\s+both\b"#, options: .regularExpression) != nil
+    }
+
+    /// A block body cut at its "Or take both ..." comment row: the rows
+    /// before it, and the rows after it (nil without such a row).
+    private func splittingTakeBoth(_ body: String) -> (body: String, alternative: String?) {
+        for row in body.matchesWithRanges(for: #"(?is)<tr\b[^>]*>.*?</tr>"#) {
+            guard let comment = row.match.firstMatch(for: #"(?is)<span\b[^>]*class="[^"]*\bcourselistcomment\b[^"]*"[^>]*>(.*?)</span>"#),
+                  comment.count > 1,
+                  Self.isTakeBothText(HTMLCleaner.clean(comment[1]))
+            else { continue }
+            return (String(body[..<row.range.lowerBound]), String(body[row.range.upperBound...]))
+        }
+        return (body, nil)
+    }
+
+    /// The courses of `html` in order, without repeats, recorded in `coursesByID`.
+    private func registeredCourseIDs(in html: String, catoid: String, coursesByID: inout [String: Course]) -> [String] {
+        let courses = annotatedCourses(courseItems(in: html, catoid: catoid)).map(\.course)
+        for course in courses {
+            coursesByID[course.id] = course
+        }
+        return unique(courses.map(\.id))
     }
 
     /// "9 credits of MATH electives at MATH 310 or above" (also "or
@@ -1363,13 +1441,15 @@ public struct JMUHTMLCatalogParser: Sendable {
             && block.heading.range(of: #"(?i)^\s*option\s+(?:\d+|[a-z])\s*:?\s*$"#, options: .regularExpression) != nil
     }
 
-    /// Splits blocks holding two or more "Option N:" groups into one variant
-    /// per option. `common` is everything outside the groups (minus the
-    /// "Choose one of the following options" intro); each variant holds its
-    /// option's blocks, up to the next option or the end of the table.
-    private func optionVariants(in blocks: [RequirementBlock]) -> (common: [RequirementBlock], variants: [(name: String, blocks: [RequirementBlock])])? {
+    /// Folds two or more "Option N:" groups into one block that becomes a
+    /// requirement carrying `options`, where the group stood. The "Choose one
+    /// of the following options" intro before them gives its ID, credits and
+    /// description; its name is the section header the intro sits under, else
+    /// the page heading, else the intro. Each option holds its blocks, up to
+    /// the next option, the next section, or the end of the table.
+    private func foldingOptionGroups(in blocks: [RequirementBlock]) -> [RequirementBlock] {
         let optionStarts = blocks.indices.filter { isOptionHeading(blocks[$0]) }
-        guard optionStarts.count >= 2, let first = optionStarts.first, let last = optionStarts.last else { return nil }
+        guard optionStarts.count >= 2, let first = optionStarts.first, let last = optionStarts.last else { return blocks }
         let groupEnd = blocks[(last + 1)...].firstIndex { block in
             let lower = block.heading.lowercased()
             return block.isStructuralHeading
@@ -1377,25 +1457,50 @@ public struct JMUHTMLCatalogParser: Sendable {
                 || lower.hasPrefix("subtotal")
         } ?? blocks.endIndex
 
-        let isIntro: (RequirementBlock) -> Bool = { $0.heading.lowercased().contains("one of the following options") }
-        let optionCredits = blocks[..<first].last(where: isIntro)
-            .flatMap { $0.body.firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>(.*?)</td>"#) }
-            .flatMap { $0.count > 1 ? parseLeadingCredits(HTMLCleaner.clean($0[1])) : nil }
-        let common = blocks[..<first].filter { !isIntro($0) } + blocks[groupEnd...]
-        let variants = optionStarts.enumerated().map { offset, start in
+        let introIndex = blocks[..<first].lastIndex { $0.heading.lowercased().contains("one of the following options") }
+        let intro = introIndex.map { blocks[$0] }
+        // A course-less section header right above the intro
+        // ("International or Comparative Options") names the requirement.
+        let headerIndex = introIndex.flatMap { index -> Int? in
+            guard index > 0 else { return nil }
+            let candidate = blocks[index - 1]
+            guard !candidate.isStructuralHeading,
+                  !candidate.body.contains("codecol"),
+                  candidate.body.range(of: #"class="[^"]*\barea(?:sub)?header\b"#, options: .regularExpression) != nil
+            else { return nil }
+            return index - 1
+        }
+
+        let introText = intro?.heading
+        let name = headerIndex.map { blocks[$0].heading }
+            ?? intro?.enclosingHeading
+            ?? introText
+            ?? blocks[first].enclosingHeading
+            ?? "Options"
+        var folded = RequirementBlock(level: intro?.level ?? blocks[first].level, heading: name, body: "", isStructuralHeading: false)
+        folded.idSource = introText ?? name
+        folded.rowHours = intro.flatMap { intro in
+            intro.rowHours ?? intro.body
+                .firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>(.*?)</td>"#)
+                .flatMap { $0.count > 1 ? Self.hoursColumnCredits(HTMLCleaner.clean($0[1])) : nil }
+        }
+        if let intro, let introText, introText != name {
+            folded.descriptionLines = [introText]
+            folded.instructionMarks = intro.instructionMarks
+            folded.footnotes = intro.footnotes
+        }
+        folded.optionGroups = optionStarts.enumerated().map { offset, start in
             let end = offset + 1 < optionStarts.count ? optionStarts[offset + 1] : groupEnd
-            let name = blocks[start].heading
+            let label = blocks[start].heading
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .trimmingCharacters(in: CharacterSet(charactersIn: ":"))
-            let groupBlocks = blocks[start..<end].map { block in
-                var block = block
-                block.optionGroup = name
-                block.optionCredits = optionCredits
-                return block
-            }
-            return (name: name, blocks: groupBlocks)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return OptionBlocks(label: label, blocks: Array(blocks[start..<end]))
         }
-        return (common, variants)
+
+        let consumed = Set([introIndex, headerIndex].compactMap { $0 })
+        let before = blocks[..<first].indices.filter { !consumed.contains($0) }.map { blocks[$0] }
+        return before + [folded] + blocks[groupEnd...]
     }
 
     private func splitConcentrationBlocks(_ blocks: [RequirementBlock]) -> (shared: [RequirementBlock], concentrationRuns: [(name: String, blocks: [RequirementBlock])], concentrationSelectionRequired: Bool) {
@@ -1714,6 +1819,9 @@ public struct JMUHTMLCatalogParser: Sendable {
         usedCategoryIDs: inout Set<String>,
         coursesByID: inout [String: Course]
     ) -> RequirementCategory? {
+        if !block.optionGroups.isEmpty {
+            return optionRequirement(from: block, catoid: catoid, usedCategoryIDs: &usedCategoryIDs, coursesByID: &coursesByID)
+        }
         if let pool = electivePoolCategory(from: block, usedCategoryIDs: &usedCategoryIDs) {
             return pool
         }
@@ -1786,7 +1894,7 @@ public struct JMUHTMLCatalogParser: Sendable {
         }()
         let options = isChoice
             ? RequirementSelection.slots(choices: groups, selection: selection, credits: { creditsByID[$0] ?? 3 }) ?? []
-            : courseOptions(from: courseItems, selectionCount: selectionCount)
+            : courseOptions(from: courseItems, selectionCount: selectionCount, pairAlternatives: block.isOptionPart)
         let categoryID = uniqueID(slug(from: legacyHeading), used: &usedCategoryIDs)
         let note = note(for: block, options: options, courses: courses)
         var remarks: [String: [String]] = [:]
@@ -1806,7 +1914,7 @@ public struct JMUHTMLCatalogParser: Sendable {
         descriptionLines += block.instructionMarks.compactMap { block.footnotes[$0] }
         let description = descriptionLines.isEmpty ? nil : descriptionLines.joined(separator: " ")
 
-        return RequirementCategory(
+        let category = RequirementCategory(
             id: categoryID,
             name: name,
             requiredCredits: requiredCredits,
@@ -1818,6 +1926,10 @@ public struct JMUHTMLCatalogParser: Sendable {
             catalogDescription: description,
             courseRemarks: remarks
         )
+        if block.hasOptionRows, let rowOptions = optionRowOptions(in: block.body, catoid: catoid, remarks: remarks) {
+            return Self.withOptions(rowOptions, on: category)
+        }
+        return category
     }
 
     /// Drops sentences about what students who skip this option do instead
@@ -1854,6 +1966,52 @@ public struct JMUHTMLCatalogParser: Sendable {
             if !ids.isEmpty { groups.append(ids) }
         }
         return groups
+    }
+
+    /// A section split by "Option N:" rows as options: each option is one
+    /// part of required courses, its slots from `courseOptions(from:)`, so an
+    /// "or" row ("or PHYS 240 & 240L") is a slot of alternatives. Nil with
+    /// fewer than two options, or with courses before the first label,
+    /// which the section's groups keep describing.
+    private func optionRowOptions(in body: String, catoid: String, remarks: [String: [String]]) -> [RequirementOption]? {
+        var labels: [String] = []
+        var segments = [""]
+        for row in body.matches(for: #"(?is)<tr\b[^>]*>.*?</tr>"#) {
+            let rowHTML = row[0]
+            if let comment = rowHTML.firstMatch(for: #"(?is)<span\b[^>]*class="[^"]*\bcourselistcomment\b[^"]*"[^>]*>(.*?)</span>"#),
+               comment.count > 1 {
+                let text = HTMLCleaner.clean(comment[1])
+                if Self.isOptionLabel(text) {
+                    labels.append(text.trimmingCharacters(in: CharacterSet(charactersIn: ": ")))
+                    segments.append("")
+                    continue
+                }
+            }
+            segments[segments.count - 1] += rowHTML
+        }
+        guard labels.count >= 2, annotatedCourses(courseItems(in: segments[0], catoid: catoid)).isEmpty else { return nil }
+
+        let options = zip(labels, segments.dropFirst()).compactMap { label, html -> RequirementOption? in
+            let items = courseItems(in: html, catoid: catoid)
+            let courses = annotatedCourses(items).map(\.course)
+            guard !courses.isEmpty else { return nil }
+            let credits = Dictionary(courses.map { ($0.id, $0.credits) }, uniquingKeysWith: { first, _ in first })
+            let slots = courseOptions(from: items, selectionCount: nil, pairAlternatives: true)
+            let ids = Set(courses.map(\.id))
+            let part = RequirementCategory(
+                id: "required-courses",
+                name: "Required courses",
+                // A slot of alternatives counts its first course's credits.
+                requiredCredits: slots.reduce(0) { $0 + ($1.first.flatMap { credits[$0] } ?? 0) },
+                courseOptions: slots,
+                verificationStatus: .partial,
+                selection: .allRequired,
+                choices: courseGroups(items),
+                courseRemarks: remarks.filter { ids.contains($0.key) }
+            )
+            return RequirementOption(id: slug(from: label), label: label, parts: [part])
+        }
+        return options.count >= 2 ? options : nil
     }
 
     /// Course groups in catalog order: one per row, a pair row as one group.
@@ -2065,10 +2223,14 @@ public struct JMUHTMLCatalogParser: Sendable {
             // "or MATH 431" rows (class "orclass") are alternatives to the
             // course above. A row offering a pair ("or MATH 229 & MATH 329")
             // can't be expressed as a single-course alternative, so its
-            // courses stay separate requirements.
+            // courses stay separate requirements; only option parts read its
+            // "or-pair" marker.
             let rowTag = row[0].firstMatch(for: #"(?is)^<tr\b[^>]*>"#)?.first ?? ""
-            if rowTag.range(of: #"class="[^"]*\borclass\b"#, options: .regularExpression) != nil, links.count == 1 {
+            let isOrRow = rowTag.range(of: #"class="[^"]*\borclass\b"#, options: .regularExpression) != nil
+            if isOrRow, links.count == 1 {
                 items.append(.marker("or"))
+            } else if links.count > 1, isOrRow || HTMLCleaner.clean(codeCell[1]).lowercased().hasPrefix("or ") {
+                items.append(.marker("or-pair"))
             }
             let rowCredits = hoursText.flatMap(parseLeadingCredits)
 
@@ -2336,7 +2498,13 @@ public struct JMUHTMLCatalogParser: Sendable {
         return Int(match[1])
     }
 
-    private func courseOptions(from items: [CourseItem], selectionCount: Int?) -> [[String]] {
+    /// `pairAlternatives` (option parts) also reads an "or" row offering a
+    /// pair ("PHYS 140 & 140L" / "or PHYS 240 & 240L") as alternatives,
+    /// position by position: [PHYS140, PHYS240], [PHYS140L, PHYS240L].
+    private func courseOptions(from items: [CourseItem], selectionCount: Int?, pairAlternatives: Bool = false) -> [[String]] {
+        if pairAlternatives, selectionCount == nil {
+            return alternativeSlots(from: items)
+        }
         let items = flattened(items)
         let courseIDs = annotatedCourses(items).map(\.course.id)
         guard !courseIDs.isEmpty else { return [] }
@@ -2380,6 +2548,42 @@ public struct JMUHTMLCatalogParser: Sendable {
 
         return uniqueOptions(options)
     }
+
+    /// Every course or pair row is a unit; units joined by "or" rows are
+    /// alternatives, and give one slot per position.
+    private func alternativeSlots(from items: [CourseItem]) -> [[String]] {
+        var units: [[[String]]] = []
+        var joinsPrevious = false
+        for item in items {
+            let unit: [String]
+            switch item {
+            case .marker(let marker):
+                joinsPrevious = Self.orMarkers.contains(marker.lowercased())
+                continue
+            case .course(let course, _):
+                unit = [course.id]
+            case .pair(let courses, _):
+                unit = courses.map(\.id)
+            }
+            if joinsPrevious, !units.isEmpty {
+                units[units.count - 1].append(unit)
+            } else {
+                units.append([unit])
+            }
+            joinsPrevious = false
+        }
+        let slots = units.flatMap { alternatives -> [[String]] in
+            let width = alternatives.map(\.count).max() ?? 0
+            return (0..<width).map { position in
+                unique(alternatives.compactMap { position < $0.count ? $0[position] : nil })
+            }
+        }
+        return uniqueOptions(slots)
+    }
+
+    /// "or" before one course; "or-pair" before a pair row, which only
+    /// option parts read as an alternative.
+    private static let orMarkers: Set<String> = ["or", "or-pair"]
 
     private func note(for block: RequirementBlock, options: [[String]], courses: [Course]) -> String? {
         let text = HTMLCleaner.clean(block.body)

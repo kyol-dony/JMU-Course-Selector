@@ -300,7 +300,10 @@ struct CatalogRepository {
     /// lists, "Suggested Areas" lists, English B.A.'s level choice lines and
     /// overlays, optional concentrations that take N credits or courses from
     /// their list, and per-language tracks.
-    private static let cacheSchemaVersion = 25
+    /// v26 parses "Choose one of the following options" groups as one
+    /// requirement carrying its options and their parts (with "or take both"
+    /// alternatives), instead of one concentration per "Option N:".
+    private static let cacheSchemaVersion = 26
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

@@ -252,8 +252,10 @@ struct CatalogRequirementStructureTests {
         #expect(generic.map(\.requiredCredits) == [3])
     }
 
-    @Test func optionRowsInsideASectionBecomeGroups() throws {
-        // Psychology B.A. Methodology Core: "Option 1:" / "Option 2:" comment rows
+    @Test func areaOptionRowsBecomeOptions() throws {
+        // Psychology B.A. Methodology Core: "Option 1:" / "Option 2:" comment rows.
+        // Was optionRowsInsideASectionBecomeGroups (chooseGroups(1) of two
+        // groups); each option is now one all-required part.
         let methodology = try #require(parseSnippet(
             Self.header("Methodology Core")
             + Self.comment("Choose one of the following options:", hours: "8")
@@ -261,10 +263,18 @@ struct CatalogRequirementStructureTests {
             + Self.comment("Option 2:") + Self.course("PSYC 212", "Design I") + Self.course("PSYC 213", "Design II")
             + Self.comment("Subtotal", hours: "8")
         ).first)
-        #expect(methodology.selection == .chooseGroups(1))
-        #expect(methodology.choices == [["PSYC210", "PSYC211"], ["PSYC212", "PSYC213"]])
+        let options = try #require(methodology.options)
+        #expect(options.map(\.label) == ["Option 1", "Option 2"])
+        #expect(options.map { $0.parts.count } == [1, 1])
+        #expect(options.allSatisfy { $0.parts[0].selection == .allRequired })
+        #expect(options[0].parts[0].courseOptions == [["PSYC210"], ["PSYC211"]])
+        #expect(options[1].parts[0].courseOptions == [["PSYC212"], ["PSYC213"]])
+        #expect(methodology.id == "choose-one-of-the-following-options")
+        #expect(methodology.name == "Methodology Core")
         #expect(methodology.requiredCredits == 8)
         #expect(methodology.catalogDescription == "Choose one of the following options:")
+        // Older readers see the first option.
+        #expect(methodology.courseOptions == [["PSYC210"], ["PSYC211"]])
     }
 
     @Test func aHeaderThatIsTheInstructionGivesTheRule() throws {

@@ -49,7 +49,7 @@ enum OptionChoiceMigration {
             guard let program = catalog.programsByID[selection.programID], program.hasRequirementData,
                   let found = formerOption(selection.concentrationID, in: program) else { continue }
             plan.minors[index].concentrationID = found.concentrationID
-            carryOver(found, programID: selection.programID, program: program, into: &plan)
+            carryOver(found, programID: selection.programID, program: program, asAdditionalProgram: true, into: &plan)
         }
         // A plan saved before options existed may already schedule one
         // option's courses; they break a tie in completed courses.
@@ -106,14 +106,16 @@ enum OptionChoiceMigration {
         return nil
     }
 
-    private static func carryOver(_ found: FormerOption, programID: String, program: Program, into plan: inout SavedStudentPlan) {
+    private static func carryOver(
+        _ found: FormerOption, programID: String, program: Program, asAdditionalProgram: Bool = false, into plan: inout SavedStudentPlan
+    ) {
         let key = RequirementOption.choiceKey(programID: programID, requirementID: found.requirement.id)
         plan.optionChoices[key] = found.option.id
         // The parts exactly as scheduling materializes them.
         var single = program
         single.requirements = [found.requirement]
         single.concentrations = []
-        let parts = single.choosingOptions([key: found.option.id], programID: programID).requirements
+        let parts = single.choosingOptions([key: found.option.id], programID: programID, asAdditionalProgram: asAdditionalProgram).requirements
         let slots = parts.flatMap { part in part.courseOptions.indices.map { (part: part, index: $0) } }
         let oldPrefix = PathwayPlaceholder.prefix + found.option.id + "::"
 

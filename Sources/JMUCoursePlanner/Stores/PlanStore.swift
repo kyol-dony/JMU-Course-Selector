@@ -244,7 +244,7 @@ final class PlanStore: ObservableObject {
 
     private func minorPrograms(optionChoices: [String: String]) -> [Program] {
         plan.minors.compactMap { selection in
-            minorProgramBeforeOptions(for: selection)?.choosingOptions(optionChoices, programID: selection.programID)
+            minorProgramBeforeOptions(for: selection)?.choosingOptions(optionChoices, programID: selection.programID, asAdditionalProgram: true)
         }
     }
 
@@ -290,7 +290,7 @@ final class PlanStore: ObservableObject {
         var ids = Set(option.parts.flatMap { $0.courseOptions.flatMap { $0 } + ($0.alternativeGroup ?? []) })
         guard let pathway = activePathway else { return ids }
         for (slotID, spec) in pathway.placeholders {
-            guard let part = OptionPartID.parse(spec.categoryID),
+            guard let part = OptionPartID.parse(spec.categoryID), (part.programID ?? plan.programID) == row.programID,
                   part.requirementID == row.category.id, part.optionID == option.id
             else { continue }
             ids.insert(slotID)
@@ -533,7 +533,7 @@ final class PlanStore: ObservableObject {
             func isOldSlot(_ id: String) -> Bool {
                 let category = pathway.placeholders[id]?.categoryID ?? Self.slotCategory(id)
                 guard let part = OptionPartID.parse(category) else { return false }
-                return part.requirementID == requirementID && part.optionID == oldOption.id
+                return (part.programID ?? primaryID) == programID && part.requirementID == requirementID && part.optionID == oldOption.id
             }
             let slots = Set(pathway.placeholders.keys)
                 .union(pathway.resolvedPlaceholders.keys)
@@ -823,7 +823,7 @@ final class PlanStore: ObservableObject {
     /// calculator so the minor's required courses participate in graduation
     /// tracking.
     func effectiveMinorProgram(for selection: MinorSelection) -> Program? {
-        minorProgramBeforeOptions(for: selection)?.choosingOptions(plan.optionChoices, programID: selection.programID)
+        minorProgramBeforeOptions(for: selection)?.choosingOptions(plan.optionChoices, programID: selection.programID, asAdditionalProgram: true)
     }
 
     /// The minor's effective program with its option requirements still

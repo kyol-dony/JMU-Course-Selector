@@ -61,7 +61,8 @@ struct OptionChoicePlanTests {
     /// `labs`: MATH 431 needs its lab, MATH 431L.
     static func catalog(programs: [Program], labs: Bool = false) -> Catalog {
         let codes = ["MATH 235", "MATH 310", "MATH 411", "MATH 426", "MATH 427", "MATH 431", "MATH 440", "MATH 441",
-                     "MATH 450", "MATH 480", "MATH 499"] + (labs ? ["MATH 431L"] : [])
+                     "MATH 450", "MATH 480", "MATH 499", "POSC 230", "POSC 240", "POSC 331", "POSC 340", "POSC 341",
+                     "POSC 361"] + (labs ? ["MATH 431L"] : [])
         let coreqs = labs ? ["MATH 431": "Corequisites: MATH 431L .", "MATH 431L": "Corequisites: MATH 431 ."] : [:]
         return Catalog(
             source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
@@ -137,10 +138,19 @@ struct OptionChoicePlanTests {
 
     @Test func migrationMovesAMinorOffItsOptionConcentration() {
         let catalog = Self.catalog(programs: [Self.major(), Self.minor()])
-        var plan = SavedStudentPlan(programID: Self.majorID, minors: [MinorSelection(programID: Self.minorID, concentrationID: "option-2")])
+        let oldSlot = "__pl::option-2::0"
+        var plan = SavedStudentPlan(
+            programID: Self.majorID, minors: [MinorSelection(programID: Self.minorID, concentrationID: "option-2")],
+            pathways: [Pathway(id: "path-1", name: "Balanced", semesters: [SemesterPlan(id: Self.fall26, courseIDs: [oldSlot])],
+                               placeholders: [oldSlot: PlaceholderSpec(categoryID: "option-2", categoryName: "Option 2", alternates: Self.electives, credits: 3)])]
+        )
         plan = OptionChoiceMigration.migrate(plan, catalog: catalog, completed: [])
         #expect(plan.minors.first?.concentrationID == nil)
         #expect(plan.optionChoices[Self.key(Self.minorID, "r")] == "option-2")
+        // The minor's slots carry the minor in their ids, as generation gives them.
+        let newSlot = Self.slot("option-2", part: 0, 0, requirement: "\(Self.minorID)/r")
+        #expect(plan.pathways[0].semesters[0].courseIDs == [newSlot])
+        #expect(plan.pathways[0].placeholders[newSlot]?.categoryID == "\(Self.minorID)/r--option-2--0")
     }
 
     // MARK: - Real catalog pages
@@ -427,7 +437,69 @@ struct OptionChoicePlanTests {
         await store.switchOption(programID: Self.minorID, requirementID: "r", to: "option-2")
         #expect(store.plan.optionChoices[Self.key(Self.minorID, "r")] == "option-2")
         #expect(store.plan.optionChoices[Self.key(Self.majorID, "r")] == "option-1")
-        #expect(store.effectiveMinorProgram(for: plan.minors[0])?.requirements.map(\.id) == ["r--option-2--0", "r--option-2--1"])
+        #expect(store.effectiveMinorProgram(for: plan.minors[0])?.requirements.map(\.id) == ["math-minor/r--option-2--0", "math-minor/r--option-2--1"])
+    }
+
+    /// Like the real Math B.S. and Political Science minor: the same
+    /// requirement id and option ids, and each option 1 has a one-slot
+    /// second part ("one of MATH 411/431", "choose one POSC course").
+    static func sharedIDPrograms() -> (major: Program, minor: Program) {
+        var requirement = optionRequirement()
+        requirement.options?[0].parts[1] = RequirementCategory(
+            id: "required-courses", name: "Required courses", requiredCredits: 3,
+            courseOptions: [["MATH411", "MATH431"]], selection: .allRequired
+        )
+        func option(_ id: String, required: String, choices: [String]) -> RequirementOption {
+            RequirementOption(id: id, label: id == "option-1" ? "Option 1" : "Option 2", parts: [
+                RequirementCategory(id: "required-courses", name: "Required courses", requiredCredits: 3, courseOptions: [[required]], selection: .allRequired),
+                RequirementCategory(id: "choose-one", name: "Choose one", requiredCredits: 3, courseOptions: [choices], selection: .chooseCourses(1))
+            ])
+        }
+        let minorRequirement = RequirementCategory(
+            id: req, name: "Choose one of the following options", requiredCredits: 6, courseOptions: [], selection: .unknown,
+            options: [option("option-1", required: "POSC230", choices: ["POSC331", "POSC361"]),
+                      option("option-2", required: "POSC240", choices: ["POSC340", "POSC341"])]
+        )
+        let minor = Program(
+            id: "posc-minor", title: "Political Science Minor", degreeType: nil, kind: .minor, college: "X", department: "X",
+            catalogPage: nil, totalCredits: nil, requirements: [minorRequirement], verificationStatus: .verified,
+            requirementDataComplete: true, sourceNote: "Fixture"
+        )
+        return (Program.fixture(id: majorID, title: "Math", requirements: [core, requirement]), minor)
+    }
+
+    /// The major and the minor both on Option 1, the minor's choose-one
+    /// slot resolved in a semester before the major's Option 1 slots:
+    /// switching the major leaves the minor's slot and pick alone.
+    @Test func switchingTheMajorKeepsAMinorsSlotWithTheSameIDs() async throws {
+        let programs = Self.sharedIDPrograms()
+        let store = Self.makeStore(programs: [programs.major, programs.minor])
+        var plan = SavedStudentPlan(programID: Self.majorID, minors: [MinorSelection(programID: "posc-minor")])
+        plan.optionChoices = [Self.key(): "option-1", Self.key("posc-minor"): "option-1"]
+        plan.setupCompleted = true
+        store.plan = plan
+        await store.generateSchedules()
+        let generated = try #require(store.activePathway)
+        let minorSlot = try #require(generated.placeholders.first { $0.value.alternates.contains("POSC331") }?.key)
+        let majorSlots = generated.placeholders.filter { $0.value.categoryID.contains("--option-1--") && $0.key != minorSlot }.map(\.key).sorted()
+        #expect(generated.placeholders.values.contains { $0.alternates.contains("MATH411") }, "the major's one-of slot")
+        store.plan.pathways = [Pathway(id: generated.id, name: generated.name, semesters: [
+            SemesterPlan(id: Self.fall26, courseIDs: ["MATH235", "POSC230", minorSlot]),
+            SemesterPlan(id: Self.spring27, courseIDs: majorSlots)
+        ], placeholders: generated.placeholders)]
+        store.plan.activePathwayID = generated.id
+        store.resolvePlaceholder(minorSlot, with: "POSC361")
+        #expect(store.courseIDsForRequirementHighlight(rowID: "posc-minor::\(Self.req)").contains("POSC361"))
+        #expect(!store.courseIDsForRequirementHighlight(rowID: Self.req).contains("POSC361"))
+
+        await store.switchOption(programID: Self.majorID, requirementID: Self.req, to: "option-2")
+        #expect(store.plan.optionChoices[Self.key()] == "option-2")
+        let pathway = try #require(store.activePathway)
+        #expect(pathway.resolvedPlaceholders[minorSlot] == "POSC361")
+        #expect(pathway.semesters.flatMap(\.courseIDs).contains("POSC361"))
+        #expect(pathway.placeholders.values.filter { $0.alternates.contains("POSC331") }.count == 1)
+        #expect(!pathway.placeholders.values.contains { $0.alternates.contains("MATH411") })
+        #expect(!store.statusMessage.contains("POSC"))
     }
 
     static func optionMajor(requirementID: String) -> Program {
@@ -518,13 +590,13 @@ struct OptionChoicePlanTests {
         plan.optionChoices = [Self.key(): "option-2", Self.key(Self.minorID, "r"): "option-2"]
         let elective = Self.slot("option-2", part: 0, 0)
         let open = Self.slot("option-2", part: 1, 0)
-        let minorSlot = Self.slot("option-2", part: 0, 0, requirement: "r")
+        let minorSlot = Self.slot("option-2", part: 0, 0, requirement: "\(Self.minorID)/r")
         plan.pathways = [Pathway(id: "path-1", name: "Balanced", semesters: [
             SemesterPlan(id: Self.fall26, courseIDs: ["MATH499", open, "MATH411", minorSlot])
         ], placeholders: [
             elective: PlaceholderSpec(categoryID: "\(Self.req)--option-2--0", categoryName: "Option 2: Electives", alternates: Self.electives, credits: 3),
             open: PlaceholderSpec(categoryID: "\(Self.req)--option-2--1", categoryName: "Option 2: Choose two", alternates: Self.chooseTwo, credits: 3),
-            minorSlot: PlaceholderSpec(categoryID: "r--option-2--0", categoryName: "Option 2: Electives", alternates: Self.electives, credits: 3)
+            minorSlot: PlaceholderSpec(categoryID: "\(Self.minorID)/r--option-2--0", categoryName: "Option 2: Electives", alternates: Self.electives, credits: 3)
         ], resolvedPlaceholders: [elective: "MATH499"])]
         plan.activePathwayID = "path-1"
         store.plan = plan

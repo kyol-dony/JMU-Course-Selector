@@ -69,20 +69,31 @@ public struct RequirementOption: Codable, Hashable, Sendable {
 
 public enum OptionPartID {
     private static let separator = "--"
+    private static let programSeparator: Character = "/"
 
-    static func make(requirementID: String, optionID: String, partIndex: Int) -> String {
-        [requirementID, optionID, String(partIndex)].joined(separator: separator)
+    /// "r--o--i", or "p/r--o--i" for a part of a second major or minor `p`.
+    static func make(programID: String? = nil, requirementID: String, optionID: String, partIndex: Int) -> String {
+        let id = [requirementID, optionID, String(partIndex)].joined(separator: separator)
+        return programID.map { "\($0)\(programSeparator)\(id)" } ?? id
     }
 
-    /// ("choose-one-of-the-following-options", "option-2", 1) for
-    /// "choose-one-of-the-following-options--option-2--1"; nil otherwise.
-    public static func parse(_ categoryID: String) -> (requirementID: String, optionID: String, partIndex: Int)? {
+    /// (nil, "choose-one-of-the-following-options", "option-2", 1) for
+    /// "choose-one-of-the-following-options--option-2--1", and the program
+    /// first for a second major's or minor's part ("posc-minor/…--option-1--0");
+    /// nil otherwise.
+    public static func parse(_ categoryID: String) -> (programID: String?, requirementID: String, optionID: String, partIndex: Int)? {
         let pieces = categoryID.components(separatedBy: separator)
         guard pieces.count >= 3, let index = Int(pieces[pieces.count - 1]), index >= 0 else { return nil }
         let optionID = pieces[pieces.count - 2]
-        let requirementID = pieces.dropLast(2).joined(separator: separator)
+        var requirementID = pieces.dropLast(2).joined(separator: separator)
+        var programID: String?
+        if let slash = requirementID.firstIndex(of: programSeparator) {
+            programID = String(requirementID[..<slash])
+            requirementID = String(requirementID[requirementID.index(after: slash)...])
+            guard programID?.isEmpty == false else { return nil }
+        }
         guard !requirementID.isEmpty, !optionID.isEmpty else { return nil }
-        return (requirementID, optionID, index)
+        return (programID, requirementID, optionID, index)
     }
 }
 
@@ -92,8 +103,10 @@ public extension Program {
     /// `choices[choiceKey]`, else the first option. Part i of option o of
     /// requirement r gets id "r--o--i" and name "Option label: part name"; a
     /// part with an `alternativeGroup` has the group's courses appended to
-    /// every slot, without duplicates.
-    func choosingOptions(_ choices: [String: String], programID: String) -> Program {
+    /// every slot, without duplicates. `asAdditionalProgram` (a second major
+    /// or minor) puts the program in the part ids ("p/r--o--i"): real
+    /// programs share requirement and option ids, and their slots must not.
+    func choosingOptions(_ choices: [String: String], programID: String, asAdditionalProgram: Bool = false) -> Program {
         func expand(_ requirements: [RequirementCategory]) -> [RequirementCategory] {
             requirements.flatMap { category -> [RequirementCategory] in
                 guard let options = category.options, !options.isEmpty else { return [category] }
@@ -101,7 +114,8 @@ public extension Program {
                 let option = options.first { $0.id == chosenID } ?? options[0]
                 return option.parts.enumerated().map { index, part in
                     var part = part
-                    part.id = OptionPartID.make(requirementID: category.id, optionID: option.id, partIndex: index)
+                    part.id = OptionPartID.make(programID: asAdditionalProgram ? programID : nil,
+                                                requirementID: category.id, optionID: option.id, partIndex: index)
                     part.name = "\(option.label): \(part.name)"
                     if let group = part.alternativeGroup {
                         part.courseOptions = part.courseOptions.map { slot in

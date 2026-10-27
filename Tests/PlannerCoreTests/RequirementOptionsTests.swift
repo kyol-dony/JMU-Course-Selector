@@ -112,6 +112,12 @@ struct RequirementOptionsTests {
         #expect(parsed?.requirementID == "r")
         #expect(parsed?.optionID == "option-2")
         #expect(parsed?.partIndex == 1)
+        #expect(parsed?.programID == nil)
+        let extra = OptionPartID.parse("posc-minor/r--option-1--0")
+        #expect(extra?.programID == "posc-minor")
+        #expect(extra?.requirementID == "r")
+        #expect(extra?.optionID == "option-1")
+        #expect(OptionPartID.parse("/r--option-1--0") == nil)
         #expect(OptionPartID.parse("core") == nil)
         #expect(OptionPartID.parse("r--option-2--x") == nil)
     }

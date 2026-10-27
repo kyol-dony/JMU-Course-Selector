@@ -44,6 +44,38 @@ struct ElectivePoolTests {
         #expect(resolved.resolvingElectivePools().programsByID["m"] == resolved.programsByID["m"])
     }
 
+    @Test("a course one option requires isn't required program-wide, so pools keep it")
+    func optionCoursesAreNotRequiredOutright() throws {
+        let option1 = RequirementOption(id: "option-1", label: "Option 1", parts: [
+            RequirementCategory(id: "required-courses", name: "Required courses", requiredCredits: 3, courseOptions: [["MATH411"]], selection: .allRequired)
+        ])
+        let option2 = RequirementOption(id: "option-2", label: "Option 2", parts: [
+            RequirementCategory(id: "required-courses", name: "Required courses", requiredCredits: 3, courseOptions: [["MATH421"]], selection: .allRequired)
+        ])
+        // The parser's legacy fields describe option 1: MATH 411 as a one-course slot.
+        let options = RequirementCategory(
+            id: "choose-one-of-the-following-options", name: "Options", requiredCredits: 3,
+            courseOptions: [["MATH411"]], selection: .allRequired, choices: [["MATH411"]], options: [option1, option2]
+        )
+        var major = Program.fixture(id: "m", title: "Math", requirements: [
+            RequirementCategory(id: "core", name: "Core Courses", requiredCredits: 3, courseOptions: [["MATH410"]]),
+            options,
+            RequirementCategory(id: "electives", name: "Electives", requiredCredits: 3, courseOptions: [[Self.pool]])
+        ], concentrations: [
+            Concentration(id: "c", name: "Track", requirements: [
+                options,
+                RequirementCategory(id: "track-electives", name: "Track Electives", requiredCredits: 3, courseOptions: [[Self.pool]])
+            ], verificationStatus: .partial)
+        ])
+        major.concentrationSelectionRequired = true
+        let resolved = try #require(Self.catalog(programs: [major]).resolvingElectivePools().programsByID["m"])
+        let electives = try #require(resolved.requirements.first { $0.id == "electives" })
+        #expect(electives.courseOptions == [["MATH310", "MATH411", "MATH421", "MATH431", "MATH450", "MATH499"]])
+        let trackElectives = try #require(resolved.concentrations.first?.requirements.first { $0.id == "track-electives" })
+        #expect(trackElectives.courseOptions.first?.contains("MATH411") == true)
+        #expect(trackElectives.courseOptions.first?.contains("MATH410") == false)
+    }
+
     @Test("a concentration's pool also excludes the program's own required courses")
     func resolvesConcentrationPool() throws {
         var major = Program.fixture(id: "m", title: "Math", requirements: [

@@ -49,8 +49,12 @@ public extension Catalog {
             .compactMap { course in ElectivePool.subjectAndNumber(of: course.code).map { (course.id, $0.subject, $0.number) } }
             .sorted { $0.0 < $1.0 }
 
+        // An option requirement's legacy slots describe only its first
+        // option; a course one option requires isn't required outright.
         func requiredOutright(_ requirements: [RequirementCategory]) -> Set<String> {
-            Set(requirements.flatMap { $0.courseOptions.filter { $0.count == 1 }.flatMap { $0 } }.filter { !ElectivePool.isToken($0) })
+            Set(requirements.filter { $0.options == nil }
+                .flatMap { $0.courseOptions.filter { $0.count == 1 }.flatMap { $0 } }
+                .filter { !ElectivePool.isToken($0) })
         }
 
         func resolve(_ requirements: [RequirementCategory], excluding required: Set<String>) -> [RequirementCategory] {

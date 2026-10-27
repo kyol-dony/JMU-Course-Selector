@@ -93,7 +93,8 @@ struct CatalogAuditTests {
                             } else {
                                 pathway = try #require(try generator.generatePathways(
                                     for: base.id, workload: .standard, transferCredits: [], starting: SemesterIdentity(year: 2026, term: .fall),
-                                    additionalPrograms: [program.choosingOptions(choices, programID: program.id)], optionChoices: [:]
+                                    additionalPrograms: [program.choosingOptions(choices, programID: program.id, asAdditionalProgram: true)],
+                                    optionChoices: [:]
                                 ).first)
                             }
                             let others = Set(requirement.options?.map(\.id) ?? []).subtracting([option.id])
@@ -115,9 +116,10 @@ struct CatalogAuditTests {
                                 in: pathway.semesters, placeholders: pathway.placeholders, transferCredits: [], catalog: catalog
                             )
                             print("OPTAUDIT\t\(label)\tslots=\(slots)\tsemesters=\(pathway.semesters.count)\thours=\(Int(hours.rounded()))")
+                            #expect(hours <= 140, "\(label): \(hours) credits")
                             checked += 1
                         } catch {
-                            Issue.record("\(label): \(error.localizedDescription)")
+                            Issue.record("\(label): \(error)")
                         }
                     }
                 }

@@ -51,10 +51,15 @@ enum OptionChoiceMigration {
             plan.minors[index].concentrationID = found.concentrationID
             carryOver(found, programID: selection.programID, program: program, into: &plan)
         }
+        // A plan saved before options existed may already schedule one
+        // option's courses; they break a tie in completed courses.
+        let scheduled = Set(plan.pathways.flatMap { $0.semesters.flatMap(\.courseIDs) + $0.resolvedPlaceholders.values })
         for ref in optionRequirements(of: plan, catalog: catalog) {
             let options = ref.requirement.options ?? []
             if let chosen = plan.optionChoices[ref.choiceKey], options.contains(where: { $0.id == chosen }) { continue }
-            plan.optionChoices[ref.choiceKey] = RequirementOption.defaultOptionID(options, completed: completed)
+            plan.optionChoices[ref.choiceKey] = RequirementOption.defaultOptionID(
+                options, completed: completed, scheduled: scheduled, coursesByID: catalog.coursesByID
+            )
         }
         return plan
     }

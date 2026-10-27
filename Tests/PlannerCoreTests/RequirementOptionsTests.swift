@@ -88,6 +88,24 @@ struct RequirementOptionsTests {
         #expect(RequirementOption.defaultOptionID([], completed: ["MATH301"]) == nil)
     }
 
+    @Test("on the real Math catalog, courses only one option lists pick the default")
+    func defaultOptionIgnoresSharedPools() throws {
+        // Both options' pools list every MATH 3xx/4xx course.
+        let (catalog, requirement) = try RealCatalogFixtures.mathOptionsOnly()
+        let options = try #require(requirement.options)
+        func pick(_ completed: Set<String>, scheduled: Set<String> = []) -> String? {
+            RequirementOption.defaultOptionID(options, completed: completed, scheduled: scheduled, coursesByID: catalog.coursesByID)
+        }
+        #expect(pick(["MATH426", "MATH427"]) == "option-2")
+        #expect(pick(["MATH440", "MATH441"]) == "option-2")
+        #expect(pick(["MATH431"]) == "option-1")
+        #expect(pick(["MATH310", "MATH354"]) == "option-1")
+        // A tie in completed courses goes to the courses the plan schedules.
+        #expect(pick(["MATH431", "MATH440"], scheduled: ["MATH441"]) == "option-2")
+        #expect(pick([], scheduled: ["MATH448", "MATH449"]) == "option-2")
+        #expect(pick(["MATH431"], scheduled: ["MATH448", "MATH449"]) == "option-1")
+    }
+
     @Test("option part ids parse back")
     func optionPartIDRoundTrips() {
         let parsed = OptionPartID.parse("r--option-2--1")

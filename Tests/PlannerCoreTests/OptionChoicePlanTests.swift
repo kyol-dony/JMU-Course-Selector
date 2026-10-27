@@ -268,6 +268,21 @@ struct OptionChoicePlanTests {
         #expect(taken.optionChoices[Self.key()] == "option-2")
     }
 
+    /// A plan on the real Math B.S. track without a stored choice: completed
+    /// MATH 426 and 427 pick Option 2 although both options' pools list
+    /// them; with nothing completed, the courses its schedule holds decide.
+    @Test func migrationDefaultFollowsTheRealCatalogsDistinctCourses() throws {
+        let math = try Self.realProgram("_live_math_bs.html", id: "math-bs", kind: .major)
+        let catalog = Self.realCatalog([math])
+        let key = Self.key("math-bs", try Self.realMathRequirement(math).id)
+        let plan = SavedStudentPlan(programID: "math-bs", concentrationID: Self.mathTrack)
+        #expect(OptionChoiceMigration.migrate(plan, catalog: catalog, completed: ["MATH426", "MATH427"]).optionChoices[key] == "option-2")
+        #expect(OptionChoiceMigration.migrate(plan, catalog: catalog, completed: []).optionChoices[key] == "option-1")
+        var scheduled = plan
+        scheduled.pathways = [Pathway(id: "path-1", name: "Balanced", semesters: [SemesterPlan(id: Self.fall26, courseIDs: ["MATH448", "MATH449"])])]
+        #expect(OptionChoiceMigration.migrate(scheduled, catalog: catalog, completed: []).optionChoices[key] == "option-2")
+    }
+
     @Test func savedPlansWithoutChoicesStillDecode() throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

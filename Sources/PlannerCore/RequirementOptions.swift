@@ -22,22 +22,48 @@ public struct RequirementOption: Codable, Hashable, Sendable {
         "\(programID)/\(requirementID)"
     }
 
-    /// The option with the most courses in `completed` (any part,
-    /// alternatives included). Ties and zero go to the first option.
-    public static func defaultOptionID(_ options: [RequirementOption], completed: Set<String>) -> String? {
-        var best: (id: String, count: Int)?
-        for option in options {
-            let count = option.courseIDs.intersection(completed).count
-            if best == nil || count > best!.count {
-                best = (option.id, count)
+    /// The option whose distinguishing courses in `completed` carry the
+    /// most credits. A tie goes to the option with the most in `completed`
+    /// and `scheduled` (a saved plan's courses) together, then to the first
+    /// option. A course counts for one slot of an option, and only when it
+    /// tells the options apart: elective-pool slots and courses every option
+    /// lists are left out, since Math's pools list every MATH 3xx/4xx
+    /// course in both options. Unknown courses count one credit.
+    public static func defaultOptionID(
+        _ options: [RequirementOption], completed: Set<String>, scheduled: Set<String> = [], coursesByID: [String: Course] = [:]
+    ) -> String? {
+        let slots = options.map(\.distinguishingSlots)
+        let common = options.count > 1
+            ? slots.dropFirst().reduce(Set(slots[0].joined())) { $0.intersection($1.joined()) }
+            : []
+        func credits(_ slots: [[String]], _ taken: Set<String>) -> Int {
+            var consumed: Set<String> = []
+            return slots.sorted { $0.count < $1.count }.reduce(0) { total, slot in
+                guard let course = slot.first(where: { taken.contains($0) && !common.contains($0) && !consumed.contains($0) })
+                else { return total }
+                consumed.insert(course)
+                return total + (coursesByID[course]?.credits ?? 1)
+            }
+        }
+        var best: (id: String, score: (Int, Int))?
+        for (option, optionSlots) in zip(options, slots) {
+            let score = (credits(optionSlots, completed), credits(optionSlots, completed.union(scheduled)))
+            if best == nil || score > best!.score {
+                best = (option.id, score)
             }
         }
         return best?.id
     }
 
-    /// Every course any part of the option can use, alternatives included.
-    var courseIDs: Set<String> {
-        Set(parts.flatMap { part in part.courseOptions.flatMap { $0 } + (part.alternativeGroup ?? []) })
+    /// The option's slots other than elective-pool slots, each offering the
+    /// part's "or take both" group too.
+    var distinguishingSlots: [[String]] {
+        parts.flatMap { part in
+            let pools = Set(part.electivePoolSlots ?? [])
+            return part.courseOptions.enumerated()
+                .filter { !pools.contains($0.offset) }
+                .map { $0.element + (part.alternativeGroup ?? []) }
+        }
     }
 }
 

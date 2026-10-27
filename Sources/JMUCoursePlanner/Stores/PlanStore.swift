@@ -214,7 +214,8 @@ final class PlanStore: ObservableObject {
                 pathway: activePathway,
                 transferCredits: effectiveAcademicHistory.effectiveCredits,
                 additionalPrograms: selectedMinorPrograms(),
-                languagePlan: plan.foreignLanguage
+                languagePlan: plan.foreignLanguage,
+                optionChoices: plan.optionChoices
             )
         } else {
             result = nil
@@ -238,7 +239,13 @@ final class PlanStore: ObservableObject {
     /// concentration's requirements merged). Used to thread minor requirements
     /// into schedule generation and progress tracking.
     func selectedMinorPrograms() -> [Program] {
-        plan.minors.compactMap { effectiveMinorProgram(for: $0) }
+        minorPrograms(optionChoices: plan.optionChoices)
+    }
+
+    private func minorPrograms(optionChoices: [String: String]) -> [Program] {
+        plan.minors.compactMap { selection in
+            minorProgramBeforeOptions(for: selection)?.choosingOptions(optionChoices, programID: selection.programID)
+        }
     }
 
     /// Set of course IDs the student has completed (transfer credit + scheduled in active pathway).
@@ -268,6 +275,41 @@ final class PlanStore: ObservableObject {
 
     func courseIDsForRequirementHighlight(in category: RequirementCategory) -> Set<String> {
         Set(category.courseOptions.flatMap { $0 })
+    }
+
+    /// What a progress row highlights on the board. `rowID` is the primary
+    /// program's requirement id, or "<programID>::<requirement id>" for a
+    /// minor or second major. A folded option row covers the chosen
+    /// option's parts: their courses and "or take both" group, plus the
+    /// active pathway's slots for those parts and the courses they hold.
+    func courseIDsForRequirementHighlight(rowID: String) -> Set<String> {
+        if let programID = plan.programID,
+           let category = effectiveActiveProgram?.requirements.first(where: { $0.id == rowID }) {
+            return highlightIDs(for: category, programID: programID)
+        }
+        for selection in plan.minors {
+            guard let program = minorProgramBeforeOptions(for: selection),
+                  let category = program.requirements.first(where: { "\(program.id)::\($0.id)" == rowID })
+            else { continue }
+            return highlightIDs(for: category, programID: selection.programID)
+        }
+        return []
+    }
+
+    private func highlightIDs(for category: RequirementCategory, programID: String) -> Set<String> {
+        guard let options = category.options, !options.isEmpty else { return courseIDsForRequirementHighlight(in: category) }
+        let chosenID = plan.optionChoices[RequirementOption.choiceKey(programID: programID, requirementID: category.id)]
+        let option = options.first { $0.id == chosenID } ?? options[0]
+        var ids = Set(option.parts.flatMap { $0.courseOptions.flatMap { $0 } + ($0.alternativeGroup ?? []) })
+        guard let pathway = activePathway else { return ids }
+        for (slotID, spec) in pathway.placeholders {
+            guard let part = OptionPartID.parse(spec.categoryID),
+                  part.requirementID == category.id, part.optionID == option.id
+            else { continue }
+            ids.insert(slotID)
+            if let course = pathway.resolvedPlaceholders[slotID] { ids.insert(course) }
+        }
+        return ids
     }
 
     // MARK: - Placeholder courses in the active pathway
@@ -316,19 +358,228 @@ final class PlanStore: ObservableObject {
     private func applyResolvePlaceholder(_ placeholderID: String, with chosenCourseID: String) {
         guard let pathwayIndex = activePathwayIndex else { return }
         var pathway = plan.pathways[pathwayIndex]
-        for semesterIndex in pathway.semesters.indices {
-            pathway.semesters[semesterIndex].courseIDs = pathway.semesters[semesterIndex].courseIDs.map { id in
-                id == placeholderID ? chosenCourseID : id
-            }
-        }
-        pathway.resolvedPlaceholders[placeholderID] = chosenCourseID
-        // Choosing a lecture (CHEM 132 for Physical Principles) brings its lab.
-        if let labPairing,
-           let semester = pathway.semesters.first(where: { $0.courseIDs.contains(chosenCourseID) })?.id {
-            pathway = labPairing.addingLab(for: chosenCourseID, in: semester, to: pathway)
-        }
+        // A slot already chosen for swaps the course it holds.
+        let isOpen = pathway.semesters.contains { $0.courseIDs.contains(placeholderID) }
+        fill(placeholderID, with: chosenCourseID, replacing: isOpen ? nil : pathway.resolvedPlaceholders[placeholderID], in: &pathway)
+        linkAlternativeGroup(of: placeholderID, chosen: chosenCourseID, in: &pathway)
         plan.pathways[pathwayIndex] = pathway
         autosave()
+    }
+
+    private func fill(_ placeholderID: String, with courseID: String, replacing previous: String? = nil, in pathway: inout Pathway) {
+        let current = previous ?? placeholderID
+        for semesterIndex in pathway.semesters.indices {
+            pathway.semesters[semesterIndex].courseIDs = pathway.semesters[semesterIndex].courseIDs.map { id in
+                id == current ? courseID : id
+            }
+        }
+        pathway.resolvedPlaceholders[placeholderID] = courseID
+        // Choosing a lecture (CHEM 132 for Physical Principles) brings its lab.
+        if let labPairing,
+           let semester = pathway.semesters.first(where: { $0.courseIDs.contains(courseID) })?.id {
+            pathway = labPairing.addingLab(for: courseID, in: semester, to: pathway)
+        }
+    }
+
+    /// "Or take both": the group fills its part together. Picking a group
+    /// member fills the part's other open slots with the remaining members;
+    /// picking outside the group reopens a slot that holds a member.
+    private func linkAlternativeGroup(of placeholderID: String, chosen: String, in pathway: inout Pathway) {
+        guard let categoryID = pathway.placeholders[placeholderID]?.categoryID,
+              let group = schedulingRequirement(id: categoryID)?.alternativeGroup, !group.isEmpty
+        else { return }
+        let siblings = pathway.placeholders
+            .filter { $0.key != placeholderID && $0.value.categoryID == categoryID }
+            .map(\.key)
+            .sorted { Self.slotIndex($0) < Self.slotIndex($1) }
+        if group.contains(chosen) {
+            let scheduled = Set(pathway.semesters.flatMap(\.courseIDs))
+            var remaining = group.filter { $0 != chosen && !scheduled.contains($0) }
+            for sibling in siblings where scheduled.contains(sibling) && !remaining.isEmpty {
+                fill(sibling, with: remaining.removeFirst(), in: &pathway)
+            }
+        } else {
+            for sibling in siblings {
+                guard let held = pathway.resolvedPlaceholders[sibling], group.contains(held) else { continue }
+                for semesterIndex in pathway.semesters.indices {
+                    pathway.semesters[semesterIndex].courseIDs = pathway.semesters[semesterIndex].courseIDs.map { id in
+                        id == held ? sibling : id
+                    }
+                }
+                pathway.resolvedPlaceholders.removeValue(forKey: sibling)
+            }
+        }
+    }
+
+    /// "__pl::<categoryID>::<n>" → n.
+    private static func slotIndex(_ placeholderID: String) -> Int {
+        Int(placeholderID.components(separatedBy: "::").last ?? "") ?? 0
+    }
+
+    /// "__pl::<categoryID>::<n>" → categoryID.
+    private static func slotCategory(_ placeholderID: String) -> String {
+        placeholderID.dropFirst(PathwayPlaceholder.prefix.count).components(separatedBy: "::").dropLast().joined(separator: "::")
+    }
+
+    /// A requirement as scheduling sees it: the declared programs with each
+    /// option requirement replaced by its chosen option's parts.
+    private func schedulingRequirement(id: String) -> RequirementCategory? {
+        let primary = effectiveActiveProgram.map { $0.choosingOptions(plan.optionChoices, programID: $0.id) }
+        return ([primary].compactMap { $0 } + selectedMinorPrograms())
+            .lazy.flatMap(\.requirements).first { $0.id == id }
+    }
+
+    // MARK: - Option choice
+
+    /// The option requirements of the declared major and minors, after
+    /// concentration selection.
+    func optionRequirements() -> [OptionRequirementRef] {
+        guard let catalog else { return [] }
+        return OptionChoiceMigration.optionRequirements(of: plan, catalog: catalog).filter { ref in
+            // A minor's Gen Ed rows are not scheduled for it.
+            ref.programID == plan.programID || !Self.isGenEdRequirement(ref.requirement)
+        }
+    }
+
+    private struct OptionSwitchJob: Sendable {
+        var index: Int
+        var source: Pathway
+        /// Last semester kept; nil regenerates the pathway in full.
+        var cutoff: SemesterIdentity?
+    }
+
+    /// Switches an option requirement to another option in every pathway.
+    /// The old option's courses and slots in future semesters go (unless
+    /// another requirement needs the course); those already taken stay and
+    /// count as electives. Each pathway is regenerated after the semester
+    /// before the earliest one that lost something. One undoable change.
+    func switchOption(programID: String, requirementID: String, to optionID: String) async {
+        guard canEditSchedule, let catalog, let primaryID = plan.programID,
+              let ref = optionRequirements().first(where: { $0.programID == programID && $0.requirement.id == requirementID }),
+              let options = ref.requirement.options, let newOption = options.first(where: { $0.id == optionID })
+        else { return }
+        let oldOption = options.first { $0.id == plan.optionChoices[ref.choiceKey] } ?? options[0]
+        guard oldOption.id != newOption.id else { return }
+        let creditResult = EffectiveCreditBuilder.build(records: plan.academicRecords, legacyCredits: plan.transferCredits)
+        guard creditResult.issues.isEmpty else {
+            errorMessage = "Review overlapping or invalid prior credit in setup before switching options."
+            return
+        }
+        let choices = plan.optionChoices.merging([ref.choiceKey: newOption.id]) { _, new in new }
+        let additionalPrograms = minorPrograms(optionChoices: choices)
+
+        // The old option's single courses that nothing else will require.
+        let newPrograms = [effectiveActiveProgram?.choosingOptions(choices, programID: primaryID)].compactMap { $0 } + additionalPrograms
+        let requiredElsewhere = Set(newPrograms.flatMap(\.requirements).flatMap(\.courseOptions).filter { $0.count == 1 }.joined())
+        let oldRequired = Set(oldOption.parts.flatMap(\.courseOptions).filter { $0.count == 1 }.joined()).subtracting(requiredElsewhere)
+        let transcript = effectiveAcademicHistory.completedCourseIDs
+        let currentSemester = plan.currentSemester?.id
+
+        var taken: [String] = []
+        var jobs: [OptionSwitchJob] = []
+        for (index, original) in plan.pathways.enumerated() {
+            var pathway = original
+            func isOldSlot(_ id: String) -> Bool {
+                let category = pathway.placeholders[id]?.categoryID ?? Self.slotCategory(id)
+                guard let part = OptionPartID.parse(category) else { return false }
+                return part.requirementID == requirementID && part.optionID == oldOption.id
+            }
+            let slots = Set(pathway.placeholders.keys)
+                .union(pathway.resolvedPlaceholders.keys)
+                .union(pathway.semesters.flatMap(\.courseIDs).filter(PathwayPlaceholder.isPlaceholder))
+                .filter(isOldSlot)
+            let items = slots.union(slots.compactMap { pathway.resolvedPlaceholders[$0] }).union(oldRequired)
+            var earliestRemoved: SemesterIdentity?
+            for semesterIndex in pathway.semesters.indices {
+                let semester = pathway.semesters[semesterIndex]
+                let isPast = currentSemester.map { semester.id <= $0 } ?? false
+                pathway.semesters[semesterIndex].courseIDs = semester.courseIDs.filter { id in
+                    guard items.contains(id) else { return true }
+                    if isPast || transcript.contains(id) {
+                        if !PathwayPlaceholder.isPlaceholder(id), !taken.contains(id) { taken.append(id) }
+                        return true
+                    }
+                    earliestRemoved = min(earliestRemoved ?? semester.id, semester.id)
+                    return false
+                }
+            }
+            // A kept course now stands on its own; a removed slot is gone.
+            let placed = Set(pathway.semesters.flatMap(\.courseIDs))
+            for slot in slots where !placed.contains(slot) {
+                pathway.placeholders.removeValue(forKey: slot)
+                pathway.resolvedPlaceholders.removeValue(forKey: slot)
+            }
+            let semesterIDs = pathway.semesters.map(\.id)
+            // With nothing removed, everything stays and the new option goes after it.
+            let cutoff = earliestRemoved.map { earliest in semesterIDs.filter { $0 < earliest }.max() } ?? semesterIDs.max()
+            jobs.append(OptionSwitchJob(index: index, source: pathway, cutoff: cutoff))
+        }
+
+        let before = plan
+        let switchJobs = jobs
+        let concentrationID = plan.concentrationID
+        let workload = plan.workload
+        let transferCredits = creditResult.credits
+        let earnedHours = earnedHoursContext
+        let languagePlan = plan.foreignLanguage
+        let preservedSemester = plan.currentSemester
+        let planningStart = plan.planningStart ?? SemesterIdentity.current()
+        if !jobs.isEmpty {
+            scheduleGenerationProgress = ScheduleGenerationProgress(current: 0, total: jobs.count, pathwayName: "Switching to \(newOption.label)")
+        }
+        let result: Result<[Pathway], Error> = await Task.detached(priority: .userInitiated) {
+            do {
+                let generator = ScheduleGenerator(catalog: catalog)
+                return .success(try switchJobs.map { job in
+                    let strategy = ScheduleGenerationStrategy.resolve(pathwayID: job.source.id, index: job.index)
+                    var regenerated: Pathway
+                    if let cutoff = job.cutoff {
+                        regenerated = try generator.regeneratePathway(
+                            from: job.source, through: cutoff, for: primaryID, concentrationID: concentrationID,
+                            strategy: strategy, workload: workload, transferCredits: transferCredits,
+                            additionalPrograms: additionalPrograms, earnedHoursAtStart: earnedHours,
+                            languagePlan: languagePlan, optionChoices: choices)
+                    } else {
+                        let variants = try generator.generatePathways(
+                            for: primaryID, concentrationID: concentrationID, workload: workload,
+                            transferCredits: transferCredits, starting: planningStart,
+                            additionalPrograms: additionalPrograms, preservedSemester: preservedSemester,
+                            earnedHoursAtStart: earnedHours, languagePlan: languagePlan, optionChoices: choices)
+                        let variant = ScheduleGenerationStrategy.allCases.firstIndex(of: strategy) ?? 0
+                        guard let pathway = variants.indices.contains(variant) ? variants[variant] : variants.first else {
+                            throw PlannerError.impossibleSchedule("No pathway could be generated.")
+                        }
+                        regenerated = pathway
+                    }
+                    regenerated.id = job.source.id
+                    regenerated.name = job.source.name
+                    return regenerated
+                })
+            } catch {
+                return .failure(error)
+            }
+        }.value
+        scheduleGenerationProgress = nil
+        // Anything that changed the plan meanwhile wins.
+        guard plan == before else { return }
+        switch result {
+        case .failure(let error):
+            errorMessage = "Could not switch to \(newOption.label). Your plan is unchanged. " + error.localizedDescription
+        case .success(let pathways):
+            let codes = taken.map { catalog.coursesByID[$0]?.code ?? $0 }
+            let note = codes.isEmpty ? nil : "\(codes.joined(separator: ", ")) already taken; now counted as an elective."
+            let action = "Switch to \(newOption.label)"
+            recordPlanChange(actionName: action, message: [action, note].compactMap { $0 }.joined(separator: ". ")) {
+                var updated = plan
+                updated.optionChoices = choices
+                for (job, pathway) in zip(jobs, pathways) {
+                    updated.pathways[job.index] = pathway
+                }
+                plan = updated
+            }
+            errorMessage = nil
+            statusMessage = note ?? "Switched to \(newOption.label)."
+        }
     }
 
     func load() async {
@@ -340,7 +591,7 @@ final class PlanStore: ObservableObject {
             setupSheetPresented = SetupFlow.needsInitialSetup(plan: plan)
             await Task.yield()
             catalog = try catalogRepository.loadCatalog()
-            validateSelectedConcentration()
+            reconcilePlanWithCatalog()
             let catalogYear = catalog?.source.catalogYear ?? JMUCatalogConfiguration.catalogYear
             statusMessage = "Catalog loaded from the \(catalogYear) JMU undergraduate catalog cache."
         } catch {
@@ -493,6 +744,12 @@ final class PlanStore: ObservableObject {
     /// calculator so the minor's required courses participate in graduation
     /// tracking.
     func effectiveMinorProgram(for selection: MinorSelection) -> Program? {
+        minorProgramBeforeOptions(for: selection)?.choosingOptions(plan.optionChoices, programID: selection.programID)
+    }
+
+    /// The minor's effective program with its option requirements still
+    /// whole (not yet replaced by the chosen option's parts).
+    private func minorProgramBeforeOptions(for selection: MinorSelection) -> Program? {
         guard let catalog, let program = catalog.programsByID[selection.programID] else { return nil }
         guard var effective = try? program.effectiveProgram(concentrationID: selection.concentrationID) else { return nil }
         // Strip Gen Ed categories from second-major / minor effective programs.
@@ -552,6 +809,7 @@ final class PlanStore: ObservableObject {
         }
 
         scheduleGenerationProgress = ScheduleGenerationProgress(current: 0, total: 3, pathwayName: "Preparing")
+        migrateOptionChoices()
 
         // Capture plain Sendable values so the detached task never touches
         // the main-actor store. Progress hops back via MainActor.run.
@@ -569,6 +827,7 @@ final class PlanStore: ObservableObject {
         let planningStart = plan.planningStart ?? SemesterIdentity.current()
         let additionalPrograms = selectedMinorPrograms()
         let languagePlan = plan.foreignLanguage
+        let optionChoices = plan.optionChoices
 
         let result: Result<[Pathway], Error> = await Task.detached(priority: .userInitiated) {
             do {
@@ -582,6 +841,7 @@ final class PlanStore: ObservableObject {
                     preservedSemester: preservedSemester,
                     earnedHoursAtStart: earnedHours,
                     languagePlan: languagePlan,
+                    optionChoices: optionChoices,
                     progress: { [weak self] current, total, name in
                         Task { @MainActor in
                             self?.scheduleGenerationProgress = ScheduleGenerationProgress(
@@ -641,7 +901,7 @@ final class PlanStore: ObservableObject {
             strategy: .resolve(pathwayID: source.id, index: plan.pathways.firstIndex(where: { $0.id == source.id }) ?? 0),
             workload: plan.workload, transferCredits: creditResult.credits,
             additionalPrograms: selectedMinorPrograms(), earnedHoursAtStart: earnedHoursContext,
-            languagePlan: plan.foreignLanguage)
+            languagePlan: plan.foreignLanguage, optionChoices: plan.optionChoices)
         errorMessage = nil
         partialRegeneration = .init(operationID: operationID, pathwayID: source.id, cutoff: cutoff,
                                     progress: .init(current: 0, total: 1, pathwayName: "Preparing"))
@@ -742,6 +1002,12 @@ final class PlanStore: ObservableObject {
         planID: UUID,
         actionName: String
     ) {
+        registerUndoAction(actionName: actionName) { store in
+            store.restore(snapshot, expected: expected, planID: planID, actionName: actionName)
+        }
+    }
+
+    private func registerUndoAction(actionName: String, _ action: @escaping @MainActor @Sendable (PlanStore) -> Void) {
         guard let undoManager else { return }
         let opensGroup = !undoManager.isUndoing && !undoManager.isRedoing
         let groupsByEvent = undoManager.groupsByEvent
@@ -751,7 +1017,7 @@ final class PlanStore: ObservableObject {
         }
         undoManager.registerUndo(withTarget: self) { store in
             MainActor.assumeIsolated {
-                store.restore(snapshot, expected: expected, planID: planID, actionName: actionName)
+                action(store)
             }
         }
         undoManager.setActionName(actionName)
@@ -790,6 +1056,62 @@ final class PlanStore: ObservableObject {
         autosave()
         let restored = ScheduleSnapshot(pathway: snapshot.pathway, overrides: updated.overrides, currentSemester: updated.currentSemester, academicRecords: updated.academicRecords)
         registerUndo(restoring: current, expected: restored, planID: planID, actionName: actionName)
+    }
+
+    /// Every pathway and the option choices: what an option switch changes.
+    private struct PlanSnapshot: Equatable, Sendable {
+        var pathways: [Pathway]
+        var optionChoices: [String: String]
+        var currentSemester: SemesterPlan?
+        var academicRecords: [AcademicCourseRecord]
+
+        init(_ plan: SavedStudentPlan) {
+            pathways = plan.pathways
+            optionChoices = plan.optionChoices
+            currentSemester = plan.currentSemester
+            academicRecords = plan.academicRecords
+        }
+    }
+
+    /// `recordScheduleChange` for a change across every pathway: undo puts
+    /// all of them, and the option choices, back.
+    private func recordPlanChange(actionName: String, message: String, _ mutation: () -> Void) {
+        guard canEditSchedule else { return }
+        let planID = plan.id
+        let before = PlanSnapshot(plan)
+        let warningsBefore = warnings
+        mutation()
+        syncCurrentEnrollmentFromActivePathway()
+        autosave()
+        let after = PlanSnapshot(plan)
+        guard plan.id == planID, after != before else { return }
+        registerPlanUndo(restoring: before, expected: after, planID: planID, actionName: actionName)
+        lastScheduleChange = ScheduleChange(
+            actionName: actionName,
+            message: message,
+            newWarningCount: WarningDiff.added(before: warningsBefore, after: warnings).count
+        )
+    }
+
+    private func registerPlanUndo(restoring snapshot: PlanSnapshot, expected: PlanSnapshot, planID: UUID, actionName: String) {
+        registerUndoAction(actionName: actionName) { store in
+            store.restorePlan(snapshot, expected: expected, planID: planID, actionName: actionName)
+        }
+    }
+
+    private func restorePlan(_ snapshot: PlanSnapshot, expected: PlanSnapshot, planID: UUID, actionName: String) {
+        cancelPartialRegeneration()
+        guard plan.id == planID, PlanSnapshot(plan) == expected else { return }
+        let current = PlanSnapshot(plan)
+        var updated = plan
+        updated.pathways = snapshot.pathways
+        updated.optionChoices = snapshot.optionChoices
+        updated.currentSemester = snapshot.currentSemester
+        updated.academicRecords = snapshot.academicRecords
+        plan = updated
+        lastScheduleChange = nil
+        autosave()
+        registerPlanUndo(restoring: current, expected: snapshot, planID: planID, actionName: actionName)
     }
 
     /// Undo button in the toast. Only undoes while the toast's change is
@@ -1163,7 +1485,7 @@ final class PlanStore: ObservableObject {
     func resume(_ saved: SavedStudentPlan) {
         clearScheduleHistory()
         plan = saved
-        validateSelectedConcentration()
+        reconcilePlanWithCatalog()
         statusMessage = "Resumed \(saved.name)."
     }
 
@@ -1209,7 +1531,7 @@ final class PlanStore: ObservableObject {
                     self.statusMessage = "Parsing \(progress.current) of \(progress.total): \(progress.programTitle)"
                 }
                 catalog = refreshed
-                validateSelectedConcentration()
+                reconcilePlanWithCatalog()
                 isRefreshingCatalog = false
                 let majors = refreshed.programs.filter { $0.kind == .major && $0.requirementDataComplete }.count
                 let minors = refreshed.programs.filter { $0.kind == .minor && $0.requirementDataComplete }.count
@@ -1230,6 +1552,22 @@ final class PlanStore: ObservableObject {
     private var activePathwayIndex: Int? {
         guard let activePathway else { return nil }
         return plan.pathways.firstIndex(where: { $0.id == activePathway.id })
+    }
+
+    /// Where a plan meets its catalog: a former "Option N" concentration
+    /// becomes the option choice before the concentration is checked, so
+    /// the check doesn't discard the plan's schedule.
+    private func reconcilePlanWithCatalog() {
+        migrateOptionChoices()
+        validateSelectedConcentration()
+    }
+
+    /// Carries old option concentrations over and gives every option
+    /// requirement a choice. Idempotent; leaves `plan` alone when nothing changes.
+    private func migrateOptionChoices() {
+        guard let catalog else { return }
+        let migrated = OptionChoiceMigration.migrate(plan, catalog: catalog, completed: effectiveAcademicHistory.completedCourseIDs)
+        if migrated != plan { plan = migrated }
     }
 
     private func validateSelectedConcentration() {

@@ -514,17 +514,8 @@ struct SemesterColumnView: View {
         guard let categoryID = highlightedCategoryID else { return false }
         // Filter id is either the primary major's raw category id or the
         // ProgressCalculator-prefixed "{programID}::{categoryID}" form used for
-        // second-major / minor categories. Search both spaces.
-        if let program = store.effectiveActiveProgram,
-           let category = program.requirements.first(where: { $0.id == categoryID }) {
-            return store.courseIDsForRequirementHighlight(in: category).contains(courseID)
-        }
-        for extra in store.selectedMinorPrograms() {
-            for category in extra.requirements where "\(extra.id)::\(category.id)" == categoryID {
-                return store.courseIDsForRequirementHighlight(in: category).contains(courseID)
-            }
-        }
-        return false
+        // second-major / minor categories; an option row covers its parts.
+        return store.courseIDsForRequirementHighlight(rowID: categoryID).contains(courseID)
     }
 }
 

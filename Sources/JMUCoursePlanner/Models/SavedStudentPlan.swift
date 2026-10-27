@@ -35,6 +35,9 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
     var planningStart: SemesterIdentity? = nil
     /// A B.A. student's language and placement; nil until setup asks.
     var foreignLanguage: ForeignLanguagePlan? = nil
+    /// The chosen option of each "choose one of the following options"
+    /// requirement, keyed by `RequirementOption.choiceKey(programID:requirementID:)`.
+    var optionChoices: [String: String] = [:]
     var updatedAt: Date
 
     init(
@@ -66,7 +69,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case studentYear, academicRecords, currentSemester, setupCompleted, planningStart, foreignLanguage
+        case studentYear, academicRecords, currentSemester, setupCompleted, planningStart, foreignLanguage, optionChoices
         case id, name, programID, concentrationID, minors, minorProgramIDs
         case workload, apScores, transferCredits, pathways, activePathwayID, overrides, updatedAt
     }
@@ -79,6 +82,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
         setupCompleted = try container.decodeIfPresent(Bool.self, forKey: .setupCompleted) ?? false
         planningStart = try container.decodeIfPresent(SemesterIdentity.self, forKey: .planningStart)
         foreignLanguage = try container.decodeIfPresent(ForeignLanguagePlan.self, forKey: .foreignLanguage)
+        optionChoices = try container.decodeIfPresent([String: String].self, forKey: .optionChoices) ?? [:]
         self.id = try container.decode(UUID.self, forKey: .id)
         self.name = try container.decode(String.self, forKey: .name)
         self.programID = try container.decodeIfPresent(String.self, forKey: .programID)
@@ -114,6 +118,7 @@ struct SavedStudentPlan: Codable, Identifiable, Hashable {
         try container.encode(setupCompleted, forKey: .setupCompleted)
         try container.encodeIfPresent(planningStart, forKey: .planningStart)
         try container.encodeIfPresent(foreignLanguage, forKey: .foreignLanguage)
+        try container.encode(optionChoices, forKey: .optionChoices)
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encodeIfPresent(programID, forKey: .programID)

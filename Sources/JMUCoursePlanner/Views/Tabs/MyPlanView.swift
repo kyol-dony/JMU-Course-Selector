@@ -236,15 +236,14 @@ struct MyPlanView: View {
 
     @ViewBuilder
     private var categoryBreakdown: some View {
-        if let progress = store.progress, let program = store.activeProgram {
-            let requirementProgram = store.effectiveActiveProgram ?? program
-            let lookup = requirementLookup(primary: requirementProgram)
+        if let progress = store.progress, store.activeProgram != nil {
             Card {
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.l) {
                     SectionHeader("Requirement progress")
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.l) {
                         ForEach(progress.categories) { category in
-                            let requirement = lookup[category.id]
+                            // An option row reads as its chosen option's courses.
+                            let requirement = store.requirementForProgressRow(category.id)
                             let isOpenElective = category.id == ScheduleGenerator.openElectiveCategoryID
                             let rows = isOpenElective ? openElectiveContributions() : contributions(for: requirement)
                             RequirementProgressRow(
@@ -266,19 +265,6 @@ struct MyPlanView: View {
                 }
             }
         }
-    }
-
-    /// Mirror ProgressCalculator's "{programID}::{categoryID}" prefix for
-    /// second-major / minor categories so their requirement lookup resolves
-    /// and the schedule-filter tap targets the right id.
-    private func requirementLookup(primary: Program) -> [String: RequirementCategory] {
-        var pairs: [(String, RequirementCategory)] = primary.requirements.map { ($0.id, $0) }
-        for extra in store.selectedMinorPrograms() {
-            for category in extra.requirements {
-                pairs.append(("\(extra.id)::\(category.id)", category))
-            }
-        }
-        return Dictionary(pairs, uniquingKeysWith: { first, _ in first })
     }
 
     private func remainingCodes(for category: RequirementCategory?) -> [String] {

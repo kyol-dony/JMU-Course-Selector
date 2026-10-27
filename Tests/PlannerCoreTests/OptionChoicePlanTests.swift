@@ -391,6 +391,35 @@ struct OptionChoicePlanTests {
 
     // MARK: - Requirement highlight
 
+    @Test func myPlanRowShowsTheChosenOptionsCourses() throws {
+        let store = Self.makeStore(programs: [Self.major(), Self.minor()])
+        var plan = SavedStudentPlan(programID: Self.majorID, minors: [MinorSelection(programID: Self.minorID)])
+        plan.optionChoices = [Self.key(): "option-2", Self.key(Self.minorID, "r"): "option-2"]
+        plan.pathways = [Pathway(id: "path-1", name: "Balanced", semesters: [SemesterPlan(id: Self.fall26, courseIDs: ["MATH426"])])]
+        plan.activePathwayID = "path-1"
+        store.plan = plan
+
+        let major = try #require(store.requirementForProgressRow(Self.req))
+        let remaining = store.remainingCourses(in: major)
+        #expect(remaining.contains("MATH 310"))
+        #expect(remaining.contains("MATH 440"))
+        #expect(!remaining.contains("MATH 411"))
+        #expect(!remaining.contains("MATH 431"))
+        let contributions = ProgressContributionBuilder.contributions(
+            for: major, transferCredits: [], scheduled: ["MATH426": "Fall 2026"], coursesByID: store.catalog!.coursesByID
+        )
+        #expect(contributions.map(\.code) == ["MATH 426"])
+
+        let minor = try #require(store.requirementForProgressRow("\(Self.minorID)::r"))
+        let minorRemaining = store.remainingCourses(in: minor)
+        #expect(!minorRemaining.isEmpty)
+        #expect(minorRemaining.contains("MATH 440"))
+        #expect(!minorRemaining.contains("MATH 411"))
+
+        #expect(store.requirementForProgressRow("core")?.courseOptions == [["MATH235"]])
+        #expect(store.requirementForProgressRow("\(Self.minorID)::missing") == nil)
+    }
+
     @Test func foldedOptionRowHighlightsItsParts() {
         let store = Self.makeStore(programs: [Self.major(), Self.minor()])
         var plan = SavedStudentPlan(programID: Self.majorID, minors: [MinorSelection(programID: Self.minorID)])

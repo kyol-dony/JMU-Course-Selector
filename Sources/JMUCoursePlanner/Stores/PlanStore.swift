@@ -283,33 +283,70 @@ final class PlanStore: ObservableObject {
     /// option's parts: their courses and "or take both" group, plus the
     /// active pathway's slots for those parts and the courses they hold.
     func courseIDsForRequirementHighlight(rowID: String) -> Set<String> {
-        if let programID = plan.programID,
-           let category = effectiveActiveProgram?.requirements.first(where: { $0.id == rowID }) {
-            return highlightIDs(for: category, programID: programID)
+        guard let row = progressRowRequirement(rowID) else { return [] }
+        guard let option = chosenOption(of: row.category, programID: row.programID) else {
+            return courseIDsForRequirementHighlight(in: row.category)
         }
-        for selection in plan.minors {
-            guard let program = minorProgramBeforeOptions(for: selection),
-                  let category = program.requirements.first(where: { "\(program.id)::\($0.id)" == rowID })
-            else { continue }
-            return highlightIDs(for: category, programID: selection.programID)
-        }
-        return []
-    }
-
-    private func highlightIDs(for category: RequirementCategory, programID: String) -> Set<String> {
-        guard let options = category.options, !options.isEmpty else { return courseIDsForRequirementHighlight(in: category) }
-        let chosenID = plan.optionChoices[RequirementOption.choiceKey(programID: programID, requirementID: category.id)]
-        let option = options.first { $0.id == chosenID } ?? options[0]
         var ids = Set(option.parts.flatMap { $0.courseOptions.flatMap { $0 } + ($0.alternativeGroup ?? []) })
         guard let pathway = activePathway else { return ids }
         for (slotID, spec) in pathway.placeholders {
             guard let part = OptionPartID.parse(spec.categoryID),
-                  part.requirementID == category.id, part.optionID == option.id
+                  part.requirementID == row.category.id, part.optionID == option.id
             else { continue }
             ids.insert(slotID)
             if let course = pathway.resolvedPlaceholders[slotID] { ids.insert(course) }
         }
         return ids
+    }
+
+    /// The requirement a My Plan progress row describes (`rowID` as in
+    /// `courseIDsForRequirementHighlight(rowID:)`). A folded option row
+    /// gets the chosen option's slots in place of the legacy fields, which
+    /// describe the first option; it keeps its `options`. Any other row is
+    /// its requirement unchanged. Nil for rows with no requirement.
+    func requirementForProgressRow(_ rowID: String) -> RequirementCategory? {
+        guard let row = progressRowRequirement(rowID) else { return nil }
+        guard let option = chosenOption(of: row.category, programID: row.programID) else { return row.category }
+        var shown = row.category
+        shown.courseOptions = option.parts.flatMap { part -> [[String]] in
+            // "Or take both": one group member per slot, so a single member
+            // meets one slot, not every slot it is offered in.
+            var slots = part.courseOptions
+            guard !slots.isEmpty else { return slots }
+            for (index, member) in (part.alternativeGroup ?? []).enumerated() {
+                let target = min(index, slots.count - 1)
+                if !slots[target].contains(member) { slots[target].append(member) }
+            }
+            return slots
+        }
+        shown.selection = .allRequired
+        shown.choices = []
+        shown.electivePoolSlots = nil
+        shown.courseRemarks = [:]
+        return shown
+    }
+
+    /// The unexpanded requirement behind a progress row, with its program.
+    private func progressRowRequirement(_ rowID: String) -> (programID: String, category: RequirementCategory)? {
+        if let programID = plan.programID, let program = effectiveActiveProgram ?? activeProgram,
+           let category = program.requirements.first(where: { $0.id == rowID }) {
+            return (programID, category)
+        }
+        for selection in plan.minors {
+            guard let program = minorProgramBeforeOptions(for: selection),
+                  let category = program.requirements.first(where: { "\(program.id)::\($0.id)" == rowID })
+            else { continue }
+            return (selection.programID, category)
+        }
+        return nil
+    }
+
+    /// The stored choice, else the first option (as scheduling falls back);
+    /// nil for a requirement without options.
+    private func chosenOption(of category: RequirementCategory, programID: String) -> RequirementOption? {
+        guard let options = category.options, !options.isEmpty else { return nil }
+        let chosenID = plan.optionChoices[RequirementOption.choiceKey(programID: programID, requirementID: category.id)]
+        return options.first { $0.id == chosenID } ?? options[0]
     }
 
     // MARK: - Placeholder courses in the active pathway

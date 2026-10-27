@@ -13,6 +13,8 @@ struct PartialRegenerationRequest: Sendable {
     let additionalPrograms: [Program]
     let earnedHoursAtStart: Double?
     var languagePlan: ForeignLanguagePlan? = nil
+    /// The student's picks for "choose one of the following options" requirements.
+    var optionChoices: [String: String] = [:]
 }
 
 struct PartialRegenerationState: Equatable, Sendable {

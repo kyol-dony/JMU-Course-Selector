@@ -912,6 +912,7 @@ public struct ScheduleGenerator: Sendable {
         preservedSemester: SemesterPlan? = nil,
         earnedHoursAtStart: Double? = nil,
         languagePlan: ForeignLanguagePlan? = nil,
+        optionChoices: [String: String] = [:],
         progress: (@Sendable (Int, Int, String) -> Void)? = nil
     ) throws -> [Pathway] {
         let context = try preservedSemester.map {
@@ -920,7 +921,7 @@ public struct ScheduleGenerator: Sendable {
         return try generate(for: programID, concentrationID: concentrationID, workload: workload,
                             transferCredits: transferCredits, starting: start, additionalPrograms: additionalPrograms,
                             context: context, source: nil, strategy: nil, earnedHoursAtStart: earnedHoursAtStart,
-                            languagePlan: languagePlan, progress: progress)
+                            languagePlan: languagePlan, optionChoices: optionChoices, progress: progress)
     }
 
     public func regeneratePathway(
@@ -934,6 +935,7 @@ public struct ScheduleGenerator: Sendable {
         additionalPrograms: [Program] = [],
         earnedHoursAtStart: Double? = nil,
         languagePlan: ForeignLanguagePlan? = nil,
+        optionChoices: [String: String] = [:],
         progress: (@Sendable (Int, Int, String) -> Void)? = nil
     ) throws -> Pathway {
         let context = try AnchoredScheduleContext(source: source, through: cutoff)
@@ -941,20 +943,21 @@ public struct ScheduleGenerator: Sendable {
                             transferCredits: transferCredits, starting: context.startingSemester,
                             additionalPrograms: additionalPrograms, context: context, source: source,
                             strategy: strategy, earnedHoursAtStart: earnedHoursAtStart,
-                            languagePlan: languagePlan, progress: progress)[0]
+                            languagePlan: languagePlan, optionChoices: optionChoices, progress: progress)[0]
     }
 
     private func generate(
         for programID: String, concentrationID: String?, workload: WorkloadPreference,
         transferCredits: [TransferCredit], starting start: SemesterIdentity, additionalPrograms: [Program],
         context: AnchoredScheduleContext?, source: Pathway?, strategy: ScheduleGenerationStrategy?,
-        earnedHoursAtStart: Double?, languagePlan: ForeignLanguagePlan?, progress: (@Sendable (Int, Int, String) -> Void)?
+        earnedHoursAtStart: Double?, languagePlan: ForeignLanguagePlan?, optionChoices: [String: String],
+        progress: (@Sendable (Int, Int, String) -> Void)?
     ) throws -> [Pathway] {
         try Task.checkCancellation()
         let prefix = context?.semesters ?? []
         let preservedSemester = prefix.first
         let reservations = source == nil ? nil : context
-        let program = try programForScheduling(programID, concentrationID: concentrationID)
+        let program = try programForScheduling(programID, concentrationID: concentrationID, optionChoices: optionChoices)
         let completed = Set(transferCredits.flatMap(\.courseIDs)).union(context?.completedCourseIDs ?? [])
         var placeholders = context?.placeholders ?? [:]
         // Build one course list per program so the merge step below can
@@ -1093,11 +1096,14 @@ public struct ScheduleGenerator: Sendable {
         return Double(catalog.coursesByID[courseID]?.credits ?? 0)
     }
 
-    private func programForScheduling(_ programID: String, concentrationID: String?) throws -> Program {
+    private func programForScheduling(_ programID: String, concentrationID: String?, optionChoices: [String: String]) throws -> Program {
         guard let rawProgram = catalog.programsByID[programID] else {
             throw PlannerError.programNotFound(programID)
         }
+        // A "choose one of the following options" requirement schedules as
+        // the chosen option's parts, not as its own legacy slots.
         let program = try rawProgram.effectiveProgram(concentrationID: concentrationID)
+            .choosingOptions(optionChoices, programID: programID)
         // Only block when there is literally nothing schedulable. If any requirement
         // exposes course options, build a schedule from what we have — the UI surfaces
         // partial/unverified statuses so the student can see the gaps.
@@ -2846,12 +2852,17 @@ public struct ProgressCalculator: Sendable {
         pathway: Pathway,
         transferCredits: [TransferCredit],
         additionalPrograms: [Program] = [],
-        languagePlan: ForeignLanguagePlan? = nil
+        languagePlan: ForeignLanguagePlan? = nil,
+        optionChoices: [String: String] = [:]
     ) throws -> GraduationProgress {
         guard let program = catalog.programsByID[programID] else {
             throw PlannerError.programNotFound(programID)
         }
-        let effectiveProgram = try program.effectiveProgram(concentrationID: concentrationID)
+        // Keep the unexpanded program: it still knows each option
+        // requirement's name, which the folded rows below are named after.
+        let chosenProgram = try program.effectiveProgram(concentrationID: concentrationID)
+        let optionRequirements = Self.optionRequirements(in: chosenProgram)
+        let effectiveProgram = chosenProgram.choosingOptions(optionChoices, programID: programID)
 
         // Placeholder course IDs in the pathway represent UNFILLED options.
         // They should not count toward completed credits. Strip them so the
@@ -2870,7 +2881,12 @@ public struct ProgressCalculator: Sendable {
             // ("choose two", elective pools) need different courses. Options
             // with the shortest menus claim their course first.
             var consumed: Set<String> = []
-            let completedCredits = category.courseOptions
+            // "Or take both": the group meets the part only as a whole. One
+            // member alone is an ordinary course in the part's slots.
+            let groupMeetsPart = category.alternativeGroup.map { group in
+                !group.isEmpty && group.allSatisfy { completedCourseIDs.contains($0) }
+            } ?? false
+            let completedCredits = groupMeetsPart ? Double(category.requiredCredits) : category.courseOptions
                 .sorted { $0.count < $1.count }
                 .reduce(0.0) { total, options in
                     if TransferCreditMapper.genEdCreditSatisfies(category: category, completedCourseIDs: completedCourseIDs) {
@@ -2906,9 +2922,11 @@ public struct ProgressCalculator: Sendable {
         // Electives"). The umbrella has zero `courseOptions` because the
         // parser can't extract any course IDs from it, so surfacing it as a
         // requirement just inflates the denominator and confuses the user.
-        var categories = effectiveProgram.requirements
-            .filter { !$0.courseOptions.isEmpty }
-            .map { progressRow(category: $0) }
+        var categories = foldedRows(
+            effectiveProgram.requirements.filter { !$0.courseOptions.isEmpty },
+            optionRequirements: optionRequirements,
+            row: { progressRow(category: $0) }
+        )
 
         // Mirror ScheduleGenerator's 120-CRH top-up: surface an "Open
         // Electives" row whose required credits cover the gap between the
@@ -2982,18 +3000,70 @@ public struct ProgressCalculator: Sendable {
         for extra in additionalPrograms {
             let label = extra.kind == .major ? "Second Major" : "Minor"
             let prefix = "\(label) (\(extra.title))"
-            for category in extra.requirements where !category.courseOptions.isEmpty {
-                categories.append(progressRow(
-                    category: category,
-                    idPrefix: extra.id,
-                    namePrefix: prefix
-                ))
-            }
+            // Extras arrive with their options already chosen. The catalog's
+            // own copy still knows each option requirement's name.
+            var extraOptionRequirements = catalog.programsByID[extra.id].map(Self.optionRequirements(in:)) ?? [:]
+            extraOptionRequirements.merge(Self.optionRequirements(in: extra)) { _, own in own }
+            categories += foldedRows(
+                extra.requirements.filter { !$0.courseOptions.isEmpty },
+                optionRequirements: extraOptionRequirements,
+                idPrefix: extra.id,
+                namePrefix: prefix,
+                row: { progressRow(category: $0, idPrefix: extra.id, namePrefix: prefix) }
+            )
         }
 
         let history = AcademicHistory(records: [], currentSemester: nil, effectiveCredits: transferCredits, earnedHours: transferCredits.reduce(0) { $0 + $1.credits })
         let totals = AcademicCreditCalculator.totals(history: history, pathway: pathway, catalog: catalog)
         return GraduationProgress(categories: categories, projectedGraduation: pathway.projectedGraduation, earnedHours: totals.earnedHours, projectedHours: totals.projectedHours)
+    }
+
+    /// Option requirements of a program and its concentrations, by id.
+    private static func optionRequirements(in program: Program) -> [String: RequirementCategory] {
+        var result: [String: RequirementCategory] = [:]
+        for category in program.requirements + program.concentrations.flatMap(\.requirements)
+        where category.options?.isEmpty == false {
+            result[category.id] = category
+        }
+        return result
+    }
+
+    /// Replaces the rows of an expanded option requirement's parts ("r--option-2--0",
+    /// "r--option-2--1") with one row for the requirement, in the place of its first
+    /// part. The row has the id progress would give the requirement itself, the name
+    /// "<requirement name> (<option label>)", and the parts' credits summed.
+    private func foldedRows(
+        _ categories: [RequirementCategory],
+        optionRequirements: [String: RequirementCategory],
+        idPrefix: String = "",
+        namePrefix: String = "",
+        row: (RequirementCategory) -> CategoryProgress
+    ) -> [CategoryProgress] {
+        var result: [CategoryProgress] = []
+        var foldedIndex: [String: Int] = [:]
+        for category in categories {
+            let rowForCategory = row(category)
+            guard let part = OptionPartID.parse(category.id) else {
+                result.append(rowForCategory)
+                continue
+            }
+            let requirement = optionRequirements[part.requirementID]
+            let label = requirement?.options?.first { $0.id == part.optionID }?.label
+                ?? category.name.components(separatedBy: ": ").first ?? part.optionID
+            let baseName = requirement.map { "\($0.name) (\(label))" } ?? label
+            if let index = foldedIndex[part.requirementID] {
+                result[index].completedCredits += rowForCategory.completedCredits
+                result[index].requiredCredits += rowForCategory.requiredCredits
+                if rowForCategory.verificationStatus != .verified { result[index].verificationStatus = rowForCategory.verificationStatus }
+            } else {
+                foldedIndex[part.requirementID] = result.count
+                var folded = rowForCategory
+                folded.id = idPrefix.isEmpty ? part.requirementID : "\(idPrefix)::\(part.requirementID)"
+                folded.name = namePrefix.isEmpty ? baseName : "\(namePrefix): \(baseName)"
+                result.append(folded)
+            }
+        }
+        return result
     }
 }
 

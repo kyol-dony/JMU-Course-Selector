@@ -392,21 +392,34 @@ final class PlanStore: ObservableObject {
             .filter { $0.key != placeholderID && $0.value.categoryID == categoryID }
             .map(\.key)
             .sorted { Self.slotIndex($0) < Self.slotIndex($1) }
+        let scheduled = Set(pathway.semesters.flatMap(\.courseIDs))
         if group.contains(chosen) {
-            let scheduled = Set(pathway.semesters.flatMap(\.courseIDs))
+            // Never one member next to a regular pick: open slots take the
+            // remaining members first, then slots holding a regular pick are
+            // reopened for them. Extra slots stay as they are.
             var remaining = group.filter { $0 != chosen && !scheduled.contains($0) }
-            for sibling in siblings where scheduled.contains(sibling) && !remaining.isEmpty {
+            let open = siblings.filter { scheduled.contains($0) }
+            let regular = siblings.filter { sibling in
+                guard !scheduled.contains(sibling), let held = pathway.resolvedPlaceholders[sibling] else { return false }
+                return !group.contains(held) && scheduled.contains(held)
+            }
+            for sibling in open + regular where !remaining.isEmpty {
+                reopen(sibling, in: &pathway)
                 fill(sibling, with: remaining.removeFirst(), in: &pathway)
             }
         } else {
-            for sibling in siblings {
-                guard let held = pathway.resolvedPlaceholders[sibling], group.contains(held) else { continue }
-                for semesterIndex in pathway.semesters.indices {
-                    pathway.semesters[semesterIndex].courseIDs = pathway.semesters[semesterIndex].courseIDs.map { id in
-                        id == held ? sibling : id
-                    }
-                }
-                pathway.resolvedPlaceholders.removeValue(forKey: sibling)
+            for sibling in siblings where pathway.resolvedPlaceholders[sibling].map(group.contains) == true {
+                reopen(sibling, in: &pathway)
+            }
+        }
+    }
+
+    /// Puts a resolved slot's placeholder back in place of its course.
+    private func reopen(_ slotID: String, in pathway: inout Pathway) {
+        guard let held = pathway.resolvedPlaceholders.removeValue(forKey: slotID) else { return }
+        for semesterIndex in pathway.semesters.indices {
+            pathway.semesters[semesterIndex].courseIDs = pathway.semesters[semesterIndex].courseIDs.map { id in
+                id == held ? slotID : id
             }
         }
     }
@@ -474,6 +487,7 @@ final class PlanStore: ObservableObject {
         let oldRequired = Set(oldOption.parts.flatMap(\.courseOptions).filter { $0.count == 1 }.joined()).subtracting(requiredElsewhere)
         let transcript = effectiveAcademicHistory.completedCourseIDs
         let currentSemester = plan.currentSemester?.id
+        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: effectiveActiveProgram?.title)
 
         var taken: [String] = []
         var jobs: [OptionSwitchJob] = []
@@ -489,29 +503,57 @@ final class PlanStore: ObservableObject {
                 .union(pathway.semesters.flatMap(\.courseIDs).filter(PathwayPlaceholder.isPlaceholder))
                 .filter(isOldSlot)
             let items = slots.union(slots.compactMap { pathway.resolvedPlaceholders[$0] }).union(oldRequired)
+            func isTaken(_ id: String, in semester: SemesterIdentity) -> Bool {
+                (currentSemester.map { semester <= $0 } ?? false) || transcript.contains(id)
+            }
+            var removed: Set<String> = []
+            var latestTaken: SemesterIdentity?
+            for semester in pathway.semesters {
+                for id in semester.courseIDs where items.contains(id) {
+                    if isTaken(id, in: semester.id) {
+                        if !PathwayPlaceholder.isPlaceholder(id), !taken.contains(id) { taken.append(id) }
+                        latestTaken = max(latestTaken ?? semester.id, semester.id)
+                    } else {
+                        removed.insert(id)
+                    }
+                }
+            }
+            // A removed lecture's lab goes with it, unless the new option's programs need the lab.
+            for lecture in removed where !PathwayPlaceholder.isPlaceholder(lecture) {
+                for lab in labPairing.partners(of: lecture, in: pathway) where !requiredElsewhere.contains(lab) {
+                    guard let home = pathway.semesters.first(where: { $0.courseIDs.contains(lab) }),
+                          !isTaken(lab, in: home.id) else { continue }
+                    removed.insert(lab)
+                }
+            }
             var earliestRemoved: SemesterIdentity?
             for semesterIndex in pathway.semesters.indices {
                 let semester = pathway.semesters[semesterIndex]
-                let isPast = currentSemester.map { semester.id <= $0 } ?? false
-                pathway.semesters[semesterIndex].courseIDs = semester.courseIDs.filter { id in
-                    guard items.contains(id) else { return true }
-                    if isPast || transcript.contains(id) {
-                        if !PathwayPlaceholder.isPlaceholder(id), !taken.contains(id) { taken.append(id) }
-                        return true
-                    }
+                if semester.courseIDs.contains(where: removed.contains) {
                     earliestRemoved = min(earliestRemoved ?? semester.id, semester.id)
-                    return false
                 }
+                pathway.semesters[semesterIndex].courseIDs.removeAll(where: removed.contains)
             }
-            // A kept course now stands on its own; a removed slot is gone.
+            // A kept course now stands on its own; a removed slot (or the
+            // lab slot of a removed lecture) is gone.
             let placed = Set(pathway.semesters.flatMap(\.courseIDs))
-            for slot in slots where !placed.contains(slot) {
+            let labSlots = pathway.resolvedPlaceholders
+                .filter { removed.contains($0.value) && LabPairing.lecture(forLabPlaceholder: $0.key) != nil }
+                .map(\.key)
+            for slot in slots.union(removed.filter(PathwayPlaceholder.isPlaceholder)).union(labSlots) where !placed.contains(slot) {
                 pathway.placeholders.removeValue(forKey: slot)
                 pathway.resolvedPlaceholders.removeValue(forKey: slot)
             }
             let semesterIDs = pathway.semesters.map(\.id)
-            // With nothing removed, everything stays and the new option goes after it.
-            let cutoff = earliestRemoved.map { earliest in semesterIDs.filter { $0 < earliest }.max() } ?? semesterIDs.max()
+            let cutoff: SemesterIdentity?
+            if let earliestRemoved {
+                cutoff = semesterIDs.filter { $0 < earliestRemoved }.max()
+            } else {
+                // Nothing to remove: the new option still goes into the
+                // future semesters, after the current one or the last taken item.
+                let current = currentSemester.flatMap { current in semesterIDs.filter { $0 <= current }.max() }
+                cutoff = [current, latestTaken].compactMap { $0 }.max()
+            }
             jobs.append(OptionSwitchJob(index: index, source: pathway, cutoff: cutoff))
         }
 

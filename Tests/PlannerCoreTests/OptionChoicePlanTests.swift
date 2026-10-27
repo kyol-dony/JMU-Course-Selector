@@ -58,13 +58,18 @@ struct OptionChoicePlanTests {
         )
     }
 
-    static func catalog(programs: [Program]) -> Catalog {
+    /// `labs`: MATH 431 needs its lab, MATH 431L.
+    static func catalog(programs: [Program], labs: Bool = false) -> Catalog {
         let codes = ["MATH 235", "MATH 310", "MATH 411", "MATH 426", "MATH 427", "MATH 431", "MATH 440", "MATH 441",
-                     "MATH 450", "MATH 480", "MATH 499"]
+                     "MATH 450", "MATH 480", "MATH 499"] + (labs ? ["MATH 431L"] : [])
+        let coreqs = labs ? ["MATH 431": "Corequisites: MATH 431L .", "MATH 431L": "Corequisites: MATH 431 ."] : [:]
         return Catalog(
             source: CatalogSource(catalogYear: "Fixture", issueDate: Date(timeIntervalSince1970: 0), retrievedDate: Date(timeIntervalSince1970: 0), sourceURLs: [], retrievalNotes: []),
             programs: programs,
-            courses: codes.map { Course(id: $0.replacingOccurrences(of: " ", with: ""), code: $0, title: $0, credits: 3, availability: [.fall, .spring], prerequisites: []) },
+            courses: codes.map {
+                Course(id: $0.replacingOccurrences(of: " ", with: ""), code: $0, title: $0, credits: $0.hasSuffix("L") ? 1 : 3,
+                       availability: [.fall, .spring], prerequisites: [], rawPrerequisiteText: coreqs[$0])
+            },
             apCreditRules: []
         )
     }
@@ -77,10 +82,10 @@ struct OptionChoicePlanTests {
         PathwayPlaceholder.id(categoryID: "\(requirement)--\(option)--\(part)", optionIndex: index)
     }
 
-    static func makeStore(programs: [Program] = [major()]) -> PlanStore {
+    static func makeStore(programs: [Program] = [major()], labs: Bool = false) -> PlanStore {
         let store = PlanStore(storageDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
                               anchoredGenerator: LocalAnchoredScheduleGenerator())
-        store.catalog = catalog(programs: programs)
+        store.catalog = catalog(programs: programs, labs: labs)
         return store
     }
 
@@ -271,6 +276,56 @@ struct OptionChoicePlanTests {
         }
     }
 
+    /// Option 1 entirely taken this semester: nothing to remove, but the new
+    /// option still goes into the plan's own future semesters.
+    @Test func switchWithoutFutureItemsRegeneratesFromTheFuture() async throws {
+        let store = Self.makeStore()
+        let elective = Self.slot("option-1", part: 0, 0)
+        var plan = SavedStudentPlan(programID: Self.majorID)
+        plan.optionChoices = [Self.key(): "option-1"]
+        plan.setupCompleted = true
+        plan.currentSemester = SemesterPlan(id: Self.fall26, courseIDs: ["MATH411", "MATH431", "MATH310"])
+        let spring28 = SemesterIdentity(year: 2028, term: .spring)
+        plan.pathways = [Pathway(id: "path-1", name: "Balanced", semesters: [
+            SemesterPlan(id: Self.fall26, courseIDs: ["MATH411", "MATH431", "MATH310"]),
+            SemesterPlan(id: Self.spring27, courseIDs: ["MATH235"]),
+            SemesterPlan(id: Self.fall27, courseIDs: []),
+            SemesterPlan(id: spring28, courseIDs: [])
+        ], placeholders: [
+            elective: PlaceholderSpec(categoryID: "\(Self.req)--option-1--0", categoryName: "Option 1: Electives", alternates: Self.electives, credits: 3)
+        ], resolvedPlaceholders: [elective: "MATH310"])]
+        plan.activePathwayID = "path-1"
+        store.plan = plan
+        await store.switchOption(programID: Self.majorID, requirementID: Self.req, to: "option-2")
+        let pathway = store.plan.pathways[0]
+        #expect(pathway.semesters.first?.courseIDs == ["MATH411", "MATH431", "MATH310"])
+        #expect(Self.futureIDs(pathway).contains { $0.contains("--option-2--") })
+        #expect(Self.futureIDs(pathway).contains("MATH235"))
+        // Regenerated after Fall 2026, not appended after Spring 2028.
+        #expect(try #require(pathway.semesters.map(\.id).max()) <= spring28)
+        #expect(store.statusMessage.contains("MATH 411, MATH 431"))
+    }
+
+    @Test func switchRemovesALecturesLab() async {
+        let store = Self.makeStore(labs: true)
+        var plan = SavedStudentPlan(programID: Self.majorID)
+        plan.optionChoices = [Self.key(): "option-1"]
+        plan.setupCompleted = true
+        plan.currentSemester = SemesterPlan(id: Self.fall26, courseIDs: ["MATH411"])
+        plan.pathways = [Pathway(id: "path-1", name: "Balanced", semesters: [
+            SemesterPlan(id: Self.fall26, courseIDs: ["MATH411"]),
+            SemesterPlan(id: Self.spring27, courseIDs: ["MATH235", "MATH431L"]),
+            SemesterPlan(id: Self.fall27, courseIDs: ["MATH431"])
+        ])]
+        plan.activePathwayID = "path-1"
+        store.plan = plan
+        await store.switchOption(programID: Self.majorID, requirementID: Self.req, to: "option-2")
+        let future = Self.futureIDs(store.plan.pathways[0])
+        #expect(!future.contains("MATH431"))
+        #expect(!future.contains("MATH431L"))
+        #expect(future.contains { $0.contains("--option-2--") })
+    }
+
     @Test func minorChoiceIsSeparate() async {
         let store = Self.makeStore(programs: [Self.optionMajor(requirementID: "r"), Self.minor()])
         var plan = SavedStudentPlan(programID: Self.majorID, minors: [MinorSelection(programID: Self.minorID)])
@@ -310,6 +365,17 @@ struct OptionChoicePlanTests {
         #expect(pathway.semesters[0].courseIDs == ["MATH426"])
         #expect(pathway.semesters[1].courseIDs == ["MATH427"])
         #expect(pathway.resolvedPlaceholders[Self.slot("option-2", part: 1, 1)] == "MATH427")
+    }
+
+    @Test func pickingAGroupMemberReplacesARegularPick() {
+        let store = Self.groupStore()
+        store.resolvePlaceholder(Self.slot("option-2", part: 1, 1), with: "MATH440")
+        store.resolvePlaceholder(Self.slot("option-2", part: 1, 0), with: "MATH426")
+        let pathway = store.plan.pathways[0]
+        #expect(pathway.semesters[0].courseIDs == ["MATH426"])
+        #expect(pathway.semesters[1].courseIDs == ["MATH427"])
+        #expect(pathway.resolvedPlaceholders[Self.slot("option-2", part: 1, 1)] == "MATH427")
+        #expect(!pathway.semesters.flatMap(\.courseIDs).contains("MATH440"))
     }
 
     @Test func pickingOutsideTheGroupReopensTheOtherSlot() {

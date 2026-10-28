@@ -303,7 +303,8 @@ struct CatalogRepository {
     /// v26 parses "Choose one of the following options" groups as one
     /// requirement carrying its options and their parts (with "or take both"
     /// alternatives), instead of one concentration per "Option N:".
-    private static let cacheSchemaVersion = 26
+    /// v27 fixes Honors minor approved-course menus and optional Scholar pathways.
+    private static let cacheSchemaVersion = 27
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())

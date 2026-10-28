@@ -251,7 +251,7 @@ public struct JMUHTMLCatalogParser: Sendable {
             )
         }
 
-        return HTMLProgramRequirements(
+        let result = HTMLProgramRequirements(
             title: title,
             requirements: categories,
             concentrations: concentrations,
@@ -260,6 +260,60 @@ public struct JMUHTMLCatalogParser: Sendable {
             totalCredits: parseProgramTotal(from: html),
             degreeRequirements: Self.degreeRequirements(in: html)
         )
+        return sourceURL.path.contains("honors-interdisciplinary-studies-minor")
+            ? Self.honorsMinorRequirements(result) : result
+    }
+
+    /// The Honors page prints approved-course menus after the 19-credit core,
+    /// then describes two optional six-credit Scholar pathways. Those lists
+    /// and pathways must not be added to the core as required courses.
+    private static func honorsMinorRequirements(_ parsed: HTMLProgramRequirements) -> HTMLProgramRequirements {
+        var result = parsed
+        let requirements = parsed.requirements
+        func normalized(_ text: String) -> String {
+            text.lowercased().filter { $0.isLetter || $0.isNumber }
+        }
+        func menu(_ phrase: String) -> [String] {
+            var seen: Set<String> = []
+            return requirements.filter {
+                normalized($0.name).hasPrefix("listof") && normalized($0.name).contains(normalized(phrase))
+            }.flatMap { $0.courseOptions.flatMap { $0 } }.filter { seen.insert($0).inserted }
+        }
+        let engagement = menu("civic cultural or global engagement")
+        let research = menu("honors research and experiential learning")
+        result.requirements = requirements.filter {
+            ["Introduction to Honors", "Honors Courses", "Civic, Cultural or Global Engagement Course", "Research or Experiential Learning Course"].contains($0.name)
+        }.map { category in
+            var category = category
+            let options: [String]
+            switch category.name {
+            case "Civic, Cultural or Global Engagement Course": options = engagement
+            case "Research or Experiential Learning Course": options = research
+            default: return category
+            }
+            category.requiredCredits = 3
+            category.selection = .chooseCredits(3)
+            category.choices = options.map { [$0] }
+            category.courseOptions = options.isEmpty ? [] : [options]
+            return category
+        }
+        // No unrestricted course menu can safely stand for Honors approval.
+        // Keep advisor-approved coursework explicit instead of inventing courses.
+        func advisorRequirement(_ id: String, _ name: String, credits: Int, note: String) -> RequirementCategory {
+            RequirementCategory(id: id, name: name, requiredCredits: credits, courseOptions: [], verificationStatus: .partial, note: note, selection: .chooseCredits(credits))
+        }
+        result.concentrations = [
+            Concentration(id: "honors-eportfolio", name: "Honors Scholar — ePortfolio", requirements: [
+                advisorRequirement("honors-eportfolio-project", "Senior ePortfolio Project", credits: 3, note: "Complete HON 401 and HON 402 for a total of 3 credits and finish the project; confirm enrollment credits with an Honors advisor."),
+                advisorRequirement("honors-eportfolio-coursework", "Additional Honors-approved coursework", credits: 3, note: "Portfolio students complete 3 additional credits of Honors-approved coursework.")
+            ]),
+            Concentration(id: "honors-capstone", name: "Honors Scholar — Departmental Capstone", requirements: [
+                advisorRequirement("honors-capstone-project", "Departmental Honors Capstone Project", credits: 6, note: "Complete the department-approved 499 Honors sequence or approved courses and presentation requirements with an Honors advisor.")
+            ])
+        ]
+        result.concentrationSelectionRequired = false
+        result.totalCredits = 19
+        return result
     }
 
     /// Courses on a subject's course listing page (`/courses/span/`): one

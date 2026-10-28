@@ -33,7 +33,8 @@ let package = Package(
                 "_live_psyc.html",
                 "_live_math_bs.html",
                 "_live_psyc_bs.html",
-                "_live_posc_minor.html"
+                "_live_posc_minor.html",
+                "_live_honors.html"
             ]
         )
     ]

@@ -44,7 +44,7 @@ struct InteractiveDisclosureGroup<Label: View, Content: View>: View {
                 HStack(spacing: DesignTokens.Spacing.s) {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(DesignTokens.Colors.textTertiary)
+                        .foregroundStyle(isHovering ? DesignTokens.Colors.brandGoldInk : DesignTokens.Colors.textTertiary)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     label()
                     Spacer(minLength: 0)
@@ -54,7 +54,9 @@ struct InteractiveDisclosureGroup<Label: View, Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
-                        .fill(isHovering ? DesignTokens.Colors.brandPurpleSoft : .clear)
+                        .fill(isHovering ? DesignTokens.Colors.surfaceElevated : .clear)
+                    .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+                        .strokeBorder(isHovering ? DesignTokens.Colors.brandPurple : .clear, lineWidth: 1))
                 )
                 .contentShape(Rectangle())
             }

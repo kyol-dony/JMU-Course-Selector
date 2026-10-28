@@ -12,7 +12,7 @@ struct ContentView: View {
                 LoadingView()
             }
         }
-        .tint(DesignTokens.Colors.brandPurple)
+        .tint(DesignTokens.Colors.brandGoldInk)
         .sheet(isPresented: $store.setupSheetPresented) {
             SetupSheet(catalog: store.catalog).environmentObject(store)
         }

@@ -304,3 +304,9 @@ The 6px rounded bar that lives under every category and graduation total. The ra
 - **Don't** use em dashes in copy. Use commas, colons, semicolons, periods, or parentheses.
 - **Don't** introduce a new font family. No display serif, no monospace, no Inter alongside SF Pro. One family carries the whole system.
 - **Don't** invent a verification status. If a JMU policy or course requirement cannot be confirmed from the catalog, mark it Partial and explain why in the source note. Surface the uncertainty, never paper over it.
+
+### Outlined brand accents
+
+Purple text must never sit on a purple fill or wash, including hover, press, selection, and nested controls. Shared accented controls follow the upper tabs: neutral surface, Royal Purple outline, and Madison Gold text (`brandGoldInk` for readable small text). This applies to catalog selections and rule badges, setup selections, informational pills, emphasized stats, and add-course/add-semester actions. Hover uses a neutral surface and purple outline instead of a purple wash. Solid primary actions retain white text; warning and course-classification colors retain their semantic meaning.
+
+Schedule placeholders retain their original interaction: purple text and dashed outline at rest; gold text over a faint purple wash while hovered or lifted.

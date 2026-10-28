@@ -62,7 +62,7 @@ struct DTSecondaryButtonStyle: ButtonStyle {
             verticalPadding: DesignTokens.Spacing.m
         ) { hovering, pressed in
             RoundedRectangle(cornerRadius: DesignTokens.Radius.button, style: .continuous)
-                .fill(pressed ? DesignTokens.Colors.surfaceTinted : DesignTokens.Colors.surfaceElevated)
+                .fill(pressed ? DesignTokens.Colors.surface : DesignTokens.Colors.surfaceElevated)
                 .overlay(
                     RoundedRectangle(cornerRadius: DesignTokens.Radius.button, style: .continuous)
                         .stroke(hovering ? DesignTokens.Colors.borderStrong : DesignTokens.Colors.borderSubtle, lineWidth: 1)
@@ -72,17 +72,16 @@ struct DTSecondaryButtonStyle: ButtonStyle {
 }
 
 /// Text-weight action. A `.destructive` role swaps Royal Purple for Hard Stop Red.
-/// Royal Purple text turns Madison Gold while the purple hover wash shows.
+/// Gold text and a purple hover outline match the top navigation tabs.
 struct DTTertiaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let destructive = configuration.role == .destructive
         return DTButtonBody(
             configuration: configuration,
             font: DesignTokens.Typography.label,
-            // Purple text never sits on the purple hover wash: it turns gold.
             foreground: { hovering, pressed in
                 destructive ? DesignTokens.Colors.danger
-                    : (hovering || pressed) ? DesignTokens.Colors.brandGoldInk : DesignTokens.Colors.brandPurple
+                    : DesignTokens.Colors.brandGoldInk
             },
             horizontalPadding: DesignTokens.Spacing.s,
             verticalPadding: DesignTokens.Spacing.xs
@@ -90,7 +89,9 @@ struct DTTertiaryButtonStyle: ButtonStyle {
             RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
                 .fill(destructive
                     ? DesignTokens.Colors.danger.opacity(pressed ? 0.15 : hovering ? 0.08 : 0)
-                    : DesignTokens.Colors.brandPurpleSoft.opacity(pressed ? 1 : hovering ? 0.7 : 0))
+                    : DesignTokens.Colors.surfaceElevated.opacity(pressed ? 1 : hovering ? 0.7 : 0))
+                .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+                    .strokeBorder(!destructive && (hovering || pressed) ? DesignTokens.Colors.brandPurple : .clear, lineWidth: 1))
         }
     }
 }

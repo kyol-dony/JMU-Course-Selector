@@ -504,7 +504,9 @@ struct SemesterColumnView: View {
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(DesignTokens.Colors.brandPurpleSoft)
+                    .fill(DesignTokens.Colors.surfaceElevated)
+                    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(DesignTokens.Colors.brandPurple, lineWidth: 1))
             )
         }
         .buttonStyle(.plain)

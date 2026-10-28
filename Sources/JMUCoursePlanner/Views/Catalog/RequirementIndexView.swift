@@ -46,7 +46,7 @@ struct RequirementIndexView: View {
             HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.s) {
                 Text(entry.name)
                     .font(isSelected ? DesignTokens.Typography.label : DesignTokens.Typography.body)
-                    .foregroundStyle(isSelected ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.textPrimary)
+                    .foregroundStyle(isSelected ? DesignTokens.Colors.brandGoldInk : DesignTokens.Colors.textPrimary)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
@@ -58,7 +58,7 @@ struct RequirementIndexView: View {
                 }
                 Text(entry.creditsText)
                     .font(DesignTokens.Typography.small)
-                    .foregroundStyle(isSelected ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.textTertiary)
+                    .foregroundStyle(isSelected ? DesignTokens.Colors.brandGoldInk : DesignTokens.Colors.textTertiary)
                     .monospacedDigit()
                     .fixedSize()
             }
@@ -67,8 +67,10 @@ struct RequirementIndexView: View {
             .background(
                 RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
                     .fill(isSelected
-                          ? DesignTokens.Colors.brandPurpleSoft
+                          ? DesignTokens.Colors.surfaceElevated
                           : isHovered ? DesignTokens.Colors.borderSubtle.opacity(0.45) : .clear)
+                    .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+                        .strokeBorder(isSelected ? DesignTokens.Colors.brandPurple : .clear, lineWidth: 1))
             )
             .contentShape(Rectangle())
         }
@@ -154,11 +156,11 @@ private struct ConcentrationMenu: View {
             HStack(spacing: DesignTokens.Spacing.s) {
                 Image(systemName: "checkmark")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(DesignTokens.Colors.brandPurple)
+                    .foregroundStyle(DesignTokens.Colors.brandGoldInk)
                     .opacity(isSelected ? 1 : 0)
                 Text(name)
                     .font(DesignTokens.Typography.body)
-                    .foregroundStyle(isSelected ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.textPrimary)
+                    .foregroundStyle(isSelected ? DesignTokens.Colors.brandGoldInk : DesignTokens.Colors.textPrimary)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
@@ -167,8 +169,10 @@ private struct ConcentrationMenu: View {
             .padding(.horizontal, DesignTokens.Spacing.s)
             .background(
                 RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
-                    .fill(isSelected ? DesignTokens.Colors.brandPurpleSoft
+                    .fill(isSelected ? DesignTokens.Colors.surfaceElevated
                           : isHovered ? DesignTokens.Colors.borderSubtle.opacity(0.45) : .clear)
+                    .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+                        .strokeBorder(isSelected ? DesignTokens.Colors.brandPurple : .clear, lineWidth: 1))
             )
             .contentShape(Rectangle())
         }

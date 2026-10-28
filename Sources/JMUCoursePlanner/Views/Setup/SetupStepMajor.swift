@@ -81,7 +81,7 @@ struct SetupStepMajor: View {
         .padding(DesignTokens.Spacing.l)
         .background(
             RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
-                .fill(DesignTokens.Colors.brandPurpleSoft)
+                .fill(DesignTokens.Colors.surfaceElevated)
         )
         .overlay(
             RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)

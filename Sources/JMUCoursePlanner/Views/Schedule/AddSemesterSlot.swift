@@ -20,10 +20,10 @@ struct AddSemesterSlot: View {
     var body: some View {
         Button(action: action) {
             label
-                .foregroundStyle(DesignTokens.Colors.brandPurple)
+                .foregroundStyle(DesignTokens.Colors.brandGoldInk)
                 .frame(width: style == .column ? 150 : 32)
                 .frame(minHeight: 540)
-                .background(shape.fill(DesignTokens.Colors.brandPurple.opacity(isHovering ? 0.06 : 0)))
+                .background(shape.fill(DesignTokens.Colors.surfaceElevated.opacity(isHovering ? 1 : 0)))
                 .overlay(
                     shape.strokeBorder(
                         DesignTokens.Colors.brandPurple.opacity(isHovering ? 0.7 : 0.4),

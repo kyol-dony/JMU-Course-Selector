@@ -20,11 +20,11 @@ struct StatChip: View {
         .padding(.vertical, DesignTokens.Spacing.s)
         .background(
             Capsule(style: .continuous)
-                .fill(emphasized ? DesignTokens.Colors.brandPurpleSoft : DesignTokens.Colors.surfaceElevated)
+                .fill(DesignTokens.Colors.surfaceElevated)
         )
         .overlay(
             Capsule(style: .continuous)
-                .stroke(DesignTokens.Colors.borderSubtle, lineWidth: 1)
+                .stroke(emphasized ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.borderSubtle, lineWidth: 1)
         )
     }
 }

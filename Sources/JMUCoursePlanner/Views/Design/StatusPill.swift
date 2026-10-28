@@ -26,6 +26,8 @@ struct StatusPill: View {
         .padding(.horizontal, DesignTokens.Spacing.s)
         .padding(.vertical, 3)
         .background(Capsule(style: .continuous).fill(background))
+        .overlay(Capsule(style: .continuous)
+            .strokeBorder(tone == .info ? DesignTokens.Colors.brandPurple : .clear, lineWidth: 1))
     }
 
     private var foreground: Color {
@@ -43,7 +45,7 @@ struct StatusPill: View {
         case .success: DesignTokens.Colors.success.opacity(0.15)
         case .warning: DesignTokens.Colors.warning.opacity(0.15)
         case .danger: DesignTokens.Colors.danger.opacity(0.15)
-        case .info: DesignTokens.Colors.brandPurpleSoft
+        case .info: DesignTokens.Colors.surfaceElevated
         case .neutral: DesignTokens.Colors.borderSubtle.opacity(0.5)
         }
     }

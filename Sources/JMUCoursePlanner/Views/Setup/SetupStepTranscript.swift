@@ -58,7 +58,8 @@ struct SetupStepTranscript: View {
                     .foregroundStyle(DesignTokens.Colors.brandGoldInk)
                     .contentTransition(.symbolEffect(.replace))
                     .frame(width: 60, height: 60)
-                    .background(Circle().fill(DesignTokens.Colors.brandPurpleSoft))
+                    .background(Circle().fill(DesignTokens.Colors.surfaceElevated))
+                    .overlay(Circle().strokeBorder(DesignTokens.Colors.brandPurple, lineWidth: 1))
                     .scaleEffect(isDropTargeted ? 1.08 : 1)
                 Text(isDropTargeted ? "Drop to import" : "Drag your transcript PDF here")
                     .font(DesignTokens.Typography.bodyEmphasized)
@@ -73,7 +74,7 @@ struct SetupStepTranscript: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, DesignTokens.Spacing.xxl)
-        .background(shape.fill(highlighted ? DesignTokens.Colors.brandPurpleSoft.opacity(isDropTargeted ? 1 : 0.5) : DesignTokens.Colors.surface))
+        .background(shape.fill(highlighted ? DesignTokens.Colors.surfaceElevated.opacity(isDropTargeted ? 1 : 0.5) : DesignTokens.Colors.surface))
         .overlay(
             shape.strokeBorder(
                 highlighted ? DesignTokens.Colors.brandPurple : DesignTokens.Colors.borderStrong,

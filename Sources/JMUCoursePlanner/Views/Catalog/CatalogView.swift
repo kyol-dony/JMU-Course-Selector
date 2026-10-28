@@ -110,7 +110,7 @@ struct CatalogView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(program.title)
                         .font(DesignTokens.Typography.body)
-                        .foregroundStyle(DesignTokens.Colors.textPrimary)
+                        .foregroundStyle(isSelected ? DesignTokens.Colors.brandGoldInk : DesignTokens.Colors.textPrimary)
                     Text(program.department)
                         .font(DesignTokens.Typography.caption)
                         .foregroundStyle(DesignTokens.Colors.textTertiary)
@@ -126,7 +126,9 @@ struct CatalogView: View {
             .padding(.horizontal, DesignTokens.Spacing.s)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isSelected ? DesignTokens.Colors.brandPurpleSoft : .clear)
+                    .fill(isSelected ? DesignTokens.Colors.surfaceElevated : .clear)
+                    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(isSelected ? DesignTokens.Colors.brandPurple : .clear, lineWidth: 1))
             )
             .contentShape(Rectangle())
         }

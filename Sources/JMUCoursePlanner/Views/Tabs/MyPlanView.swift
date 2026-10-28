@@ -124,7 +124,7 @@ struct MyPlanView: View {
                         Text("\(pct)%")
                             .font(DesignTokens.Typography.title)
                             .monospacedDigit()
-                            .foregroundStyle(DesignTokens.Colors.brandPurple)
+                            .foregroundStyle(DesignTokens.Colors.brandGoldInk)
                         Text("complete")
                             .font(DesignTokens.Typography.small)
                             .foregroundStyle(DesignTokens.Colors.textTertiary)
@@ -219,7 +219,9 @@ struct MyPlanView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
-                        .fill(DesignTokens.Colors.brandPurpleSoft)
+                        .fill(DesignTokens.Colors.surfaceElevated)
+                        .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+                            .strokeBorder(DesignTokens.Colors.brandPurple, lineWidth: 1))
                 )
             }
             .buttonStyle(.plain)
@@ -435,7 +437,9 @@ private struct RequirementProgressRow: View {
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
-                    .fill(isHovering ? DesignTokens.Colors.brandPurpleSoft : .clear)
+                    .fill(isHovering ? DesignTokens.Colors.surfaceElevated : .clear)
+                    .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+                        .strokeBorder(isHovering ? DesignTokens.Colors.brandPurple : .clear, lineWidth: 1))
             )
         }
         .buttonStyle(.plain)

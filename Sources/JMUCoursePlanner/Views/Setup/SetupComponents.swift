@@ -61,8 +61,8 @@ private struct SetupOptionHighlightedKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// True while a setup option shows its purple wash (hovered, pressed, or
-    /// selected). Purple content inside reads this to switch to gold.
+    /// True while a setup option shows its accented outline (hovered, pressed, or
+    /// selected). Accent content inside reads this to switch to gold.
     var setupOptionHighlighted: Bool {
         get { self[SetupOptionHighlightedKey.self] }
         set { self[SetupOptionHighlightedKey.self] = newValue }
@@ -70,15 +70,15 @@ extension EnvironmentValues {
 }
 
 extension Color {
-    /// Royal Purple, or Madison Gold when it would sit on a purple wash.
+    /// Royal Purple at rest, or readable gold for an accented option.
     static func setupAccent(onPurple: Bool) -> Color {
         onPurple ? DesignTokens.Colors.brandGoldInk : DesignTokens.Colors.brandPurple
     }
 }
 
 /// Button style for choosable options in setup: a card (year, workload) or a
-/// lighter list row (majors, minors). Hover washes the surface, press dips
-/// the scale, and selection takes the Royal Purple Soft fill and ink-mark edge.
+/// lighter list row (majors, minors). Hover and selection use a neutral
+/// surface with a purple outline and gold accents; press dips the scale.
 struct SetupOptionStyle: ButtonStyle {
     enum Chrome { case card, row }
     var isSelected: Bool
@@ -120,20 +120,20 @@ private struct SetupOptionBody: View {
     }
 
     private func fill(hovering: Bool) -> Color {
-        if isSelected { return DesignTokens.Colors.brandPurpleSoft }
-        if hovering { return DesignTokens.Colors.brandPurpleSoft.opacity(0.55) }
+        if isSelected { return DesignTokens.Colors.surfaceElevated }
+        if hovering { return DesignTokens.Colors.surfaceElevated }
         return chrome == .card ? DesignTokens.Colors.surfaceElevated : .clear
     }
 
     private func stroke(hovering: Bool) -> Color {
         if isSelected { return DesignTokens.Colors.brandPurple }
-        if hovering { return chrome == .card ? DesignTokens.Colors.borderStrong : DesignTokens.Colors.borderSubtle }
+        if hovering { return DesignTokens.Colors.brandPurple }
         return chrome == .card ? DesignTokens.Colors.borderSubtle : .clear
     }
 }
 
 /// Trailing check that pops in when an option becomes selected. It always
-/// sits on the selected purple wash, so it is gold.
+/// matches the selected purple outline with gold content.
 struct SetupSelectionCheck: View {
     var isSelected: Bool
 
@@ -316,7 +316,7 @@ private struct SetupStepRailRow: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white)
             case .current:
-                Circle().fill(DesignTokens.Colors.brandPurpleSoft)
+                Circle().fill(DesignTokens.Colors.surfaceElevated)
                 Circle().strokeBorder(DesignTokens.Colors.brandPurple, lineWidth: 2)
                 Text("\(number)")
                     .font(.system(size: 11, weight: .bold))

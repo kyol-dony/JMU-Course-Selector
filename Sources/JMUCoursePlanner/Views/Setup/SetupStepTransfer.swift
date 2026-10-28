@@ -196,7 +196,7 @@ struct SetupStepTransfer: View {
                 .frame(width: 32, height: 32)
                 .background(
                     RoundedRectangle(cornerRadius: DesignTokens.Radius.button, style: .continuous)
-                        .fill(DesignTokens.Colors.brandPurpleSoft)
+                        .fill(DesignTokens.Colors.surfaceElevated)
                 )
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)

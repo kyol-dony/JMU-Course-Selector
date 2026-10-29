@@ -682,7 +682,8 @@ final class PlanStore: ObservableObject {
         // If most programs are unverified (e.g., this is a fresh install with no
         // cached HTML refresh yet), pull the live JMU catalog so every major has
         // schedulable requirements. The user can still trigger a manual refresh.
-        if let catalog, needsInitialRefresh(catalog: catalog) {
+        // An older cache version also refreshes, so a parser change reaches it.
+        if let catalog, needsInitialRefresh(catalog: catalog) || !catalogRepository.hasCurrentCatalogCache() {
             refreshCatalog()
         }
     }

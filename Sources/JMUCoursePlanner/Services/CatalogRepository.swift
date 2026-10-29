@@ -230,11 +230,46 @@ struct CatalogRepository {
     }
 
     private func loadCachedHTMLCatalog() throws -> Catalog {
-        let url = try cachedHTMLCatalogURL()
-        let data = try Data(contentsOf: url)
+        let directory = try cachedHTMLCatalogURL().deletingLastPathComponent()
+        return try Self.loadNewestCachedCatalog(in: directory, currentVersion: Self.cacheSchemaVersion)
+    }
+
+    /// True once a refresh has written this build's cache version. Until then
+    /// the app runs on an older cache (or the bundled seed) and should refresh.
+    func hasCurrentCatalogCache() -> Bool {
+        guard let url = try? cachedHTMLCatalogURL() else { return false }
+        return fileManager.fileExists(atPath: url.path)
+    }
+
+    /// Cache files to try, newest first: this build's schema version, then
+    /// older ones. An older cache keeps the full catalog on screen when a
+    /// refresh can't reach JMU; the next successful refresh replaces it.
+    nonisolated static func cachedCatalogCandidates(in directory: URL, currentVersion: Int) -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        let prefix = "catalog_html_cache_v", suffix = ".json"
+        return names
+            .compactMap { name -> (version: Int, name: String)? in
+                guard name.hasPrefix(prefix), name.hasSuffix(suffix),
+                      let version = Int(name.dropFirst(prefix.count).dropLast(suffix.count)),
+                      version <= currentVersion
+                else { return nil }
+                return (version, name)
+            }
+            .sorted { $0.version > $1.version }
+            .map { directory.appending(path: $0.name) }
+    }
+
+    /// The newest cached catalog that still decodes, skipping unreadable files.
+    nonisolated static func loadNewestCachedCatalog(in directory: URL, currentVersion: Int) throws -> Catalog {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(Catalog.self, from: data)
+        for url in cachedCatalogCandidates(in: directory, currentVersion: currentVersion) {
+            if let data = try? Data(contentsOf: url),
+               let catalog = try? decoder.decode(Catalog.self, from: data) {
+                return catalog
+            }
+        }
+        throw CocoaError(.fileNoSuchFile)
     }
 
     private func saveHTMLCatalog(_ catalog: Catalog) throws {

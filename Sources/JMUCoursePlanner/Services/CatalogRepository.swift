@@ -73,7 +73,7 @@ struct CatalogRepository {
         // Pull JMU General Education clusters once up-front. Used to enrich every
         // major's requirement list — JMU program pages reference Gen Ed by name
         // but don't repeat the cluster course buckets, so we have to inject them.
-        let genEd = (try? await fetchGeneralEducation(coursesByID: &coursesByID)) ?? []
+        let genEd = try await fetchGeneralEducation(coursesByID: &coursesByID)
 
         for (index, entry) in entries.enumerated() {
             progress?(CatalogRefreshProgress(current: index + 1, total: entries.count, programTitle: entry.title))
@@ -95,6 +95,10 @@ struct CatalogRepository {
             var parsedRequirements = requirements?.requirements ?? []
             let parsedConcentrations = requirements?.concentrations ?? []
             let concentrationSelectionRequired = requirements?.concentrationSelectionRequired ?? !parsedConcentrations.isEmpty
+            let hasSchedulableCourses = Self.hasSchedulableProgramRequirements(
+                parsedRequirements,
+                concentrations: parsedConcentrations
+            )
             // Majors at JMU all require General Education unless the parsed page
             // already includes its own gen ed category. Append the shared cluster
             // set so progress tracking and schedule generation can see it.
@@ -103,8 +107,6 @@ struct CatalogRepository {
                !parsedRequirements.contains(where: { $0.id.contains("gened") || $0.name.lowercased().contains("general education") }) {
                 parsedRequirements.append(contentsOf: genEd)
             }
-            let hasSchedulableCourses = parsedRequirements.contains { !$0.courseOptions.isEmpty }
-                || parsedConcentrations.flatMap(\.requirements).contains { !$0.courseOptions.isEmpty }
             let totalCredits = requirements?.totalCredits
                 ?? seedProgram.flatMap { existing in existing.kind == .major ? 120 : nil }
                 ?? (entry.kind == .major ? 120 : nil)
@@ -118,6 +120,7 @@ struct CatalogRepository {
                 department: seedProgram?.department ?? entry.sectionTitle,
                 catalogPage: seedProgram?.catalogPage,
                 totalCredits: totalCredits,
+                degreeMinimumCredits: entry.kind == .major ? 120 : nil,
                 requirements: parsedRequirements,
                 concentrations: parsedConcentrations,
                 concentrationSelectionRequired: concentrationSelectionRequired,
@@ -277,7 +280,15 @@ struct CatalogRepository {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        try encoder.encode(catalog).write(to: url)
+        try encoder.encode(catalog).write(to: url, options: .atomic)
+    }
+
+    nonisolated static func hasSchedulableProgramRequirements(
+        _ requirements: [RequirementCategory],
+        concentrations: [Concentration]
+    ) -> Bool {
+        requirements.contains { !$0.courseOptions.isEmpty }
+            || concentrations.flatMap(\.requirements).contains { !$0.courseOptions.isEmpty }
     }
 
     /// Bump this whenever cached catalog requirement shape changes. v13 treats
@@ -684,6 +695,7 @@ private struct SeedCatalog: Decodable {
                 department: seed.department,
                 catalogPage: seed.catalogPage,
                 totalCredits: seed.kind == .major ? 120 : nil,
+                degreeMinimumCredits: seed.kind == .major ? 120 : nil,
                 requirements: reqs,
                 concentrations: concentrations,
                 concentrationSelectionRequired: nil,

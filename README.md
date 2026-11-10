@@ -2,6 +2,8 @@
 
 A native macOS SwiftUI application for James Madison University undergraduate schedule planning.
 
+> **Unofficial tool:** This project is not affiliated with or endorsed by James Madison University. Generated plans are advising aids; confirm requirements with JMU before registering.
+
 The app lets students:
 
 - choose a JMU undergraduate major from a catalog-organized list,

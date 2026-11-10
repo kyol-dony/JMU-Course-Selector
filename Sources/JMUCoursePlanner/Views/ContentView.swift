@@ -22,6 +22,13 @@ struct ContentView: View {
         VStack(spacing: 0) {
             TopBar(catalog: catalog)
             tabContent(catalog: catalog)
+            Text("Unofficial planning tool · Not affiliated with or endorsed by James Madison University")
+                .font(DesignTokens.Typography.small)
+                .foregroundStyle(DesignTokens.Colors.textSecondary)
+                .padding(.horizontal, DesignTokens.Spacing.m)
+                .padding(.vertical, DesignTokens.Spacing.xs)
+                .frame(maxWidth: .infinity)
+                .background(DesignTokens.Colors.surfaceElevated)
         }
         .background(DesignTokens.Colors.surface)
         .overlay {

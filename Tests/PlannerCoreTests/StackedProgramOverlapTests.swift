@@ -37,7 +37,7 @@ struct StackedProgramOverlapTests {
     )
 
     private static func major(_ id: String, _ requirements: [RequirementCategory]) -> Program {
-        Program.fixture(id: id, title: id, requirements: requirements)
+        Program.fixture(id: id, title: id, degreeMinimumCredits: 120, requirements: requirements)
     }
 
     private static func minor(_ id: String, _ requirements: [RequirementCategory]) -> Program {

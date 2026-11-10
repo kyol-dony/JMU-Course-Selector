@@ -75,16 +75,16 @@ Packages run in the order given in section 5, not in letter order.
 Small, isolated changes. The test changes come first because they turn B1–B3 into failing tests that the later packages must make pass.
 
 - [ ] Push the current branch to the remote. 129 local commits beyond `origin/main` have no backup.
-- [ ] Confirm macOS CI exists; if not, add a GitHub Actions workflow that runs the standard suite on every push. *(review)*
-- [ ] Tests: caught generation errors fail the test. A missing audit dataset fails the release check instead of skipping.
-- [ ] Tests: whole-catalog suite asserts the degree minimum (120 credits for bachelor's programs unless the reviewed manifest says otherwise).
-- [ ] B3: remove the fixture threshold from production credit-gap logic; fixtures declare their own minimum.
-- [ ] B4: stop driving the "Verified" badge from `requirementDataComplete`; label the graduation date "Projected."
-- [ ] B5: stop swallowing Gen Ed retrieval failures; determine schedulability before appending Gen Ed; write the cache atomically.
-- [ ] B6: confirmation before Reset App Data; restore the active workspace regardless of its display name; surface autosave write errors.
-- [ ] B7: PDF and calendar resolve placeholder IDs to readable names and estimated credits.
-- [ ] B9: correct the gold, success, and warning text colors; add version and build numbers to the bundle; rewrite the installation steps for the Privacy & Security → Open Anyway flow.
-- [ ] B13: add the unofficial-tool disclaimer to the app, exports, and README.
+- [x] Confirm macOS CI exists; if not, add a GitHub Actions workflow that runs the standard suite on every push. *(review)*
+- [x] Tests: caught generation errors fail the test. A missing audit dataset fails the release check instead of skipping.
+- [x] Tests: whole-catalog suite asserts the degree minimum (120 credits for bachelor's programs unless the reviewed manifest says otherwise).
+- [x] B3: remove the fixture threshold from production credit-gap logic; fixtures declare their own minimum.
+- [x] B4: stop driving the "Verified" badge from `requirementDataComplete`; label the graduation date "Projected."
+- [x] B5: stop swallowing Gen Ed retrieval failures; determine schedulability before appending Gen Ed; write the cache atomically.
+- [x] B6: confirmation before Reset App Data; restore the active workspace regardless of its display name; surface autosave write errors.
+- [x] B7: PDF and calendar resolve placeholder IDs to readable names and estimated credits.
+- [x] B9: correct the gold, success, and warning text colors; add version and build numbers to the bundle; rewrite the installation steps for the Privacy & Security → Open Anyway flow.
+- [x] B13: add the unofficial-tool disclaimer to the app, exports, and README.
 
 **Acceptance:** the suite fails on the four sub-120 programs until B3 is fixed, then passes. Each item above has a test or a recorded manual check.
 

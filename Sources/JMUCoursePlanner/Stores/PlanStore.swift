@@ -664,8 +664,8 @@ final class PlanStore: ObservableObject {
     func load() async {
         do {
             savedPlans = try loadPlans()
-            if let autosave = savedPlans.first(where: { $0.name == "Autosave" }) {
-                plan = autosave
+            if let activeWorkspace = Self.activeWorkspace(from: savedPlans) {
+                plan = activeWorkspace
             }
             setupSheetPresented = SetupFlow.needsInitialSetup(plan: plan)
             await Task.yield()
@@ -1686,8 +1686,20 @@ final class PlanStore: ObservableObject {
         var autosaved = plan
         autosaved.name = "Autosave"
         autosaved.updatedAt = Date()
-        if let url = try? planURL(for: autosaved), let data = try? encodedPlan(autosaved) {
-            Self.autosaveQueue.async { try? data.write(to: url, options: .atomic) }
+        do {
+            let url = try planURL(for: autosaved)
+            let data = try encodedPlan(autosaved)
+            Self.autosaveQueue.async { [weak self] in
+                do {
+                    try data.write(to: url, options: .atomic)
+                } catch {
+                    Task { @MainActor [weak self] in
+                        self?.errorMessage = "Autosave failed: \(error.localizedDescription)"
+                    }
+                }
+            }
+        } catch {
+            errorMessage = "Autosave failed: \(error.localizedDescription)"
         }
         if let index = savedPlans.firstIndex(where: { $0.id == autosaved.id }) {
             savedPlans[index] = autosaved
@@ -1695,6 +1707,10 @@ final class PlanStore: ObservableObject {
             savedPlans.append(autosaved)
         }
         savedPlans.sort { $0.updatedAt > $1.updatedAt }
+    }
+
+    nonisolated static func activeWorkspace(from plans: [SavedStudentPlan]) -> SavedStudentPlan? {
+        plans.max { $0.updatedAt < $1.updatedAt }
     }
 
     private func plansDirectory() throws -> URL {

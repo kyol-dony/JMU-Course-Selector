@@ -48,7 +48,7 @@ struct DegreeSchedulingTests {
     )
 
     private static func major(_ id: String, _ requirements: [RequirementCategory], _ kinds: [DegreeRequirementKind]) -> Program {
-        var program = Program.fixture(id: id, title: id, requirements: requirements)
+        var program = Program.fixture(id: id, title: id, degreeMinimumCredits: 120, requirements: requirements)
         program.degreeRequirements = kinds.map { DegreeRequirement(kind: $0, creditsText: $0 == .foreignLanguage ? "0-12" : "3") }
         return program
     }

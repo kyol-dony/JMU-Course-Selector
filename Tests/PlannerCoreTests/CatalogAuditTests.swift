@@ -9,6 +9,14 @@ import Testing
 @Suite("Catalog audit")
 struct CatalogAuditTests {
     private static let path = ProcessInfo.processInfo.environment["CATALOG_AUDIT_JSON"]
+    private static let isReleaseCheck = ProcessInfo.processInfo.environment["RELEASE_CHECK"] == "1"
+
+    @Test("release check requires whole-catalog dataset")
+    func releaseCheckRequiresDataset() {
+        if Self.isReleaseCheck {
+            #expect(Self.path != nil, "RELEASE_CHECK=1 requires CATALOG_AUDIT_JSON")
+        }
+    }
 
     /// History B.A. placing into SPAN 102 or 231 graduates on the same
     /// schedule as starting at 101, with the sequence early in the plan.
@@ -166,9 +174,11 @@ struct CatalogAuditTests {
                         print("COURSE\t\(spec.map { "\($0.categoryName) (\($0.credits))" } ?? id)\t\(catalog.coursesByID[id]?.credits ?? 0)")
                     }
                 }
+                #expect(hours >= 120, "\(program.title): \(hours) credits, below bachelor's minimum")
                 #expect(hours <= 140, "\(program.title): \(hours) credits")
             } catch {
                 print("AUDIT\t\(program.id)\tERROR \(error.localizedDescription)")
+                Issue.record("\(program.id): \(error)")
             }
         }
     }

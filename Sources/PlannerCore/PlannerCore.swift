@@ -275,6 +275,9 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
     public var department: String
     public var catalogPage: Int?
     public var totalCredits: Int?
+    /// Reviewed minimum credits required for this degree. This differs from
+    /// `totalCredits`, which catalog pages often use for section subtotals.
+    public var degreeMinimumCredits: Int?
     public var requirements: [RequirementCategory]
     public var concentrations: [Concentration]
     public var concentrationSelectionRequired: Bool
@@ -293,6 +296,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         case department
         case catalogPage
         case totalCredits
+        case degreeMinimumCredits
         case requirements
         case concentrations
         case concentrationSelectionRequired
@@ -311,6 +315,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         department: String,
         catalogPage: Int?,
         totalCredits: Int?,
+        degreeMinimumCredits: Int? = nil,
         requirements: [RequirementCategory],
         concentrations: [Concentration] = [],
         concentrationSelectionRequired: Bool? = nil,
@@ -326,6 +331,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         self.department = department
         self.catalogPage = catalogPage
         self.totalCredits = totalCredits
+        self.degreeMinimumCredits = degreeMinimumCredits
         self.requirements = requirements
         self.concentrations = concentrations
         self.concentrationSelectionRequired = concentrationSelectionRequired ?? !concentrations.isEmpty
@@ -344,6 +350,8 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         department = try container.decode(String.self, forKey: .department)
         catalogPage = try container.decodeIfPresent(Int.self, forKey: .catalogPage)
         totalCredits = try container.decodeIfPresent(Int.self, forKey: .totalCredits)
+        degreeMinimumCredits = try container.decodeIfPresent(Int.self, forKey: .degreeMinimumCredits)
+            ?? (kind == .major ? 120 : nil)
         requirements = try container.decode([RequirementCategory].self, forKey: .requirements)
         concentrations = try container.decodeIfPresent([Concentration].self, forKey: .concentrations) ?? []
         concentrationSelectionRequired = try container.decodeIfPresent(Bool.self, forKey: .concentrationSelectionRequired) ?? !concentrations.isEmpty
@@ -363,6 +371,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         try container.encode(department, forKey: .department)
         try container.encodeIfPresent(catalogPage, forKey: .catalogPage)
         try container.encodeIfPresent(totalCredits, forKey: .totalCredits)
+        try container.encodeIfPresent(degreeMinimumCredits, forKey: .degreeMinimumCredits)
         try container.encode(requirements, forKey: .requirements)
         try container.encode(concentrations, forKey: .concentrations)
         try container.encode(concentrationSelectionRequired, forKey: .concentrationSelectionRequired)
@@ -2010,12 +2019,9 @@ public struct ScheduleGenerator: Sendable {
     /// primary major's schedule out to the JMU degree credit minimum.
     public static let openElectiveCategoryID = "open-elective"
 
-    /// Gap between the primary major's declared requirement credits and
-    /// JMU's 120 CRH degree minimum. Only fires for `.major` programs whose
-    /// declared credits clear a substance threshold — the catalog parser's
-    /// `totalCredits` often reports a section subtotal ("Major Requirements
-    /// Total: 49 CRH") rather than the full degree total, so we hardcode
-    /// 120 for real majors and ignore `program.totalCredits` here.
+    /// Gap between the primary major's declared requirement credits and its
+    /// reviewed degree minimum. `totalCredits` is not used because catalog
+    /// pages often use it for section subtotals.
     ///
     /// Umbrella section headers (categories with no parseable course
     /// options — e.g., "Additional Requirements: 22-24 CRH") are excluded
@@ -2040,18 +2046,12 @@ public struct ScheduleGenerator: Sendable {
         reusedCredits: Int = 0,
         scheduledCredits: Int = 0
     ) -> Int {
-        guard program.kind == .major else { return 0 }
+        guard program.kind == .major, let degreeMinimum = program.degreeMinimumCredits else { return 0 }
         let declared = program.requirements
             .filter { !$0.courseOptions.isEmpty }
             .reduce(0) { $0 + $1.requiredCredits }
-        // Threshold gate keeps thin test fixtures (under 60 credits) from
-        // generating dozens of placeholders. Real JMU majors easily clear
-        // 60 once Gen Ed clusters and concentration requirements are
-        // merged into the effective program. Requirements without a course
-        // list count toward the gate; their credits are left to the gap.
-        guard program.requirements.reduce(0, { $0 + $1.requiredCredits }) >= 60 else { return 0 }
         let counted = max(declared - reusedCredits + additionalCredits, scheduledCredits)
-        return max(0, 120 - counted)
+        return max(0, degreeMinimum - counted)
     }
 
     /// Open Elective gap for `program` once `additionalPrograms` (minors,
@@ -3183,6 +3183,7 @@ public extension Program {
     static func fixture(
         id: String,
         title: String,
+        degreeMinimumCredits: Int? = nil,
         requirements: [RequirementCategory],
         concentrations: [Concentration] = []
     ) -> Program {
@@ -3195,6 +3196,7 @@ public extension Program {
             department: "Fixture Department",
             catalogPage: nil,
             totalCredits: requirements.reduce(0) { $0 + $1.requiredCredits },
+            degreeMinimumCredits: degreeMinimumCredits ?? requirements.reduce(0) { $0 + $1.requiredCredits },
             requirements: requirements,
             concentrations: concentrations,
             verificationStatus: .verified,

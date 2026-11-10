@@ -8,7 +8,16 @@ Building from source requires Apple's Swift/Xcode command line tools. Use the in
 2. Wait for the window to say the app was built.
 3. Open `dist/JMU Course Planner.app`.
 
-The generated `dist` folder is ignored by Git. Release app bundles will be distributed separately. If macOS says a local build is from an unidentified developer, right-click the app, choose **Open**, then choose **Open** again. Local builds are not notarized.
+The generated `dist` folder is ignored by Git. Release app bundles will be distributed separately. Local builds and direct-download releases are not notarized.
+
+If macOS blocks the app because it cannot verify the developer:
+
+1. Try opening the app once, then dismiss the warning.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll to **Security** and select **Open Anyway** for JMU Course Planner.
+4. Confirm **Open** when macOS asks again.
+
+This is a per-app exception. Do not disable Gatekeeper or change global security settings. A school-managed Mac may prevent **Open Anyway**; contact its administrator when that happens.
 
 ## Run tests
 

@@ -1041,7 +1041,7 @@ public struct ScheduleGenerator: Sendable {
             reservedIDs: context?.reservedPlaceholderIDs ?? []
         )
         if source != nil, program.kind == .major,
-           let degreeMinimum = program.degreeMinimumCredits {
+           let degreeMinimum = Self.applicableDegreeMinimum(for: program, additionalPrograms: additionalPrograms) {
             let prefixHours = AcademicCreditCalculator.projectedHours(in: prefix, placeholders: placeholders, transferCredits: transferCredits, catalog: catalog)
             let suffixHours = Set(required).reduce(0.0) { $0 + credits(for: $1, placeholders: placeholders) }
             required += openElectivePlaceholders(gap: max(0, Double(degreeMinimum) - prefixHours - suffixHours), placeholders: &placeholders, reservedIDs: context?.reservedPlaceholderIDs ?? [])
@@ -2060,6 +2060,12 @@ public struct ScheduleGenerator: Sendable {
     /// primary major's schedule out to the JMU degree credit minimum.
     public static let openElectiveCategoryID = "open-elective"
 
+    /// Selecting a second major must not lower its reviewed degree minimum.
+    private static func applicableDegreeMinimum(for program: Program, additionalPrograms: [Program]) -> Int? {
+        ([program] + additionalPrograms).filter { $0.kind == .major }
+            .compactMap(\.degreeMinimumCredits).max()
+    }
+
     /// Gap between the primary major's declared requirement credits and its
     /// reviewed degree minimum. `totalCredits` is not used because catalog
     /// pages often use it for section subtotals.
@@ -2112,6 +2118,8 @@ public struct ScheduleGenerator: Sendable {
     public func openElectiveGap(for program: Program, additionalPrograms: [Program], languagePlan: ForeignLanguagePlan? = nil,
                                 completedCourseIDs: Set<String> = []) -> Int {
         guard program.kind == .major else { return 0 }
+        var program = program
+        program.degreeMinimumCredits = Self.applicableDegreeMinimum(for: program, additionalPrograms: additionalPrograms)
         var placeholders: [String: PlaceholderSpec] = [:]
         let lists = plannedProgramLists(
             for: program, additionalPrograms: additionalPrograms, completed: [], placeholders: &placeholders,

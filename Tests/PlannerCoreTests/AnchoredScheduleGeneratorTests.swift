@@ -21,6 +21,28 @@ import Testing
         let hours = AcademicCreditCalculator.projectedHours(in: regenerated.semesters, placeholders: regenerated.placeholders, transferCredits: [], catalog: catalog)
         #expect(hours >= 143)
     }
+
+    @Test func addedArtEducationMajorKeeps143CreditsAcrossGenerationRegenerationAndProgress() throws {
+        let course = Course(id: "ART100", code: "ART 100", title: "Art", credits: 3, availability: nil, prerequisites: [])
+        let core = RequirementCategory(id: "core", name: "Required", requiredCredits: 3, courseOptions: [[course.id]])
+        let primary = Program.fixture(id: "primary", title: "Primary", degreeMinimumCredits: 120, requirements: [core])
+        let track = Concentration(id: "painting-art-education", name: "Painting + Art Education", requirements: [], totalCredits: 143)
+        let art = Program.fixture(id: "art-bfa", title: "Art", requirements: [core], concentrations: [track])
+        let extra = try art.effectiveProgram(concentrationID: track.id)
+        var catalog = Catalog.fixture(courses: [course], program: primary)
+        catalog.programs.append(art)
+        let generator = ScheduleGenerator(catalog: catalog)
+        let pathways = try generator.generatePathways(for: primary.id, workload: .standard, transferCredits: [], additionalPrograms: [extra])
+        for pathway in pathways {
+            #expect(AcademicCreditCalculator.projectedHours(in: pathway.semesters, placeholders: pathway.placeholders, transferCredits: [], catalog: catalog) >= 143)
+        }
+        let source = try #require(pathways.first)
+        let regenerated = try generator.regeneratePathway(from: source, through: source.semesters[0].id, for: primary.id,
+            strategy: .balanced, workload: .standard, transferCredits: [], additionalPrograms: [extra])
+        #expect(AcademicCreditCalculator.projectedHours(in: regenerated.semesters, placeholders: regenerated.placeholders, transferCredits: [], catalog: catalog) >= 143)
+        let progress = try ProgressCalculator(catalog: catalog).progress(programID: primary.id, pathway: source, transferCredits: [], additionalPrograms: [extra])
+        #expect(progress.categories.first { $0.id == ScheduleGenerator.openElectiveCategoryID }?.requiredCredits == 140)
+    }
     private let fall = SemesterIdentity(year: 2026, term: .fall)
     private func regenerate(_ source: Pathway, catalog: Catalog, programID: String = "cs",
                             credits: [TransferCredit] = [], extras: [Program] = [], hours: Double? = nil,

@@ -42,7 +42,7 @@ Generic “any upper-level ART” slots become one explicit option per studio ar
 
 ## Integration and migration
 
-- Latest dev's `degreeMinimumCredits` is the single reviewed degree minimum; composed Art Education paths set it to 143. Anchored regeneration uses that value too.
+- Latest dev's `degreeMinimumCredits` is the single reviewed degree minimum; composed Art Education paths set it to 143. Generation, anchored regeneration, and progress use the highest minimum across selected majors, including Art as a second major.
 - Legacy standalone Art Education selections request a studio area in setup. Their saved schedules remain intact until the student chooses; the app does not infer a studio area.
 - Restricted-build developer-control edits are preserved separately in a named Git stash and excluded from this integration. Dev's developer-only refresh and reset confirmation remain authoritative.
 - Follow-up: implement the shared requirement allocator described in `docs/plans/2026-11-11-requirement-sharing-rules-design.md`, replacing the temporary completion guard only when allocation evidence supports fulfillment.
@@ -60,6 +60,8 @@ Generic “any upper-level ART” slots become one explicit option per studio ar
 - Full suite: 681 tests in 92 suites passed; two pre-existing catalog-correctness known issues remain (`_live_psyc.html` minor-hour bound and mislabeled `_live_nursing.html` program-hour bound).
 
 ## Additional blocker fixed during matrix audit
+
+Integration validation: 694 Swift Testing tests in 94 suites passed, with two existing known catalog issues; XCTest suites and 16 release-policy tests also passed. The real-cache stack matrix passed in 71.6 seconds before the second-major-minimum fix; deterministic generation/regeneration/progress regression covers that fix in the final full suite.
 
 The full stack matrix exposed an existing Computer Science + Psychology B.A. failure. Concrete prerequisite courses had no urgency, and a discrete-math placeholder could be seated before its pending concrete prerequisite. `PlaceholderPrerequisiteAnalyzer` now prioritizes pending concrete providers and delays a slot when one of its eligible choices needs another pending concrete course.
 

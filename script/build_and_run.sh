@@ -6,9 +6,13 @@ PRODUCT_NAME="JMUCoursePlanner"
 APP_NAME="JMU Course Planner"
 BUNDLE_ID="edu.jmu.courseplanner.local"
 MIN_SYSTEM_VERSION="14.0"
+BUILD_NUMBER="${BUILD_NUMBER:-1}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+SEMANTIC_VERSION="$(tr -d '\n' < "$ROOT_DIR/VERSION")"
+VERSION_WITHOUT_METADATA="${SEMANTIC_VERSION%%+*}"
+MARKETING_VERSION="${MARKETING_VERSION:-${VERSION_WITHOUT_METADATA%%-*}}"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -43,6 +47,12 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$MARKETING_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$BUILD_NUMBER</string>
+  <key>JMUPlannerSemanticVersion</key>
+  <string>$SEMANTIC_VERSION</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>

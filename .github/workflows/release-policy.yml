@@ -1,0 +1,62 @@
+name: Release policy
+
+on:
+  pull_request:
+    branches: [main, schedule-board-interaction]
+  push:
+    branches: [main, schedule-board-interaction]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Version policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Policy tests
+        run: python3 -m unittest discover -s script -p 'test_release_policy.py'
+      - name: Validate integration
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          TARGET_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then
+            python3 script/release_policy.py check --base-ref "$BASE_SHA" --target "$TARGET_BRANCH"
+          elif ! git cat-file -e HEAD^1:VERSION 2>/dev/null; then
+            echo 'Policy installation: no version allocation or release.'
+          else
+            python3 script/release_policy.py check --base-ref HEAD^1 --target "$TARGET_BRANCH"
+          fi
+
+  publish:
+    needs: policy
+    if: github.event_name != 'pull_request'
+    runs-on: macos-15
+    permissions:
+      contents: write
+    # A group per SHA deduplicates reruns without discarding other merge events.
+    concurrency:
+      group: release-${{ github.ref }}-${{ github.sha }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate tested snapshot and publish eligible version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          if ! git cat-file -e HEAD^1:VERSION 2>/dev/null; then
+            echo 'Bootstrap does not publish.'
+            exit 0
+          fi
+          script/run_tests.sh
+          python3 script/publish_release.py --base HEAD^1 --head HEAD --branch "$TARGET_BRANCH" --repo "$REPOSITORY"

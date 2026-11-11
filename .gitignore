@@ -38,3 +38,9 @@ GEMINI.md
 DESIGN.md
 PLAN.md
 PRODUCT.md
+# Shared agent policy is versioned and inherited by new branches.
+!AGENTS.md
+!CLAUDE.md
+
+# Python policy tool caches
+__pycache__/

@@ -2,12 +2,37 @@
 """Publish only validated versions; safe to retry an identical commit."""
 import argparse
 import json
+import pathlib
 import subprocess
+import tempfile
 from release_policy import git, validate, catalog_revision, CATALOG_SOURCE
+
+PACKAGE_SCRIPT = pathlib.Path(__file__).resolve().parent / 'package_release.sh'
 
 
 def gh(*args):
     return subprocess.check_output(['gh', *args], text=True).strip()
+
+
+def release_title(tag):
+    return f'JMU Course Planner {tag}'
+
+
+def app_asset_label(tag):
+    # Every published release carries the public app zip, named after the release.
+    return release_title(tag) + '.zip'
+
+
+def has_app_asset(release, label):
+    # GitHub stores spaces in asset file names as dots; the label keeps them.
+    names = {label, label.replace(' ', '.')}
+    return any(a.get('label') in names or a.get('name') in names for a in release.get('assets', []))
+
+
+def package(title, out_dir):
+    """Build the public app zip and return its path."""
+    output = subprocess.check_output([str(PACKAGE_SCRIPT), title, out_dir], text=True)
+    return output.strip().splitlines()[-1]
 
 
 def publish(base, head, branch, repo):
@@ -30,16 +55,23 @@ def publish(base, head, branch, repo):
     # Listing succeeds or fails explicitly; do not interpret permission/network errors as absence.
     releases = json.loads(gh('api', '--paginate', '--slurp', f'repos/{repo}/releases?per_page=100'))
     existing = next((r for page in releases for r in page if r['tag_name'] == tag), None)
+    label = app_asset_label(tag)
     if existing:
         if not refs or existing['draft'] or existing['prerelease'] != (kind == 'prerelease'):
             raise ValueError(f'{tag} conflicts with an existing draft or release status')
+        if not has_app_asset(existing, label):
+            # A retry after a failed upload: add the missing zip, never replace one.
+            with tempfile.TemporaryDirectory() as out_dir:
+                gh('release', 'upload', tag, f'{package(release_title(tag), out_dir)}#{label}', '--repo', repo)
         print(existing['html_url'])
         return
-    args = ['release', 'create', tag, '--repo', repo, '--target', sha,
-            '--title', f'JMU Course Planner {tag}', '--generate-notes']
-    if kind == 'prerelease':
-        args.append('--prerelease')
-    print(gh(*args))
+    with tempfile.TemporaryDirectory() as out_dir:
+        asset = package(release_title(tag), out_dir)
+        args = ['release', 'create', tag, f'{asset}#{label}', '--repo', repo, '--target', sha,
+                '--title', release_title(tag), '--generate-notes']
+        if kind == 'prerelease':
+            args.append('--prerelease')
+        print(gh(*args))
 
 
 if __name__ == '__main__':

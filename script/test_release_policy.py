@@ -65,16 +65,19 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             catalog_revision('no catalog constant')
 
+    @patch('publish_release.package')
     @patch('publish_release.gh')
     @patch('publish_release.git')
-    def test_patch_has_zero_github_calls(self, git, gh):
+    def test_patch_has_zero_github_calls(self, git, gh, package):
         git.side_effect = ['0.1.0-alpha.1+catalog.27', '0.1.1-alpha.1+catalog.28', '{"base":"0.1.0-alpha.1+catalog.27","impact":"patch","target":"schedule-board-interaction","reason":"Restore parser behavior"}', 'private static let cacheSchemaVersion = 28']
         publish('base', 'head', DEV, 'owner/repo')
         gh.assert_not_called()
+        package.assert_not_called()
 
+    @patch('publish_release.package', return_value='/out/JMU Course Planner v0.2.0-alpha.1+catalog.28.zip')
     @patch('publish_release.gh')
     @patch('publish_release.git')
-    def test_minor_publishes_at_sha(self, git, gh):
+    def test_minor_publishes_at_sha(self, git, gh, package):
         git.side_effect = ['0.1.0-alpha.1+catalog.27', '0.2.0-alpha.1+catalog.28', '{"base":"0.1.0-alpha.1+catalog.27","impact":"minor","target":"schedule-board-interaction","reason":"Support new catalog family"}', 'private static let cacheSchemaVersion = 28', 'abc123', '']
         gh.side_effect = ['[[]]', 'release-url']
         publish('base', 'head', DEV, 'owner/repo')
@@ -82,6 +85,9 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(command[:3], ('release', 'create', 'v0.2.0-alpha.1+catalog.28'))
         self.assertIn('--prerelease', command)
         self.assertEqual(command[command.index('--target') + 1], 'abc123')
+        self.assertEqual(package.call_args.args[0], 'JMU Course Planner v0.2.0-alpha.1+catalog.28')
+        self.assertEqual(command[3], '/out/JMU Course Planner v0.2.0-alpha.1+catalog.28.zip#JMU Course Planner v0.2.0-alpha.1+catalog.28.zip')
+        self.assertEqual(command[command.index('--title') + 1], 'JMU Course Planner v0.2.0-alpha.1+catalog.28')
 
     @patch('publish_release.gh')
     @patch('publish_release.git')
@@ -91,14 +97,27 @@ class PolicyTests(unittest.TestCase):
             publish('base', 'head', DEV, 'owner/repo')
         gh.assert_not_called()
 
+    @patch('publish_release.package')
     @patch('publish_release.gh')
     @patch('publish_release.git')
-    def test_retry_reuses_existing_release(self, git, gh):
+    def test_retry_reuses_existing_release(self, git, gh, package):
         git.side_effect = ['0.1.0-alpha.1+catalog.27', '0.2.0-alpha.1+catalog.28', '{"base":"0.1.0-alpha.1+catalog.27","impact":"minor","target":"schedule-board-interaction","reason":"Support new catalog family"}', 'private static let cacheSchemaVersion = 28', 'abc123', 'abc123 refs/tags/v0.2.0-alpha.1+catalog.28']
-        gh.return_value = '[[{"tag_name":"v0.2.0-alpha.1+catalog.28","draft":false,"prerelease":true,"html_url":"existing-url"}]]'
+        gh.return_value = '[[{"tag_name":"v0.2.0-alpha.1+catalog.28","draft":false,"prerelease":true,"html_url":"existing-url","assets":[{"name":"JMU.Course.Planner.v0.2.0-alpha.1+catalog.28.zip","label":""}]}]]'
         publish('base', 'head', DEV, 'owner/repo')
         self.assertEqual(gh.call_count, 1)
+        package.assert_not_called()
 
+    @patch('publish_release.package', return_value='/out/app.zip')
+    @patch('publish_release.gh')
+    @patch('publish_release.git')
+    def test_retry_uploads_missing_app_zip_without_replacing(self, git, gh, package):
+        git.side_effect = ['0.1.0-alpha.1+catalog.27', '0.2.0-alpha.1+catalog.28', '{"base":"0.1.0-alpha.1+catalog.27","impact":"minor","target":"schedule-board-interaction","reason":"Support new catalog family"}', 'private static let cacheSchemaVersion = 28', 'abc123', 'abc123 refs/tags/v0.2.0-alpha.1+catalog.28']
+        gh.side_effect = ['[[{"tag_name":"v0.2.0-alpha.1+catalog.28","draft":false,"prerelease":true,"html_url":"existing-url","assets":[]}]]', '']
+        publish('base', 'head', DEV, 'owner/repo')
+        upload = gh.call_args.args
+        self.assertEqual(upload[:3], ('release', 'upload', 'v0.2.0-alpha.1+catalog.28'))
+        self.assertEqual(upload[3], '/out/app.zip#JMU Course Planner v0.2.0-alpha.1+catalog.28.zip')
+        self.assertNotIn('--clobber', upload)
 
 if __name__ == '__main__':
     unittest.main()

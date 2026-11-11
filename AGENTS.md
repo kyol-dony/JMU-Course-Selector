@@ -7,6 +7,7 @@ All agentic workers must follow `docs/RELEASING.md` before committing or integra
 - Individual work commits do not allocate versions or create tags. Before an integration PR merges, use `script/release_policy.py prepare` against the latest destination and commit VERSION plus release-impact.json together. Record actual impact and rationale; highest impact across the merge wins.
 - On schedule-board-interaction during 0.x: patch changes update metadata only; minor changes reset patch and create tagged GitHub pre-releases after CI. Pre-1.0 breaking changes use minor with migration notes.
 - First product promotion to main becomes 1.0.0. Later stable fixes/features/breaks bump patch/minor/major. Published tags and versions are immutable.
+- Every published release attaches the public app zip from `script/package_release.sh`, named after the release title. Never attach other builds or replace a published asset.
 - Install shared validation with `bash script/install_release_hooks.sh`. Do not overwrite unrelated hooks. PRs must pass Version policy against an up-to-date integration branch.
 - Do not publish releases from ordinary feature branches or bypass version checks. Preserve other workers' edits during rollout and integration.
 

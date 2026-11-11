@@ -17,7 +17,7 @@ No catalog rule should be inferred from non-JMU sources.
 
 ## HTML refresh
 
-The app's **Refresh Requirements** action:
+On first launch (and once after an update that changes the catalog format), the app's automatic catalog refresh:
 
 1. Fetches the current program search page.
 2. Keeps undergraduate bachelor's degree and minor records and deduplicates the site's alternate card/list views.

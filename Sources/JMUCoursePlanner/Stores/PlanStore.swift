@@ -681,8 +681,9 @@ final class PlanStore: ObservableObject {
         // The bundled seed ships requirement data for only a handful of programs.
         // If most programs are unverified (e.g., this is a fresh install with no
         // cached HTML refresh yet), pull the live JMU catalog so every major has
-        // schedulable requirements. The user can still trigger a manual refresh.
-        // An older cache version also refreshes, so a parser change reaches it.
+        // schedulable requirements. An older cache version also refreshes, so a
+        // parser change reaches it. This automatic pull is the only refresh a
+        // release build performs; on-demand refresh is developer-only.
         if let catalog, needsInitialRefresh(catalog: catalog) || !catalogRepository.hasCurrentCatalogCache() {
             refreshCatalog()
         }
@@ -1511,9 +1512,14 @@ final class PlanStore: ObservableObject {
             return
         }
         Task {
+            #if JMU_DEV_TOOLS
             var detail = await detailService.detail(for: course)
+            #else
+            let detail = await detailService.detail(for: course)
+            #endif
             courseDetail = detail
 
+            #if JMU_DEV_TOOLS
             // If the cached catalog doesn't carry a description for this course,
             // try a live fetch against JMU's course search page. Updates the
             // sheet in place when it succeeds and persists into the in-memory
@@ -1524,12 +1530,14 @@ final class PlanStore: ObservableObject {
                 detail.descriptionStatus = detailService.descriptionStatus(forLiveFetched: live.sourceURL)
                 persistLiveDescription(courseID: courseID, description: live.description, sourceURL: live.sourceURL)
             }
+            #endif
 
             courseDetailCache[courseID] = detail
             courseDetail = detail
         }
     }
 
+    #if JMU_DEV_TOOLS
     private func persistLiveDescription(courseID: String, description: String, sourceURL: URL) {
         guard var catalog else { return }
         guard let index = catalog.courses.firstIndex(where: { $0.id == courseID }) else { return }
@@ -1540,6 +1548,7 @@ final class PlanStore: ObservableObject {
         catalog.courses[index] = course
         self.catalog = catalog
     }
+    #endif
 
     func saveCurrentPlan() {
         plan.updatedAt = Date()
@@ -1594,7 +1603,9 @@ final class PlanStore: ObservableObject {
             clearScheduleHistory()
             plan = SavedStudentPlan()
             savedPlans = []
-            statusMessage = "App data cleared. Loading the bundled catalog..."
+            statusMessage = CatalogRepository.resetClearsCatalog
+                ? "App data cleared. Loading the bundled catalog..."
+                : "Saved plans cleared. Reloading the catalog..."
             errorMessage = nil
             Task { await load() }
         } catch {

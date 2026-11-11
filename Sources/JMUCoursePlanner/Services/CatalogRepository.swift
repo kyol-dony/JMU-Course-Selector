@@ -7,23 +7,48 @@ struct CatalogRepository {
     private let htmlParser = JMUHTMLCatalogParser()
 
     func loadCatalog() throws -> Catalog {
-        if var cached = try? loadCachedHTMLCatalog() {
-            // AP credit rules ship in the bundled seed (sourced from the JMU AP
-            // chart) and may evolve between releases without a full catalog
-            // refresh. Always overlay the seed's rules onto the cached catalog
-            // so updates to the chart roll out on the next launch without
-            // requiring the user to hit Refresh Requirements.
-            if let bundled = try? loadBundledCatalog() {
-                cached = Catalog(
-                    source: cached.source,
-                    programs: cached.programs,
-                    courses: cached.courses,
-                    apCreditRules: bundled.apCreditRules
-                )
-            }
-            return attachCurrentPrereqOverlay(to: cached)
+        #if JMU_DEV_TOOLS
+        if let cached = try? loadCachedHTMLCatalog() {
+            return withBundledRules(cached)
+        }
+        #endif
+        // Release builds read only the parsed catalog snapshot shipped inside
+        // the app bundle; they never fetch or rewrite catalog data.
+        if let snapshot = try? loadBundledSnapshot() {
+            return withBundledRules(snapshot)
         }
         return try loadBundledCatalog()
+    }
+
+    /// AP credit rules ship in the bundled seed (sourced from the JMU AP
+    /// chart) and may evolve between releases without a full catalog
+    /// refresh. Always overlay the seed's rules onto a parsed catalog so
+    /// updates to the chart roll out on the next launch.
+    private func withBundledRules(_ parsed: Catalog) -> Catalog {
+        var parsed = parsed
+        if let bundled = try? loadBundledCatalog() {
+            parsed = Catalog(
+                source: parsed.source,
+                programs: parsed.programs,
+                courses: parsed.courses,
+                apCreditRules: bundled.apCreditRules
+            )
+        }
+        return attachCurrentPrereqOverlay(to: parsed)
+    }
+
+    private func loadBundledSnapshot() throws -> Catalog {
+        let candidates = [
+            Bundle.main.url(forResource: "catalog_snapshot", withExtension: "json"),
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appending(path: "Data/catalog_snapshot.json")
+        ].compactMap { $0 }
+
+        guard let url = candidates.first(where: { fileManager.fileExists(atPath: $0.path) }) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(Catalog.self, from: Data(contentsOf: url))
     }
 
     func loadBundledCatalog() throws -> Catalog {
@@ -51,6 +76,7 @@ struct CatalogRepository {
         }
     }
 
+    #if JMU_DEV_TOOLS
     func refreshCatalogFromHTML(progress: ((CatalogRefreshProgress) -> Void)? = nil) async throws -> Catalog {
         let seed = try SeedCatalog.decode(from: try Data(contentsOf: bundledCatalogURL()))
         let programsURL = JMUCatalogConfiguration.programsURL
@@ -191,6 +217,7 @@ struct CatalogRepository {
         try fileManager.moveItem(at: temporaryURL, to: destination)
         return destination
     }
+    #endif
 
     func supportDirectory() throws -> URL {
         let base = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -199,6 +226,7 @@ struct CatalogRepository {
         return directory
     }
 
+    #if JMU_DEV_TOOLS
     private func loadCachedHTMLCatalog() throws -> Catalog {
         let url = try cachedHTMLCatalogURL()
         let data = try Data(contentsOf: url)
@@ -214,6 +242,13 @@ struct CatalogRepository {
         encoder.dateEncodingStrategy = .iso8601
         try encoder.encode(catalog).write(to: url)
     }
+
+    private func cachedHTMLCatalogURL() throws -> URL {
+        let directory = try supportDirectory().appending(path: "Catalog", directoryHint: .isDirectory)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appending(path: "catalog_html_cache_v\(Self.cacheSchemaVersion).json")
+    }
+    #endif
 
     /// Bump this whenever cached catalog requirement shape changes. v13 treats
     /// "choose N credit hours" as a credit cap rather than N required courses.
@@ -268,12 +303,6 @@ struct CatalogRepository {
         return url
     }
 
-    private func cachedHTMLCatalogURL() throws -> URL {
-        let directory = try supportDirectory().appending(path: "Catalog", directoryHint: .isDirectory)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appending(path: "catalog_html_cache_v\(Self.cacheSchemaVersion).json")
-    }
-
     /// Wipe the cached HTML catalog and all saved plans. Called when the user
     /// hits "Reset App Data" — gets them back to a true first-launch state.
     func resetAppData() throws {
@@ -294,6 +323,7 @@ struct CatalogRepository {
         return url
     }
 
+    #if JMU_DEV_TOOLS
     /// JMU 2026-2027 Catalog: Gen Ed credit allocation per cluster tag, sourced
     /// from the catalog narrative. Used as overrides because the cluster headings
     /// on the Gen Ed program page (e.g. "Critical Thinking [C1CT]") don't repeat
@@ -464,6 +494,7 @@ struct CatalogRepository {
         cachedByTitle[normalizedTitle] = candidate
         return candidate
     }
+    #endif
 
     func merge(existing: Course?, parsed: Course) -> Course {
         guard var existing else { return parsed }
@@ -492,6 +523,7 @@ struct CatalogRepository {
     }
 }
 
+#if JMU_DEV_TOOLS
 struct CatalogRefreshProgress: Sendable {
     var current: Int
     var total: Int
@@ -505,6 +537,7 @@ private struct CourseDetailEnrichment: Sendable {
     var sourceURL: URL
     var retrievedAt: Date
 }
+#endif
 
 private struct SeedCatalog: Decodable {
     var source: SeedSource

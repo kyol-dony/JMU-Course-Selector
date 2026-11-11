@@ -19,14 +19,14 @@ After each rebuild, verify by hand:
 - Clicking a category bar in My Plan switches to Schedule and highlights matching chips.
 - Course detail sheet opens from any course chip, shows the JMU registrar link, and closes via Esc or the X button.
 - Toggling macOS appearance in System Settings updates colors live.
-- "Reset App Data" in the menu wipes the cache and reloads.
+- "Reset App Data" in the menu wipes saved plans and reloads the bundled catalog.
 
 ## Catalog requirements
 
 - The app lists JMU undergraduate majors and minors from the official 2026-2027 Undergraduate Catalog program search.
-- On first launch, the app automatically fetches official `catalog.jmu.edu` HTML for every listed program when fewer than 10% of majors have schedulable data cached. A progress message is shown while this runs (one program per ~150ms, so roughly 30-60 seconds end-to-end). The **Refresh Requirements** button repeats the fetch on demand.
-- Programs with fixed course lists become schedulable after the refresh completes. Broad prose requirements ("choose 9 credits of upper-division electives", "see advisor"), unrestricted electives, and advisor-selected choices are flagged partial and surface a per-program note rather than being silently inferred.
-- General Education is refreshed from JMU's five current General Education area pages. All 14 clusters are pulled with their full course buckets and merged into every undergraduate major's requirement set. Cluster credit allocations (C1CT, C1HC, C1W, C2HQC, C2VPA, C2L, C3QR, C3PP, C3NS, C3L, C4AE, C4GE, C5SD, C5W) follow the JMU 2026-2027 catalog narrative because they do not appear in the cluster headings.
+- Release builds ship a catalog snapshot parsed from official `catalog.jmu.edu` HTML for every listed program. The app reads that snapshot offline; it does not fetch or rewrite catalog data, so catalog corrections arrive with new releases.
+- Programs with fixed course lists are schedulable from the snapshot. Broad prose requirements ("choose 9 credits of upper-division electives", "see advisor"), unrestricted electives, and advisor-selected choices are flagged partial and surface a per-program note rather than being silently inferred.
+- General Education is parsed from JMU's five current General Education area pages. All 14 clusters are pulled with their full course buckets and merged into every undergraduate major's requirement set. Cluster credit allocations (C1CT, C1HC, C1W, C2HQC, C2VPA, C2L, C3QR, C3PP, C3NS, C3L, C4AE, C4GE, C5SD, C5W) follow the JMU 2026-2027 catalog narrative because they do not appear in the cluster headings.
 - Concentrations/tracks are supported for catalog pages where JMU exposes course-bearing concentration sections. The setup flow requires selecting one concentration for those majors, and generated plans include the shared major core plus the selected concentration only.
 - Concentration sections that are prose-only or cannot be safely split remain partially verified; the parser does not infer advisor-selected or unofficial tracks.
 
@@ -43,7 +43,7 @@ After each rebuild, verify by hand:
 
 ## Course details and Rate My Professor
 
-- Course detail panels show official JMU descriptions when the catalog HTML refresh has cached the course's registrar detail page.
+- Course detail panels show official JMU descriptions when the bundled catalog snapshot includes the course's registrar detail page.
 - Courses without a discovered JMU registrar course URL show an unavailable description state and should be verified through the registrar before registration.
 - Rate My Professor data is not scraped or fabricated. The app links to the James Madison University professor search page so students can manually look up instructors.
 - Professor lists and automatic RMP ratings are not populated without a future curated local dataset.
@@ -55,5 +55,5 @@ After each rebuild, verify by hand:
 
 ## Packaging
 
-- `dist/JMU Course Planner.app` is a local unsigned development build. It runs on this Mac, but it is not notarized for public distribution.
+- Release `.zip` builds are unsigned and not notarized. macOS may require right-clicking the app and choosing **Open**.
 - Rebuilding and running tests require Apple’s Swift/Xcode command line tools.

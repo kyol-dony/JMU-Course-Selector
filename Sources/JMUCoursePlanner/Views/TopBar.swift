@@ -106,9 +106,11 @@ struct TopBar: View {
                 StatChip(label: "Done", value: "\(Int(progress.overallFraction * 100))%", emphasized: true)
                 StatChip(label: "Grad", value: progress.projectedGraduation?.displayName ?? "-")
             }
+            #if JMU_DEV_TOOLS
             if store.isRefreshingCatalog {
                 StatusPill(text: "Refreshing", tone: .info, systemImage: "arrow.triangle.2.circlepath")
             }
+            #endif
 
             Menu {
                 Button("Edit Setup") { store.setupSheetPresented = true }
@@ -118,7 +120,9 @@ struct TopBar: View {
                     Button("Calendar (.ics)") { store.exportICS() }
                 }
                 Divider()
+                #if JMU_DEV_TOOLS
                 Button("Refresh Requirements") { store.refreshCatalog() }
+                #endif
                 Button("Start Over") {
                     store.startFresh()
                     store.setupSheetPresented = true

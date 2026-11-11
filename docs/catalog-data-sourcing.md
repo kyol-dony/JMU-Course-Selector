@@ -15,18 +15,18 @@ JMU replaced the previous Acalog PHP URLs with path-based pages for this edition
 
 No catalog rule should be inferred from non-JMU sources.
 
-## HTML refresh
+## Catalog snapshot
 
-The app's **Refresh Requirements** action:
+Each release bundles `Data/catalog_snapshot.json`, produced by a parser pass that:
 
 1. Fetches the current program search page.
 2. Keeps undergraduate bachelor's degree and minor records and deduplicates the site's alternate card/list views.
 3. Fetches each path-based program page and parses its `sc_courselist` requirement tables.
 4. Fetches all five General Education area pages and merges the 14 cluster course buckets into each major.
 5. Uses each course's `/search/?P=...` page to cache its official description and prerequisite/corequisite text.
-6. Stores the structured catalog in Application Support and loads it before the bundled seed.
+6. Writes the structured catalog to `Data/catalog_snapshot.json`, which release builds load offline before the bundled seed.
 
-The current site may challenge non-browser HTTP user agents, so catalog requests use a conventional browser user agent. Refreshes still use a small delay and limited concurrent detail requests to avoid unnecessary load.
+The current site may challenge non-browser HTTP user agents, so catalog requests use a conventional browser user agent. Snapshot generation uses a small delay and limited concurrent detail requests to avoid unnecessary load.
 
 ## Verification boundaries
 

@@ -19,3 +19,9 @@ GEMINI.md
 
 # Graphify local code graph
 graphify-out/
+# Shared agent policy is versioned and inherited by new branches.
+!AGENTS.md
+!CLAUDE.md
+
+# Python policy tool caches
+__pycache__/

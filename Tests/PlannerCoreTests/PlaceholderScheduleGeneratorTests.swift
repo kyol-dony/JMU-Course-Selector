@@ -132,8 +132,25 @@ struct PlaceholderScheduleGeneratorTests {
         #expect(slot < dependent)
     }
 
-    @Test func noFeasibleRouteStillFailsStrictly() throws {
+    /// No slot offers A and the plan has no Open Elective, so A gets a slot
+    /// of its own ahead of the course that needs it.
+    @Test func prerequisiteOutsideEveryMenuGetsItsOwnSlot() throws {
         let f = F.makeInput(slots: [["B", "Z"]], dependencies: [.course("A")], extraCourses: [F.course("Z", code: "ENG 101")])
+        for path in try generate(f.catalog) {
+            let support = try #require(path.placeholders.first { $0.value.categoryID == ScheduleGenerator.prerequisiteSupportCategoryID })
+            #expect(support.value.alternates == ["A"])
+            #expect(support.value.categoryName == "Prerequisite for MATH 410")
+            let slot = try #require(index(of: support.key, in: path))
+            let dependent = try #require(index(of: "D0", in: path))
+            #expect(slot < dependent)
+        }
+    }
+
+    @Test func noFeasibleRouteStillFailsStrictly() throws {
+        // A needs D0 and D0 needs A: no slot choice can order them.
+        let f = F.makeInput(slots: [["B", "Z"]], dependencies: [.course("A")], extraCourses: [
+            F.course("Z", code: "ENG 101"), F.course("A", code: "MATH 300", prerequisite: .course("D0"))
+        ])
         #expect(throws: PlannerError.self) { try generate(f.catalog) }
         // Non-strict generation still falls back to best effort.
         let path = try #require(try generate(f.catalog, strict: false).first)

@@ -1019,6 +1019,11 @@ public struct ScheduleGenerator: Sendable {
             let suffixHours = Set(required).reduce(0.0) { $0 + credits(for: $1, placeholders: placeholders) }
             required += openElectivePlaceholders(gap: max(0, 120 - prefixHours - suffixHours), placeholders: &placeholders, reservedIDs: context?.reservedPlaceholderIDs ?? [])
         }
+        required = seatingOutsidePrerequisites(
+            in: required, completed: completed.union(languagePlan?.placementCreditCourseIDs() ?? []),
+            placeholders: &placeholders, activeProgramTitle: program.title,
+            reservedIDs: context?.reservedPlaceholderIDs ?? []
+        )
         try Task.checkCancellation()
 
         let genEdCourseIDs: Set<String> = Set(
@@ -2235,6 +2240,78 @@ public struct ScheduleGenerator: Sendable {
         }
         let credited = Set(resolution.satisfiedBy.values).intersection(completed).union(languageEarned)
         return (items, credited.sorted())
+    }
+
+    /// Synthetic category id for a slot that holds a prerequisite no declared
+    /// program lists.
+    public static let prerequisiteSupportCategoryID = "prerequisite-support"
+
+    /// Seats a slot directly ahead of each course whose prerequisite is
+    /// neither in the plan nor on any restricted slot's menu (MATH 220's
+    /// MATH 105). One Open Elective is moved up for each; when none is left,
+    /// as when a second major or minor fills the degree's free credits, a
+    /// slot limited to the missing prerequisite is added. Without a slot the
+    /// course and everything after it in its chain cannot be placed.
+    private func seatingOutsidePrerequisites(
+        in required: [String],
+        completed: Set<String>,
+        placeholders: inout [String: PlaceholderSpec],
+        activeProgramTitle: String?,
+        reservedIDs: Set<String>
+    ) -> [String] {
+        let resolver = PrereqRuleResolver(catalog: catalog)
+        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
+        let coursesByID = catalog.coursesByID
+        let real = completed.union(required.filter { !PathwayPlaceholder.isPlaceholder($0) })
+        let offered = Set(placeholders.values.filter { $0.repeatOf == nil }.flatMap(\.alternates))
+        // Each set is one missing prerequisite: any course in it supplies it.
+        func unsupported(_ expression: PrereqExpr) -> [Set<String>] {
+            switch expression {
+            case .course(let id):
+                return real.contains(id) || offered.contains(id) ? [] : [[id]]
+            case .all(let children):
+                return children.flatMap(unsupported)
+            case .any(let children):
+                let branches = children.map(unsupported)
+                if branches.contains(where: \.isEmpty) { return [] }
+                if branches.allSatisfy({ $0.count == 1 }) {
+                    return [branches.reduce(into: Set<String>()) { $0.formUnion($1[0]) }]
+                }
+                return branches.min { $0.count < $1.count } ?? []
+            default:
+                return []
+            }
+        }
+
+        var result = required
+        var openSlots = required.filter { placeholders[$0]?.categoryID == Self.openElectiveCategoryID }
+        var seated: [Set<String>] = []
+        for courseID in required where !PathwayPlaceholder.isPlaceholder(courseID) {
+            guard let course = coursesByID[courseID] else { continue }
+            let rule = resolver.rule(for: course, activeProgramTitle: activeProgramTitle)
+            let expression = PrereqExpr.all([rule.prerequisiteExpr, rule.corequisiteExpr])
+                .treatingAsSatisfied(labPairing.pairedCourses(of: courseID))
+            for missing in unsupported(expression) {
+                let candidates = missing.filter { coursesByID[$0] != nil }
+                guard !candidates.isEmpty, !seated.contains(where: { !$0.isDisjoint(with: candidates) }) else { continue }
+                seated.append(candidates)
+                let slot: String
+                if openSlots.isEmpty {
+                    slot = unusedPlaceholderID(categoryID: Self.prerequisiteSupportCategoryID, startingAt: 0, placeholders: placeholders, reservedIDs: reservedIDs)
+                    placeholders[slot] = PlaceholderSpec(
+                        categoryID: Self.prerequisiteSupportCategoryID,
+                        categoryName: "Prerequisite for \(course.code)",
+                        alternates: candidates.sorted(),
+                        credits: Double(candidates.compactMap { coursesByID[$0]?.credits }.max() ?? 3)
+                    )
+                } else {
+                    slot = openSlots.removeFirst()
+                    result.removeAll { $0 == slot }
+                }
+                result.insert(slot, at: result.firstIndex(of: courseID) ?? result.endIndex)
+            }
+        }
+        return result
     }
 
     /// Build Open Elective placeholders to cover `gap` CRH — the shortfall

@@ -295,4 +295,39 @@ struct PlanStoreConcentrationTests {
         #expect(store.plan.concentrationID == nil)
         #expect(store.majorSelectionComplete)
     }
+
+    /// A second major whose pathway is required but unchosen used to be left
+    /// out of the plan without a word.
+    @Test("an added program missing its required pathway blocks generation")
+    func addedProgramMissingRequiredPathwayBlocksGeneration() async throws {
+        func course(_ id: String) -> Course {
+            Course(id: id, code: id, title: id, credits: 3, availability: [.fall, .spring], prerequisites: [])
+        }
+        let primary = Program.fixture(id: "primary", title: "Primary, B.S.", requirements: [
+            RequirementCategory(id: "core", name: "Core", requiredCredits: 3, courseOptions: [["P1"]])
+        ])
+        let second = Program.fixture(
+            id: "second", title: "Second, B.A.",
+            requirements: [RequirementCategory(id: "second-core", name: "Core", requiredCredits: 3, courseOptions: [["S1"]])],
+            concentrations: [Concentration(id: "track", name: "Track", requirements: [
+                RequirementCategory(id: "track-core", name: "Track Core", requiredCredits: 3, courseOptions: [["S2"]])
+            ])]
+        )
+        var catalog = Catalog.fixture(courses: ["P1", "S1", "S2"].map(course), program: primary)
+        catalog.programs.append(second)
+        let store = PlanStore.temporary()
+        store.catalog = catalog
+        store.selectProgram(primary)
+        store.addMinor(second)
+
+        await store.generateSchedules()
+        #expect(store.errorMessage == "Choose a pathway for Second, B.A. before generating a plan.")
+        #expect(store.plan.pathways.isEmpty)
+
+        store.selectMinorConcentration(minorProgramID: second.id, concentrationID: "track")
+        await store.generateSchedules()
+        #expect(store.errorMessage == nil)
+        let scheduled = Set(try #require(store.activePathway).semesters.flatMap(\.courseIDs))
+        #expect(scheduled.isSuperset(of: ["P1", "S1", "S2"]))
+    }
 }

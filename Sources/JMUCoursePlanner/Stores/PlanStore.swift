@@ -248,6 +248,20 @@ final class PlanStore: ObservableObject {
         }
     }
 
+    /// Added minors and second majors whose required pathway isn't chosen.
+    /// They have no effective program yet, so `selectedMinorPrograms()`
+    /// leaves them out; generation stops instead of planning without them.
+    var addedProgramsMissingPathway: [Program] {
+        guard let catalog else { return [] }
+        return plan.minors.compactMap { selection in
+            guard let program = catalog.programsByID[selection.programID],
+                  program.concentrationSelectionRequired, !program.concentrations.isEmpty,
+                  !program.concentrations.contains(where: { $0.id == selection.concentrationID })
+            else { return nil }
+            return program
+        }
+    }
+
     /// Set of course IDs the student has completed (transfer credit + scheduled in active pathway).
     var completedCourseIDs: Set<String> {
         var ids = effectiveAcademicHistory.completedCourseIDs
@@ -888,6 +902,11 @@ final class PlanStore: ObservableObject {
             return
         }
 
+        if let missing = addedProgramsMissingPathway.first {
+            errorMessage = "Choose a pathway for \(missing.title) before generating a plan."
+            return
+        }
+
         scheduleGenerationProgress = ScheduleGenerationProgress(current: 0, total: 3, pathwayName: "Preparing")
         migrateOptionChoices()
 
@@ -964,6 +983,10 @@ final class PlanStore: ObservableObject {
         guard let catalog, let programID = plan.programID, majorSelectionComplete,
               let source = activePathway else {
             errorMessage = "Choose a major and a pathway before regenerating."
+            return
+        }
+        if let missing = addedProgramsMissingPathway.first {
+            errorMessage = "Choose a pathway for \(missing.title) before regenerating."
             return
         }
         do { _ = try AnchoredScheduleContext(source: source, through: cutoff) }

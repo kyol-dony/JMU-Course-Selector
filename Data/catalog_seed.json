@@ -180,7 +180,6 @@
         "CHEM131",
         "CHEM131L",
         "CHEM132",
-        "CHEM131L",
         "CHEM132L"
       ],
       "credits" : 8,
@@ -257,8 +256,7 @@
     {
       "awardedCourseIDs" : [
         "ISAT112",
-        "ISAT000",
-        "ISAT112"
+        "ISAT000"
       ],
       "credits" : 3,
       "meetsGeneralEducation" : true,
@@ -429,8 +427,7 @@
     {
       "awardedCourseIDs" : [
         "ISAT112",
-        "ISAT000",
-        "ISAT112"
+        "ISAT000"
       ],
       "credits" : 8,
       "meetsGeneralEducation" : true,

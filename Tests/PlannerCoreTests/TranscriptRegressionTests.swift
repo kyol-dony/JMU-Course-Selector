@@ -28,7 +28,9 @@ import Testing
         let current = SemesterPlan(id: .init(year: 2026, term: .fall), courseIDs: ["REQ1"], creditOverrides: ["REQ1": 4.5])
         let paths = try ScheduleGenerator(catalog: catalog).generatePathways(for: "degree", workload: .standard, transferCredits: [], preservedSemester: current, earnedHoursAtStart: 0)
         for path in paths {
-            #expect(path.semesters.reduce(0.0) { $0 + AcademicCreditCalculator.hours(in: $1, catalog: catalog) } + path.placeholders.values.reduce(0.0) { $0 + $1.credits } == 120)
+            let courseHours = path.semesters.reduce(0.0) { $0 + AcademicCreditCalculator.hours(in: $1, catalog: catalog) }
+            let electives = path.placeholders.values.reduce(0.0) { $0 + $1.credits }
+            #expect(courseHours + electives == 120)
         }
     }
     @Test(arguments: [1.5, 3.0])

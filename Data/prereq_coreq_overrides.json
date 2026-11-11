@@ -2,6 +2,60 @@
   "schemaVersion": 1,
   "rules": [
     {
+      "courseID": "CS240",
+      "prerequisiteExpr": {
+        "kind": "all",
+        "children": [
+          {
+            "kind": "unknown",
+            "value": "Fully admitted Computer Science majors or minors only"
+          },
+          {
+            "kind": "course",
+            "value": "CS159"
+          },
+          {
+            "kind": "any",
+            "children": [
+              {
+                "kind": "course",
+                "value": "CS227"
+              },
+              {
+                "kind": "course",
+                "value": "MATH227"
+              },
+              {
+                "kind": "course",
+                "value": "MATH245"
+              }
+            ]
+          },
+          {
+            "kind": "any",
+            "children": [
+              {
+                "kind": "course",
+                "value": "MATH231"
+              },
+              {
+                "kind": "course",
+                "value": "MATH235"
+              }
+            ]
+          }
+        ]
+      },
+      "corequisiteExpr": {
+        "kind": "empty"
+      },
+      "confidence": "curated",
+      "basis": "inferred",
+      "sourceURL": "https://catalog.jmu.edu/search/?P=CS%20240",
+      "sourceText": "Prerequisites: Fully admitted Computer Science majors or minors only and grades of C- or better in CS 159, CS 227/MATH 227 or MATH 245, and MATH 231 or equivalent.",
+      "notes": "The Computer Science B.S. catalog footnote identifies MATH 235 as the one-course alternative to the MATH 231/MATH 232 calculus sequence, so MATH 235 satisfies CS 240's MATH 231-or-equivalent clause. Admission and minimum-grade conditions remain visible but unenforced."
+    },
+    {
       "courseID": "SCOM240",
       "prerequisiteExpr": {
         "kind": "all",

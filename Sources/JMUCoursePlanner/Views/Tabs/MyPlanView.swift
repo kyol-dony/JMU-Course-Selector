@@ -408,7 +408,9 @@ private struct RequirementProgressRow: View {
                     Text(category.name)
                         .font(DesignTokens.Typography.bodyEmphasized)
                         .foregroundStyle(DesignTokens.Colors.textPrimary)
-                    if category.remainingCredits == 0 {
+                    if requirement?.approval != nil {
+                        StatusPill(text: "Approval pending", tone: .warning)
+                    } else if category.remainingCredits == 0 {
                         StatusPill(text: "Complete", tone: .success, systemImage: "checkmark.circle.fill")
                     } else if category.verificationStatus != .verified {
                         StatusPill(text: "Partial", tone: .warning)
@@ -425,6 +427,11 @@ private struct RequirementProgressRow: View {
                     remainingCourseCodes: remainingCourseCodes,
                     showHeader: false
                 )
+                if let approval = requirement?.approval {
+                    Text(approval.guidance)
+                        .font(DesignTokens.Typography.caption)
+                        .foregroundStyle(DesignTokens.Colors.textSecondary)
+                }
                 if let note = requirement?.note, requirement?.courseOptions.isEmpty == true, !isOpenElective {
                     Text(note)
                         .font(DesignTokens.Typography.caption)

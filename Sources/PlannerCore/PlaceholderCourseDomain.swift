@@ -8,7 +8,7 @@ public enum PlaceholderCourseDomain {
     /// duplicates or unknown IDs; the whole catalog when it lists none (Open
     /// Electives). None for a repeat slot, which is already its course.
     public static func eligibleCourseIDs(for spec: PlaceholderSpec, catalog: Catalog) -> [String] {
-        guard spec.repeatOf == nil else { return [] }
+        guard spec.repeatOf == nil, spec.approval == nil else { return [] }
         guard !spec.alternates.isEmpty else { return catalog.courses.map(\.id) }
         let coursesByID = catalog.coursesByID
         var seen: Set<String> = []

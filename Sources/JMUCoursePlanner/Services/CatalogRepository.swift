@@ -7,6 +7,15 @@ struct CatalogRepository {
     private let htmlParser = JMUHTMLCatalogParser()
 
     func loadCatalog() throws -> Catalog {
+        if BuildFeatures.isRestrictedTest {
+            guard let snapshotURL = Bundle.main.url(forResource: "testing_catalog", withExtension: "json") else {
+                throw CocoaError(.fileNoSuchFile, userInfo: [NSLocalizedDescriptionKey: "The test catalog snapshot is missing from this app."])
+            }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let snapshot = try decoder.decode(Catalog.self, from: Data(contentsOf: snapshotURL))
+            return attachCurrentPrereqOverlay(to: Self.applyingCurrentGenEdCredits(to: snapshot).resolvingElectivePools())
+        }
         if var cached = try? loadCachedHTMLCatalog() {
             // AP credit rules ship in the bundled seed (sourced from the JMU AP
             // chart) and may evolve between releases without a full catalog
@@ -224,7 +233,7 @@ struct CatalogRepository {
 
     func supportDirectory() throws -> URL {
         let base = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        let directory = base.appending(path: "JMUCoursePlanner", directoryHint: .isDirectory)
+        let directory = base.appending(path: BuildFeatures.isRestrictedTest ? "JMUCoursePlanner-RestrictedTest" : "JMUCoursePlanner", directoryHint: .isDirectory)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
@@ -344,6 +353,9 @@ struct CatalogRepository {
     private static let cacheSchemaVersion = 28
 
     private func attachCurrentPrereqOverlay(to catalog: Catalog) -> Catalog {
+        let catalog = ArtConcentrationPolicy.applying(
+            to: PsychologyCoursework.applying(to: HonorsCoursework.applying(to: catalog))
+        ).resolvingElectivePools()
         let status = optionalPrereqRuleOverlay(from: try? bundledPrereqOverlayURL())
         var source = catalog.source
         source.retrievalNotes.removeAll { $0.contains("prereq/coreq overlay") }

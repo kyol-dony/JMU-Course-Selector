@@ -20,6 +20,7 @@ struct StackedProgramAuditTests {
     private static let primaries: [Pick] = [
         Pick("psychology-ba"), Pick("psychology-bs"),
         Pick("art-ba", "art-education"), Pick("art-bs", "art-education"), Pick("art-bfa", "painting"),
+        Pick("art-bfa", "painting-art-education"),
         Pick("computer-science-bs")
     ]
     private static let extras: [[Pick]] = [
@@ -29,7 +30,7 @@ struct StackedProgramAuditTests {
         [Pick("art-history-minor")],
         [Pick("psychology-ba")], [Pick("psychology-bs")],
         [Pick("art-ba", "art-education")], [Pick("art-bs", "art-education")], [Pick("art-bfa", "painting")],
-        [Pick("art-bfa", "photography")],
+        [Pick("art-bfa", "photography")], [Pick("art-bfa", "photography-art-education")],
         [Pick("art-minor"), Pick("honors-interdisciplinary-studies-minor", "honors-eportfolio")],
         [Pick("psychology-bs"), Pick("art-minor"), Pick("honors-interdisciplinary-studies-minor")],
         [Pick("art-bfa", "ceramics"), Pick("psychology-ba"), Pick("honors-interdisciplinary-studies-minor", "honors-capstone")],
@@ -40,7 +41,9 @@ struct StackedProgramAuditTests {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let decoded = try decoder.decode(Catalog.self, from: Data(contentsOf: URL(fileURLWithPath: try #require(path))))
-        var catalog = CatalogRepository.applyingCurrentGenEdCredits(to: decoded).resolvingElectivePools()
+        var catalog = ArtConcentrationPolicy.applying(to: PsychologyCoursework.applying(
+            to: HonorsCoursework.applying(to: CatalogRepository.applyingCurrentGenEdCredits(to: decoded))
+        )).resolvingElectivePools()
         let overlayURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Data/prereq_coreq_overrides.json")
         catalog.prereqRuleOverlay = CatalogRepository().optionalPrereqRuleOverlay(from: overlayURL).overlay

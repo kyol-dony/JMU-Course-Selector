@@ -27,7 +27,7 @@ struct PlaceholderChip: View {
             Image(systemName: "questionmark.circle")
                 .foregroundStyle(accent)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Choose course")
+                Text(spec.approval == nil ? "Choose course" : "Honors approval pending")
                     .font(DesignTokens.Typography.bodyEmphasized)
                     .foregroundStyle(accent)
                 Text(spec.categoryName)

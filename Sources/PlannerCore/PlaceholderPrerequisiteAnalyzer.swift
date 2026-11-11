@@ -250,6 +250,8 @@ public final class PlaceholderPrerequisiteAnalyzer {
             lacking.formUnion(missing.courseLeaves)
         }
         if offeredInAnotherTerm { return true }
+        let pendingReal = Set(pendingCourseIDs.filter { !PathwayPlaceholder.isPlaceholder($0) })
+        if !lacking.isDisjoint(with: pendingReal) { return true }
         let otherSlots = pendingCourseIDs.filter { $0 != slot && PathwayPlaceholder.isPlaceholder($0) }.compactMap { placeholders[$0] }
         return lacking.contains { leaf in otherSlots.contains { cache.offers($0, leaf) } }
     }
@@ -279,8 +281,11 @@ public final class PlaceholderPrerequisiteAnalyzer {
         placeholders: [String: PlaceholderSpec],
         activeProgramTitle: String?
     ) -> Int {
-        guard PathwayPlaceholder.isPlaceholder(itemID), placeholders[itemID] != nil else { return 1 }
         let urgent = urgentSlots(pendingCourseIDs: pendingCourseIDs, completedCourseIDs: completedCourseIDs, placeholders: placeholders, activeProgramTitle: activeProgramTitle)
+        if !PathwayPlaceholder.isPlaceholder(itemID) {
+            return urgent.contains(itemID) ? 0 : 1
+        }
+        guard placeholders[itemID] != nil else { return 1 }
         return urgent.contains(itemID) ? 0 : 1
     }
 
@@ -301,10 +306,18 @@ public final class PlaceholderPrerequisiteAnalyzer {
         if let cached = urgencyCache, cached.key == key { return cached.urgent }
 
         let needed = neededCourses(pendingCourseIDs: pendingCourseIDs, completedCourseIDs: completedCourseIDs, activeProgramTitle: activeProgramTitle)
+        let pendingReal = Set(pendingCourseIDs.filter { !PathwayPlaceholder.isPlaceholder($0) })
         let slots = pendingCourseIDs.filter { PathwayPlaceholder.isPlaceholder($0) && placeholders[$0] != nil }
         let restricted = slots.filter { !(placeholders[$0]?.alternates.isEmpty ?? true) }
-        let open = slots.filter { placeholders[$0]?.alternates.isEmpty ?? false }
+        let open = slots.filter { (placeholders[$0]?.alternates.isEmpty ?? false) && placeholders[$0]?.approval == nil }
         var urgent: Set<String> = []
+        // Pending concrete prerequisites must outrank unrelated work too.
+        // Otherwise a long stacked plan can postpone its foundation courses
+        // until best-effort fallback puts an entire chain in one term.
+        for dependent in pendingReal {
+            let direct = cache.needs(of: dependent, activeProgramTitle: activeProgramTitle)?.leaves ?? []
+            urgent.formUnion(direct.intersection(pendingReal))
+        }
         for course in needed.sorted() {
             let offering = restricted.filter { cache.offers(placeholders[$0]!, course) }
             if let slot = offering.first(where: { !urgent.contains($0) }) ?? offering.first {

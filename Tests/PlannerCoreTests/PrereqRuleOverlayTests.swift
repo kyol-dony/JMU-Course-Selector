@@ -105,6 +105,22 @@ final class PrereqRuleOverlayTests: XCTestCase {
         XCTAssertEqual(overlay.rule(for: "SCOM240L")?.corequisiteExpr, .course("SCOM240"))
     }
 
+    func testBundledOverlayDefinesMATH235AsCS240CalculusEquivalent() throws {
+        let overlayURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Data/prereq_coreq_overrides.json")
+        let overlay = try JSONDecoder().decode(PrereqRuleOverlay.self, from: Data(contentsOf: overlayURL))
+        let rule = try XCTUnwrap(overlay.rule(for: "CS240"))
+
+        XCTAssertEqual(rule.basis, .inferred)
+        XCTAssertEqual(rule.prerequisiteExpr, .all([
+            .unknown("Fully admitted Computer Science majors or minors only"),
+            .course("CS159"),
+            .any([.course("CS227"), .course("MATH227"), .course("MATH245")]),
+            .any([.course("MATH231"), .course("MATH235")])
+        ]))
+    }
+
     func testResolverFallsBackToRawCatalogParser() throws {
         var cs240 = Course(id: "CS240", code: "CS 240", title: "Data", credits: 3, availability: nil, prerequisites: [])
         cs240.rawPrerequisiteText = "Prerequisite: CS 159."

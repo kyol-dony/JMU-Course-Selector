@@ -455,6 +455,10 @@ struct SemesterColumnView: View {
     /// alternates mean any catalog course; otherwise results stay restricted
     /// to the requirement's parsed alternatives.
     private func openPlaceholderPicker(id: String, spec: PlaceholderSpec) {
+        if let approval = spec.approval {
+            store.errorMessage = "\(spec.categoryName): \(CreditHoursFormatter.string(spec.credits)) reserved credits. \(approval.guidance) See the Honors Courses requirement in Catalog for examples and advising links."
+            return
+        }
         coursePickerRequest = CoursePickerRequest(
             id: id,
             title: "Choose \(spec.categoryName)",

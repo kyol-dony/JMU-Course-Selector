@@ -160,6 +160,35 @@ struct PlaceholderPrerequisiteAnalyzerTests {
         #expect(analyzer.providerPriority(itemID: "D0", pendingCourseIDs: ["D0"], completedCourseIDs: [], placeholders: [:], activeProgramTitle: nil) == 1)
     }
 
+    @Test func providerPriorityRanksPendingConcretePrerequisitesFirst() throws {
+        let f = F.makeInput(slots: [], dependencies: [.course("A")], extraCourses: [F.course("X", code: "ENG 101")])
+        let analyzer = PlaceholderPrerequisiteAnalyzer(catalog: f.catalog)
+        let pending = ["D0", "A", "X"]
+        #expect(analyzer.providerPriority(itemID: "A", pendingCourseIDs: pending, completedCourseIDs: [], placeholders: [:], activeProgramTitle: nil) == 0)
+        #expect(analyzer.providerPriority(itemID: "X", pendingCourseIDs: pending, completedCourseIDs: [], placeholders: [:], activeProgramTitle: nil) == 1)
+    }
+
+    @Test func slotWaitsForPendingConcretePrerequisite() throws {
+        let f = F.makeInput(
+            slots: [["A"]],
+            dependencies: [.course("A")],
+            extraCourses: [F.course("A", code: "MATH 300", prerequisite: .course("B"))]
+        )
+        let analyzer = PlaceholderPrerequisiteAnalyzer(catalog: f.catalog)
+        var budget = ConditionalSearchBudget()
+        let waits = try analyzer.slotShouldWait(
+            F.slotID(0),
+            in: F.fall,
+            input: f.input,
+            admitted: [],
+            pendingCourseIDs: ["D0", "B", F.slotID(0)],
+            completedCourseIDs: [],
+            placeholders: f.input.pathway.placeholders,
+            budget: &budget
+        )
+        #expect(waits)
+    }
+
     @Test func onlyTheBestSlotForANeedIsUrgent() throws {
         // A restricted slot offering A is preferred over Open Electives,
         // which offer every course.

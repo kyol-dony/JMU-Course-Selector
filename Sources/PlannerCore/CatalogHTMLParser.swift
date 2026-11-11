@@ -262,17 +262,23 @@ public struct JMUHTMLCatalogParser: Sendable {
             split.concentrationSelectionRequired = false
         }
 
-        let result = HTMLProgramRequirements(
+        var result = HTMLProgramRequirements(
             title: title,
             requirements: categories,
             concentrations: concentrations,
-            concentrationSelectionRequired: split.concentrationSelectionRequired,
+            concentrationSelectionRequired: ArtConcentrationPolicy.selectionRequired(
+                programID: sourceURL.lastPathComponent, parsedValue: split.concentrationSelectionRequired),
             courses: coursesByID.values.sorted { $0.code < $1.code },
             totalCredits: parseProgramTotal(from: html),
             degreeRequirements: Self.degreeRequirements(in: html)
         )
-        return sourceURL.path.contains("honors-interdisciplinary-studies-minor")
-            ? Self.honorsMinorRequirements(result) : result
+        if sourceURL.path.contains("honors-interdisciplinary-studies-minor") {
+            return Self.honorsMinorRequirements(result)
+        }
+        if sourceURL.path.contains("psychology-bs") {
+            result.requirements = result.requirements.map { PsychologyCoursework.applying(to: $0) }
+        }
+        return result
     }
 
     /// The Honors page prints approved-course menus after the 19-credit core,
@@ -298,6 +304,7 @@ public struct JMUHTMLCatalogParser: Sendable {
             var category = category
             let options: [String]
             switch category.name {
+            case "Honors Courses": return HonorsCoursework.applying(to: category)
             case "Civic, Cultural or Global Engagement Course": options = engagement
             case "Research or Experiential Learning Course": options = research
             default: return category

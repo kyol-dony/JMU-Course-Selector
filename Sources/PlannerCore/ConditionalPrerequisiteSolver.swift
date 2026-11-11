@@ -122,6 +122,7 @@ final class ConditionalSearchCache {
     /// Whether the slot's menu offers `courseID`. Empty menus (Open
     /// Electives) offer any catalog course without building the set.
     func offers(_ spec: PlaceholderSpec, _ courseID: String) -> Bool {
+        guard spec.approval == nil else { return false }
         if spec.alternates.isEmpty { return coursesByID[courseID] != nil }
         return menu(of: spec).contains(courseID)
     }

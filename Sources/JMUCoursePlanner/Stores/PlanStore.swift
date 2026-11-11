@@ -399,6 +399,10 @@ final class PlanStore: ObservableObject {
     /// while `resolvedPlaceholders` tracks the mapping for synthetic
     /// progress rows and reversal.
     func resolvePlaceholder(_ placeholderID: String, with chosenCourseID: String) {
+        guard activePathway?.placeholders[placeholderID]?.approval == nil else {
+            errorMessage = "Honors eligibility needs confirmation. An ordinary course selection cannot resolve an Honors approval task."
+            return
+        }
         let name = scheduleItemName(chosenCourseID)
         let category = activePathway?.placeholders[placeholderID]?.categoryName ?? "this requirement"
         recordScheduleChange(actionName: "Choose \(name)", message: "Chose \(name) for \(category)") {
@@ -1611,6 +1615,7 @@ final class PlanStore: ObservableObject {
     }
 
     func resetAppData() {
+        guard BuildFeatures.developerControlsEnabled else { return }
         do {
             Self.flushPendingAutosaves()
             try catalogRepository.resetAppData()
@@ -1626,6 +1631,7 @@ final class PlanStore: ObservableObject {
     }
 
     func refreshCatalog() {
+        guard BuildFeatures.developerControlsEnabled else { return }
         isRefreshingCatalog = true
         statusMessage = "Fetching JMU catalog HTML requirements..."
         Task {

@@ -1,10 +1,42 @@
 import Foundation
 import Testing
 @testable import PlannerCore
+@testable import JMUCoursePlanner
 
 /// Art B.A. and Art B.F.A. pages captured from the 2026-2027 catalog.
 @Suite("Art program parsing")
 struct ArtProgramParsingTests {
+    @Test @MainActor func cachedArtBSAllowsBaseDegreeAndRetainsOptionalConcentration() throws {
+        let core = RequirementCategory(id: "core", name: "Core", requiredCredits: 3, courseOptions: [["ART100"]])
+        let education = RequirementCategory(id: "education", name: "Education", requiredCredits: 3, courseOptions: [["ARED300"]])
+        let track = Concentration(id: "art-education", name: "Art Education", requirements: [education])
+        var bs = Program.fixture(id: "art-bs", title: "Art, B.S.", requirements: [core], concentrations: [track])
+        bs.concentrationSelectionRequired = true // Legacy cached value.
+        var bfa = bs
+        bfa.id = "art-bfa"
+        var catalog = Catalog.fixture(courses: [
+            Course(id: "ART100", code: "ART 100", title: "Art", credits: 3, availability: nil, prerequisites: []),
+            Course(id: "ARED300", code: "ARED 300", title: "Education", credits: 3, availability: nil, prerequisites: [])
+        ], program: bs)
+        catalog.programs.append(bfa)
+        catalog = ArtConcentrationPolicy.applying(to: catalog)
+        let corrected = try #require(catalog.programsByID["art-bs"])
+        #expect(!corrected.concentrationSelectionRequired)
+        #expect(corrected.concentrations == [track])
+        #expect(catalog.programsByID["art-bfa"]?.concentrationSelectionRequired == true)
+        let store = PlanStore.temporary()
+        store.catalog = catalog
+        store.selectProgram(corrected)
+        #expect(store.majorSelectionComplete)
+        #expect(!store.requiresConcentrationSelection)
+        let base = try corrected.effectiveProgram(concentrationID: nil)
+        #expect(base.requirements == [core])
+        #expect(try corrected.effectiveProgram(concentrationID: track.id).requirements.contains(education))
+        let paths = try ScheduleGenerator(catalog: catalog).generatePathways(for: corrected.id, workload: .standard, transferCredits: [])
+        #expect(paths.count == 3)
+        #expect(paths.allSatisfy { !$0.semesters.flatMap(\.courseIDs).contains("ARED300") })
+    }
+
     private static func parse(_ file: String, slug: String, kind: ProgramKind = .major) throws -> HTMLProgramRequirements {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent(file)
         return JMUHTMLCatalogParser().parseProgramRequirements(
@@ -15,6 +47,24 @@ struct ArtProgramParsingTests {
 
     private static func requirement(_ name: String, in parsed: HTMLProgramRequirements) throws -> RequirementCategory {
         try #require(parsed.requirements.first { $0.name == name }, "\(name) missing")
+    }
+
+    private static func program(_ parsed: HTMLProgramRequirements, id: String) -> Program {
+        var program = Program.fixture(id: id, title: parsed.title ?? id, requirements: parsed.requirements, concentrations: parsed.concentrations)
+        program.concentrationSelectionRequired = parsed.concentrationSelectionRequired
+        program.totalCredits = parsed.totalCredits
+        return program
+    }
+
+    private static func artCatalog(resolved: Bool = true) throws -> Catalog {
+        let ba = try Self.parse("_live_art_ba.html", slug: "art-ba")
+        let bfa = try Self.parse("_live_art_bfa.html", slug: "art-bfa")
+        var coursesByID: [String: Course] = [:]
+        for course in ba.courses + bfa.courses { coursesByID[course.id] = course }
+        var catalog = Catalog.fixture(courses: Array(coursesByID.values), program: program(ba, id: "art-ba"))
+        catalog.programs.append(program(bfa, id: "art-bfa"))
+        catalog = ArtConcentrationPolicy.applying(to: catalog)
+        return resolved ? catalog.resolvingElectivePools() : catalog
     }
 
     @Test func degreeTotalIgnoresItsFootnoteMark() throws {
@@ -71,6 +121,77 @@ struct ArtProgramParsingTests {
         #expect(bfaHistory.courseOptions.count == 2)
         #expect(bfaHistory.electivePoolSlots == [0, 1])
     }
+
+    @Test func bfaArtRelatedElectivesExposeFiveCatalogSubjectAreas() throws {
+        let catalog = try Self.artCatalog(resolved: false)
+        let bfa = try #require(catalog.programsByID["art-bfa"])
+        let electives = try #require(bfa.requirements.first { $0.name == "Art and Art-Related Electives" })
+        #expect(electives.requiredCredits == 15)
+        #expect(electives.courseOptions.count == 5)
+        #expect(electives.electivePoolSlots == [0, 1, 2, 3, 4])
+        #expect(electives.courseOptions[0] == ["ART", "GRPH", "ARCD", "ARED", "INDU"].map {
+            ElectivePool.token(subject: $0, minimumNumber: 100)
+        })
+        #expect(electives.courseOptions.allSatisfy { $0 == electives.courseOptions[0] })
+    }
+
+    @Test func bfaArtEducationAddsToEveryStudioArea() throws {
+        let bfa = try #require(try Self.artCatalog().programsByID["art-bfa"])
+        #expect(bfa.concentrationSelectionRequired)
+        #expect(!bfa.concentrations.contains { $0.name == "Art Education" })
+        #expect(bfa.concentrations.filter { Self.studioNames.contains($0.name) }.count == 7)
+        let combined = bfa.concentrations.filter { $0.name.hasSuffix(" + Art Education") }
+        #expect(combined.count == 7)
+        let ceramics = try #require(combined.first { $0.name == "Ceramics + Art Education" })
+        let ids = Set(ceramics.requirements.flatMap { $0.courseOptions.flatMap { $0 } })
+        #expect(ids.contains("ART320"))
+        #expect(ids.contains("ARED300"))
+        #expect(ceramics.requirements.reduce(0) { $0 + $1.requiredCredits } == 54)
+        #expect(ceramics.totalCredits == 143)
+        #expect(try bfa.effectiveProgram(concentrationID: ceramics.id).totalCredits == 143)
+    }
+
+    @Test func studioArtEmphasisRequiresOneNamedArea() throws {
+        let catalog = try Self.artCatalog()
+        let ba = try #require(catalog.programsByID["art-ba"])
+        let emphasis = try #require(ba.requirements.first { $0.name == "Studio Art Emphasis" })
+        let options = try #require(emphasis.options)
+        #expect(emphasis.selection == .chooseGroups(1))
+        #expect(emphasis.courseOptions.isEmpty)
+        #expect(options.map(\.label) == Self.studioNames)
+        for option in options {
+            let part = try #require(option.parts.first)
+            #expect(part.requiredCredits == 6)
+            #expect(part.courseOptions.count == 2)
+            #expect(part.courseOptions.flatMap { $0 }.allSatisfy { id in
+                guard let course = catalog.coursesByID[id],
+                      let parsed = ElectivePool.subjectAndNumber(of: course.code)
+                else { return false }
+                return parsed.subject == "ART" && (300...499).contains(parsed.number)
+            })
+        }
+        let ceramics = try #require(options.first { $0.label == "Ceramics" }?.parts.first)
+        let painting = try #require(options.first { $0.label == "Painting" }?.parts.first)
+        #expect(Set(ceramics.courseOptions[0]).isDisjoint(with: painting.courseOptions[0]))
+    }
+
+    @Test func psychologyElectiveRemainsVisibleAndAdvisorOnly() throws {
+        let parsed = try Self.parse("_live_psyc_bs.html", slug: "psychology-bs")
+        let elective = try Self.requirement("Psychology Electives", in: parsed)
+        #expect(elective.requiredCredits == 3)
+        #expect(elective.courseOptions.isEmpty)
+        #expect(elective.approval == .psychologyElective)
+
+        var raw = elective
+        raw.approval = nil
+        let program = Program.fixture(id: PsychologyCoursework.programID, title: "Psychology", requirements: [raw])
+        let cached = PsychologyCoursework.applying(to: Catalog.fixture(courses: [], program: program))
+        #expect(cached.programsByID[PsychologyCoursework.programID]?.requirements.first?.approval == .psychologyElective)
+    }
+
+    private static let studioNames = [
+        "Ceramics", "Fibers", "Metals", "Painting", "Photography", "Printmaking", "Sculpture"
+    ]
 
     @Test func artHistoryMinorRowBecomesAPool() throws {
         let text = "Required Courses: Art history courses (300-400 level) Art history courses (300-400 level) For studio art, graphic design and architectural design majors, required ARTH courses in the art emphasis program may count toward the art history minor. Excludes ARTH 390 , ARTH 490 , ARTH 495 and ARTH 499 ."

@@ -198,6 +198,7 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
     /// "Or take both": these courses together meet the part instead of one
     /// of its slots.
     public var alternativeGroup: [String]?
+    public var approval: CourseworkApproval?
 
     public init(
         id: String,
@@ -227,11 +228,12 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         self.courseRemarks = courseRemarks
         self.options = options
         self.alternativeGroup = alternativeGroup
+        self.approval = nil
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, requiredCredits, courseOptions, verificationStatus, note, electivePoolSlots
-        case selection, choices, catalogDescription, courseRemarks, options, alternativeGroup
+        case selection, choices, catalogDescription, courseRemarks, options, alternativeGroup, approval
     }
 
     public init(from decoder: Decoder) throws {
@@ -249,6 +251,7 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         courseRemarks = try c.decodeIfPresent([String: [String]].self, forKey: .courseRemarks) ?? [:]
         options = try c.decodeIfPresent([RequirementOption].self, forKey: .options)
         alternativeGroup = try c.decodeIfPresent([String].self, forKey: .alternativeGroup)
+        approval = try c.decodeIfPresent(CourseworkApproval.self, forKey: .approval)
     }
 }
 
@@ -257,12 +260,21 @@ public struct Concentration: Codable, Hashable, Identifiable, Sendable {
     public var name: String
     public var requirements: [RequirementCategory]
     public var verificationStatus: VerificationStatus
+    /// Catalog degree total when this concentration changes graduation hours.
+    public var totalCredits: Int?
 
-    public init(id: String, name: String, requirements: [RequirementCategory], verificationStatus: VerificationStatus = .unverified) {
+    public init(
+        id: String,
+        name: String,
+        requirements: [RequirementCategory],
+        verificationStatus: VerificationStatus = .unverified,
+        totalCredits: Int? = nil
+    ) {
         self.id = id
         self.name = name
         self.requirements = requirements
         self.verificationStatus = verificationStatus
+        self.totalCredits = totalCredits
     }
 }
 
@@ -281,6 +293,9 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
     public var verificationStatus: VerificationStatus
     public var requirementDataComplete: Bool
     public var sourceNote: String
+    /// Reviewed degree-wide minimum. Unlike `totalCredits`, this never holds
+    /// a parser-extracted major subtotal.
+    public var minimumDegreeCredits: Int?
     /// The B.A./B.S. rows of the program's "Degree Requirements" table.
     public var degreeRequirements: [DegreeRequirement] = []
 
@@ -300,6 +315,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         case requirementDataComplete
         case sourceNote
         case degreeRequirements
+        case minimumDegreeCredits
     }
 
     public init(
@@ -316,7 +332,8 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         concentrationSelectionRequired: Bool? = nil,
         verificationStatus: VerificationStatus,
         requirementDataComplete: Bool,
-        sourceNote: String
+        sourceNote: String,
+        minimumDegreeCredits: Int? = nil
     ) {
         self.id = id
         self.title = title
@@ -332,6 +349,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         self.verificationStatus = verificationStatus
         self.requirementDataComplete = requirementDataComplete
         self.sourceNote = sourceNote
+        self.minimumDegreeCredits = minimumDegreeCredits
     }
 
     public init(from decoder: Decoder) throws {
@@ -351,6 +369,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         requirementDataComplete = try container.decode(Bool.self, forKey: .requirementDataComplete)
         sourceNote = try container.decode(String.self, forKey: .sourceNote)
         degreeRequirements = try container.decodeIfPresent([DegreeRequirement].self, forKey: .degreeRequirements) ?? []
+        minimumDegreeCredits = try container.decodeIfPresent(Int.self, forKey: .minimumDegreeCredits)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -370,6 +389,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         try container.encode(requirementDataComplete, forKey: .requirementDataComplete)
         try container.encode(sourceNote, forKey: .sourceNote)
         try container.encode(degreeRequirements, forKey: .degreeRequirements)
+        try container.encodeIfPresent(minimumDegreeCredits, forKey: .minimumDegreeCredits)
     }
 }
 
@@ -500,13 +520,15 @@ public struct PlaceholderSpec: Codable, Hashable, Sendable {
     /// and is never swapped for its course ID, which stays unique in a plan.
     /// Plans saved before repeats decode it as nil.
     public var repeatOf: String?
+    public var approval: CourseworkApproval?
 
-    public init(categoryID: String, categoryName: String, alternates: [String], credits: Double, repeatOf: String? = nil) {
+    public init(categoryID: String, categoryName: String, alternates: [String], credits: Double, repeatOf: String? = nil, approval: CourseworkApproval? = nil) {
         self.categoryID = categoryID
         self.categoryName = categoryName
         self.alternates = alternates
         self.credits = credits
         self.repeatOf = repeatOf
+        self.approval = approval
     }
 }
 
@@ -1160,6 +1182,24 @@ public struct ScheduleGenerator: Sendable {
         var optionConsumed: [String: Set<String>] = [:]
         for category in Self.specificOptionPartsFirst(program.requirements) {
             if Task.isCancelled { break }
+            if let approval = category.approval {
+                // Approval cannot be inferred from earned or planned ordinary
+                // courses. Keep the obligation on the board until reviewed.
+                let reserved = anchors?.placeholders.values.filter { $0.categoryID == category.id }
+                    .reduce(0.0) { $0 + $1.credits } ?? 0
+                var remaining = max(Double(category.requiredCredits) - reserved, 0)
+                while remaining > 0 {
+                    let id = unusedPlaceholderID(categoryID: category.id, startingAt: 0, placeholders: placeholders,
+                                                 reservedIDs: anchors?.reservedPlaceholderIDs ?? [])
+                    let hours = min(3, remaining)
+                    placeholders[id] = PlaceholderSpec(categoryID: category.id, categoryName: category.name,
+                                                       alternates: [], credits: hours, approval: approval)
+                    result.append(id)
+                    seen.insert(id)
+                    remaining -= hours
+                }
+                continue
+            }
             let optionRequirementID = OptionPartID.parse(category.id)?.requirementID
             let lowerName = legacyKeywordText(category)
             let rule = behavior(for: category)
@@ -2016,11 +2056,12 @@ public struct ScheduleGenerator: Sendable {
     public static let openElectiveCategoryID = "open-elective"
 
     /// Gap between the primary major's declared requirement credits and
-    /// JMU's 120 CRH degree minimum. Only fires for `.major` programs whose
+    /// its reviewed degree minimum (normally JMU's 120 CRH). Only fires for `.major` programs whose
     /// declared credits clear a substance threshold — the catalog parser's
     /// `totalCredits` often reports a section subtotal ("Major Requirements
     /// Total: 49 CRH") rather than the full degree total, so we hardcode
-    /// 120 for real majors and ignore `program.totalCredits` here.
+    /// 120 for ordinary majors and ignore `program.totalCredits` here. A
+    /// reviewed concentration-specific minimum uses `minimumDegreeCredits`.
     ///
     /// Umbrella section headers (categories with no parseable course
     /// options — e.g., "Additional Requirements: 22-24 CRH") are excluded
@@ -2056,7 +2097,7 @@ public struct ScheduleGenerator: Sendable {
         // list count toward the gate; their credits are left to the gap.
         guard program.requirements.reduce(0, { $0 + $1.requiredCredits }) >= 60 else { return 0 }
         let counted = max(declared - reusedCredits + additionalCredits, scheduledCredits)
-        return max(0, 120 - counted)
+        return max(0, (program.minimumDegreeCredits ?? 120) - counted)
     }
 
     /// Open Elective gap for `program` once `additionalPrograms` (minors,
@@ -3052,7 +3093,7 @@ public struct ProgressCalculator: Sendable {
             return categories.indices.compactMap { rows[$0] }
         }
 
-        let primaryCategories = effectiveProgram.requirements.filter { !$0.courseOptions.isEmpty }
+        let primaryCategories = effectiveProgram.requirements.filter { !$0.courseOptions.isEmpty || $0.approval != nil }
         var categories = foldedRows(
             primaryCategories,
             rows: progressRows(primaryCategories),
@@ -3135,7 +3176,7 @@ public struct ProgressCalculator: Sendable {
             // own copy still knows each option requirement's name.
             var extraOptionRequirements = catalog.programsByID[extra.id].map(Self.optionRequirements(in:)) ?? [:]
             extraOptionRequirements.merge(Self.optionRequirements(in: extra)) { _, own in own }
-            let extraCategories = extra.requirements.filter { !$0.courseOptions.isEmpty }
+            let extraCategories = extra.requirements.filter { !$0.courseOptions.isEmpty || $0.approval != nil }
             categories += foldedRows(
                 extraCategories,
                 rows: progressRows(extraCategories, idPrefix: extra.id, namePrefix: prefix),
@@ -3253,6 +3294,10 @@ public extension Program {
             return category
         }
         effective.requirements = requirements + concentrationRequirements
+        if let totalCredits = concentration.totalCredits {
+            effective.totalCredits = totalCredits
+            effective.minimumDegreeCredits = totalCredits
+        }
         effective.sourceNote = "\(sourceNote) Selected concentration: \(concentration.name)."
         return effective
     }

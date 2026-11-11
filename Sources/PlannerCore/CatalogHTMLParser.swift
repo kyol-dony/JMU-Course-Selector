@@ -217,7 +217,7 @@ public struct JMUHTMLCatalogParser: Sendable {
         categories = Self.foldingSubjectElectivePools(categories, subjects: pageSubjects)
 
         var usedConcentrationIDs: Set<String> = []
-        let concentrations = split.concentrationRuns.compactMap { run -> Concentration? in
+        var concentrations = split.concentrationRuns.compactMap { run -> Concentration? in
             var usedRequirementIDs: Set<String> = []
             var parsedRequirements: [(block: RequirementBlock, category: RequirementCategory)] = []
             for block in run.blocks {
@@ -249,6 +249,17 @@ public struct JMUHTMLCatalogParser: Sendable {
                 requirements: ruled,
                 verificationStatus: .partial
             )
+        }
+
+        concentrations = Self.applyingNamedConcentrationAmount(in: requirementSlice, to: concentrations, coursesByID: coursesByID)
+        // "The optional art education concentration requires more than 120
+        // credits": when that names every concentration, the major stands
+        // without one.
+        if split.concentrationSelectionRequired, !concentrations.isEmpty,
+           let match = blocks.map({ HTMLCleaner.clean("\($0.heading) \($0.body)") }).joined(separator: " ")
+               .firstMatch(for: #"(?i)\boptional\s+([a-z][a-z ]{1,40}?)\s+concentration\b"#), match.count > 1,
+           concentrations.allSatisfy({ $0.name.lowercased() == match[1].lowercased() }) {
+            split.concentrationSelectionRequired = false
         }
 
         let result = HTMLProgramRequirements(
@@ -738,6 +749,9 @@ public struct JMUHTMLCatalogParser: Sendable {
         var subtotal: Int? = nil
         /// The page heading the table sits under, for naming prose-only rows.
         var enclosingHeading: String? = nil
+        /// The table's last section header row, even one that can't name a
+        /// requirement ("Studio Art Emphasis"), when the block started under it.
+        var sectionHeader: String? = nil
     }
 
     /// One "Option N:" group: its label ("Option 2") and its blocks.
@@ -825,6 +839,8 @@ public struct JMUHTMLCatalogParser: Sendable {
                 var currentIDSource: String?
                 var currentRowHours: Int?
                 var currentSubtotal: Int?
+                var lastSectionHeader: String?
+                var currentSectionHeader: String?
                 // An instruction under a concentration heading with no course
                 // rows, only plain list rows ("Choose one of the following:" over
                 // the concentration names), picks a concentration; it is not a
@@ -863,6 +879,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                         block.rowHours = currentRowHours
                         block.subtotal = currentSubtotal
                         block.enclosingHeading = heading == rawHeading ? nil : rawHeading
+                        block.sectionHeader = currentSectionHeader
                         commentBlocks.append(block)
                     }
                     commentBlocks.append(contentsOf: pendingAllowances)
@@ -876,6 +893,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                     currentIDSource = nil
                     currentRowHours = nil
                     currentSubtotal = nil
+                    currentSectionHeader = nil
                     currentIsConcentrationChooser = false
                     currentHasPlainItems = false
                     currentHasOptionRows = false
@@ -927,6 +945,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                         if isSectionHeader {
                             underConcentrationHeader = !canNameRequirement(areaHeader: commentHeading)
                             sectionIndex += 1
+                            lastSectionHeader = commentHeading
                         }
                         // An area header ("Methodology Core") names the requirement;
                         // the instruction rows under it become its description.
@@ -1004,6 +1023,7 @@ public struct JMUHTMLCatalogParser: Sendable {
                             currentCommentHeading = commentHeading
                             currentCommentBody = rowHTML
                             currentIsConcentrationChooser = underConcentrationHeader && !isSectionHeader && isChoiceLine
+                            currentSectionHeader = isSectionHeader ? nil : lastSectionHeader
                             currentRowHours = rowCredits
                             currentSection = sectionIndex
                         } else {
@@ -1410,6 +1430,34 @@ public struct JMUHTMLCatalogParser: Sendable {
         return nil
     }
 
+    /// "Students must take 12 credits ... in a single medium from the
+    /// following concentration options", over a list of their names: each
+    /// named concentration takes that many credits from its course list.
+    /// Concentrations the list doesn't name (Art Education) keep theirs.
+    /// Read from the page text because that row only picks a concentration
+    /// and leaves no requirement block behind.
+    private static func applyingNamedConcentrationAmount(
+        in requirementsHTML: String, to concentrations: [Concentration], coursesByID: [String: Course]
+    ) -> [Concentration] {
+        let text = HTMLCleaner.clean(requirementsHTML)
+        guard let range = text.range(of: #"(?i)\b\d+\s+credits?\b[^.]*\bfrom\s+the\s+following\s+concentration\s+options\b"#, options: .regularExpression),
+              let match = String(text[range]).firstMatch(for: #"^(\d+)"#), match.count > 1,
+              let credits = Int(match[1]), credits > 0
+        else { return concentrations }
+        // The names listed after it, up to the section's subtotal.
+        var listed = String(text[range.upperBound...])
+        if let subtotal = listed.range(of: "Subtotal", options: .caseInsensitive) { listed = String(listed[..<subtotal.lowerBound]) }
+        listed = listed.lowercased()
+        return concentrations.map { concentration in
+            let name = concentration.name.lowercased()
+            guard listed.range(of: "\\b\(NSRegularExpression.escapedPattern(for: name))\\b", options: .regularExpression) != nil
+            else { return concentration }
+            var concentration = concentration
+            concentration.requirements = applying(.chooseCredits(credits), toConcentration: concentration.requirements, coursesByID: coursesByID)
+            return concentration
+        }
+    }
+
     /// A concentration that is only course lists takes `rule` from all of
     /// them. One that states its own choice ("Choose three of the
     /// following") keeps it.
@@ -1459,6 +1507,14 @@ public struct JMUHTMLCatalogParser: Sendable {
                   let level = Int(match[1]),
                   let subject = subjectCode(named: match[2], among: subjects)
             else {
+                if category.courseOptions.isEmpty, category.requiredCredits > 0,
+                   let pool = levelOrPrefixPool(in: text, subjects: subjects) {
+                    let slots = max(Int(ceil(Double(category.requiredCredits) / Double(ScheduleGenerator.electivePoolSlotCredits))), 1)
+                    category.courseOptions = Array(repeating: pool.tokens, count: slots)
+                    category.electivePoolSlots = Array(0..<slots)
+                    category.selection = .unknown
+                    category.note = pool.note
+                }
                 result.append(category)
                 continue
             }
@@ -1479,6 +1535,49 @@ public struct JMUHTMLCatalogParser: Sendable {
             result.append(category)
         }
         return result
+    }
+
+    /// A course-less elective that names its pool by prefix ("studio-based
+    /// courses with an ART or FDS prefix") or by subject and level ("art
+    /// history at the 300-400 level", "Art history courses (300-400
+    /// level)"), minus the courses it excludes ("Excluding ART 200, ART
+    /// 105", "may not count ARTH 397"). One token per subject.
+    static func levelOrPrefixPool(in text: String, subjects: Set<String>) -> (tokens: [String], note: String)? {
+        let level = text.firstMatch(for: #"\b([1-4])00\s*-\s*([1-4])00[- ]level\b"#)
+        var codes: [String] = []
+        if let match = text.firstMatch(for: #"\b[Cc]ourses\s+with\s+an?\s+([A-Z]{2,5})(?:\s+or\s+([A-Z]{2,5}))?\s+prefix\b"#) {
+            codes = Array(match.dropFirst())
+        } else if level != nil,
+                  let match = text.firstMatch(for: #"(?i)\b([a-z]+(?:\s+[a-z]+)?)\s+(?:electives?\s+|courses?\s+)?(?:at\s+the\s+|\()[1-4]00\s*-\s*[1-4]00[- ]level"#),
+                  match.count > 1, let code = subjectCode(fromWords: match[1], among: subjects) {
+            codes = [code]
+        }
+        guard !codes.isEmpty else { return nil }
+        let minimum = level.flatMap { $0.count > 1 ? Int($0[1]) : nil }.map { $0 * 100 } ?? 100
+        let maximum = level.flatMap { $0.count > 2 ? Int($0[2]) : nil }.map { $0 * 100 + 99 } ?? ElectivePool.maximumNumber
+        var excluded: [String] = []
+        if let start = text.range(of: #"(?i)\b(?:exclud\w*|may\s+not\s+(?:count|use))\b"#, options: .regularExpression) {
+            var clause = String(text[start.upperBound...])
+            if let stop = clause.range(of: #"\.\s+[^\d\s,]"#, options: .regularExpression) { clause = String(clause[..<stop.lowerBound]) }
+            excluded = clause.matches(for: #"\b([A-Z]{2,5})\s+(\d{3}[A-Z]?)\b"#).compactMap { $0.count > 2 ? $0[1] + $0[2] : nil }
+        }
+        let tokens = codes.map { code in
+            ElectivePool.token(subject: code, minimumNumber: minimum, maximumNumber: maximum,
+                               excluding: excluded.filter { $0.hasPrefix(code) && Int($0.dropFirst(code.count).prefix(3)) != nil })
+        }
+        let range = minimum == 100 && maximum == ElectivePool.maximumNumber ? "" : " numbered \(minimum)-\(min(maximum, ElectivePool.maximumNumber))"
+        let except = excluded.isEmpty ? "" : ", except \(excluded.joined(separator: ", "))"
+        return (tokens, "Any \(codes.joined(separator: " or ")) course\(range)\(except) that isn't already required. Confirm the course counts with an advisor.")
+    }
+
+    /// "art history" -> ARTH: one word is `subjectCode(named:)`; two are the
+    /// first word plus the second's initial, when that is a page subject.
+    private static func subjectCode(fromWords words: String, among subjects: Set<String>) -> String? {
+        let parts = words.uppercased().split(separator: " ").map(String.init)
+        if parts.count == 1 { return subjectCode(named: parts[0], among: subjects) }
+        guard parts.count == 2, let initial = parts[1].first else { return nil }
+        let code = parts[0] + String(initial)
+        return subjects.contains(code) ? code : nil
     }
 
     /// "SPAN" stays SPAN; a word ("finance") is the longest page subject it
@@ -1928,7 +2027,18 @@ public struct JMUHTMLCatalogParser: Sendable {
             default: return nil
             }
         }()
-        let requiredCredits = block.rowHours
+        // "Choose three of the following: 3-9": the range's top is the
+        // three courses; its bottom is one.
+        let rangeTop = block.body.firstMatch(for: #"(?is)<td\b[^>]*class="[^"]*\bhourscol\b[^"]*"[^>]*>\s*(\d+)\s*[-–]\s*(\d+)\s*</td>"#)
+            .flatMap { $0.count > 2 ? Int($0[2]) : nil }
+        let rangedRuleCredits: Int? = {
+            guard case .chooseCourses(let count) = selection, count > 1, let ruleCredits, let rangeTop,
+                  let rowHours = block.rowHours, rowHours < ruleCredits, ruleCredits <= rangeTop
+            else { return nil }
+            return ruleCredits
+        }()
+        let requiredCredits = rangedRuleCredits
+            ?? block.rowHours
             ?? block.subtotal
             ?? selectedCreditHours
             ?? ruleCredits
@@ -1961,8 +2071,14 @@ public struct JMUHTMLCatalogParser: Sendable {
         // requirement's description, under the heading it sits beneath.
         var name = block.heading
         var descriptionLines = block.descriptionLines
-        if block.areaHeader == nil, Self.isProse(block.heading), let enclosing = block.enclosingHeading {
+        if block.areaHeader == nil, Self.isProse(block.heading), let enclosing = block.sectionHeader ?? block.enclosingHeading {
             name = enclosing
+            descriptionLines = [block.heading]
+        } else if block.areaHeader == nil, let enclosing = block.enclosingHeading,
+                  block.heading.range(of: #"(?i)^\s*(?:choose|select)\b[^.]*:\s*$"#, options: .regularExpression) != nil {
+            // A bare instruction ("Choose three of the following:") under a
+            // concentration's list is named for it.
+            name = "\(enclosing): \(block.heading.trimmingCharacters(in: CharacterSet(charactersIn: ": ")))"
             descriptionLines = [block.heading]
         }
         descriptionLines += block.instructionMarks.compactMap { block.footnotes[$0] }
@@ -2654,7 +2770,8 @@ public struct JMUHTMLCatalogParser: Sendable {
     }
 
     private func parseProgramTotal(from html: String) -> Int? {
-        let cleaned = HTMLCleaner.clean(html)
+        // "Total<sup>3</sup> 120": the footnote mark is not the total.
+        let cleaned = HTMLCleaner.clean(html.replacingOccurrences(of: #"(?is)<sup\b[^>]*>.*?</sup>"#, with: " ", options: .regularExpression))
         let patterns = [
             #"(?i)(?:Program\s+)?Total:\s*(\d+)(?:\s*-\s*\d+)?\s+Credit\s+Hours"#,
             #"(?i)\bTotal\s+(\d+)(?:\s*-\s*\d+)?\b"#

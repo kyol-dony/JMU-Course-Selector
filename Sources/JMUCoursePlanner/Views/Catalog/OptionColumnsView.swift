@@ -90,7 +90,7 @@ struct OptionColumns: Equatable {
     /// "pool:MATH:310" -> "MATH electives at MATH 310 or above"; a pool that
     /// stops below the graduate range names both ends.
     private static func rule(fromToken token: String) -> String? {
-        let fields = token.split(separator: ":").map(String.init)
+        let fields = (token.split(separator: "!").first.map(String.init) ?? token).split(separator: ":").map(String.init)
         guard fields.count >= 3, let minimum = Int(fields[2]) else { return nil }
         let subject = fields[1]
         if fields.count > 3, let maximum = Int(fields[3]), maximum < ElectivePool.maximumNumber {

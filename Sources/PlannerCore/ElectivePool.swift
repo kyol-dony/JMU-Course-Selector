@@ -12,22 +12,28 @@ public enum ElectivePool {
     public static let maximumNumber = 499
 
     /// "pool:ENG:300", or "pool:ENG:300:399" when the pool stops below the
-    /// graduate range ("four courses from the 300 level").
-    public static func token(subject: String, minimumNumber: Int, maximumNumber: Int = maximumNumber) -> String {
+    /// graduate range ("four courses from the 300 level"). Courses the
+    /// catalog excludes ("Excludes ARTH 397, ARTH 490") follow a "!":
+    /// "pool:ARTH:300!ARTH397,ARTH490".
+    public static func token(subject: String, minimumNumber: Int, maximumNumber: Int = maximumNumber, excluding: [String] = []) -> String {
         let base = "\(prefix)\(subject.uppercased()):\(minimumNumber)"
-        return maximumNumber < Self.maximumNumber ? "\(base):\(maximumNumber)" : base
+        let ranged = maximumNumber < Self.maximumNumber ? "\(base):\(maximumNumber)" : base
+        return excluding.isEmpty ? ranged : "\(ranged)!\(Set(excluding).sorted().joined(separator: ","))"
     }
 
     public static func isToken(_ id: String) -> Bool {
         id.hasPrefix(prefix)
     }
 
-    static func rule(from token: String) -> (subject: String, minimumNumber: Int, maximumNumber: Int)? {
+    static func rule(from token: String) -> (subject: String, minimumNumber: Int, maximumNumber: Int, excluded: Set<String>)? {
         guard isToken(token) else { return nil }
-        let parts = token.dropFirst(prefix.count).split(separator: ":")
+        let halves = token.dropFirst(prefix.count).split(separator: "!", maxSplits: 1)
+        guard let range = halves.first else { return nil }
+        let parts = range.split(separator: ":")
         guard parts.count == 2 || parts.count == 3, let minimum = Int(parts[1]) else { return nil }
         let maximum = parts.count == 3 ? Int(parts[2]) ?? Self.maximumNumber : Self.maximumNumber
-        return (String(parts[0]), minimum, min(maximum, Self.maximumNumber))
+        let excluded = halves.count > 1 ? Set(halves[1].split(separator: ",").map(String.init)) : []
+        return (String(parts[0]), minimum, min(maximum, Self.maximumNumber), excluded)
     }
 
     /// Subject and number of a course code ("MATH 411" -> MATH, 411).
@@ -65,13 +71,20 @@ public extension Catalog {
                 var category = category
                 var slots = Set(category.electivePoolSlots ?? [])
                 category.courseOptions = category.courseOptions.enumerated().map { index, option in
-                    // A pool token may lead a few named courses that also count.
-                    guard let first = option.first, let rule = ElectivePool.rule(from: first) else { return option }
+                    // Pool tokens (one per subject: "ART or FDS prefix") may
+                    // lead a few named courses that also count.
+                    let rules = option.compactMap(ElectivePool.rule(from:))
+                    guard let first = option.first, ElectivePool.isToken(first), !rules.isEmpty else { return option }
                     slots.insert(index)
                     let pool = sortedCourses
-                        .filter { $0.1 == rule.subject && (rule.minimumNumber...max(rule.maximumNumber, rule.minimumNumber)).contains($0.2) }
+                        .filter { course in
+                            rules.contains { rule in
+                                course.1 == rule.subject && !rule.excluded.contains(course.0)
+                                    && (rule.minimumNumber...max(rule.maximumNumber, rule.minimumNumber)).contains(course.2)
+                            }
+                        }
                         .map(\.0)
-                    let extras = option.dropFirst().filter { !pool.contains($0) }
+                    let extras = option.filter { !ElectivePool.isToken($0) && !pool.contains($0) }
                     return (pool + extras).filter { !required.contains($0) }
                 }
                 category.electivePoolSlots = slots.isEmpty ? category.electivePoolSlots : slots.sorted()

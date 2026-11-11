@@ -219,4 +219,17 @@ struct ElectivePoolTests {
         #expect(newSlots.first?.credits == 3)
     }
 
+    @Test("a pool skips its excluded courses and can span two subjects")
+    func excludedCoursesAndTwoSubjects() throws {
+        let tokens = [
+            ElectivePool.token(subject: "MATH", minimumNumber: 400, excluding: ["MATH499"]),
+            ElectivePool.token(subject: "STAT", minimumNumber: 400)
+        ]
+        let major = Program.fixture(id: "m", title: "Math", requirements: [
+            RequirementCategory(id: "pool", name: "Electives", requiredCredits: 3, courseOptions: [tokens], electivePoolSlots: [0])
+        ])
+        let resolved = Self.catalog(programs: [major]).resolvingElectivePools()
+        let slot = try #require(resolved.programsByID["m"]?.requirements.first?.courseOptions.first)
+        #expect(slot == ["MATH410", "MATH411", "MATH421", "MATH431", "MATH450", "STAT400"])
+    }
 }

@@ -25,12 +25,14 @@ LIMITATIONS_files/
 .impeccable/
 .planning/
 docs/superpowers/
+docs/audits/
 CLAUDE.md
 CLAUDE.local.md
 AGENTS.md
 GEMINI.md
 PLAN.md
 PRODUCT.md
+DESIGN.md
 .claude-plugin/
 .cursorrules
 .aider*

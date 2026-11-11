@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+if [ ! -f "$ROOT/script/release_policy.py" ]; then
+  echo 'Release policy missing: apply the repository policy commit before committing.' >&2
+  exit 1
+fi
+python3 "$ROOT/script/release_policy.py" check-message "$1"

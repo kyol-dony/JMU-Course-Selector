@@ -1,0 +1,6 @@
+{
+  "base": "0.1.0-alpha.1+catalog.27",
+  "target": "schedule-board-interaction",
+  "impact": "patch",
+  "reason": "Policy bootstrap only; no version allocation or publication."
+}

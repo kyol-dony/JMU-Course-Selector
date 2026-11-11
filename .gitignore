@@ -37,3 +37,10 @@ DESIGN.md
 .cursorrules
 .aider*
 
+# Shared agent policy is versioned and inherited by new branches.
+!AGENTS.md
+!CLAUDE.md
+
+# Python policy tool caches
+__pycache__/
+

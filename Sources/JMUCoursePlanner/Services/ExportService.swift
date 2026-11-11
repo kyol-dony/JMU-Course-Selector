@@ -60,26 +60,35 @@ struct ExportService {
 
     func exportICS(planName: String, pathway: Pathway, catalog: Catalog) throws {
         guard let destination = savePanel(defaultName: "\(planName).ics", allowedTypes: ["ics"]) else { return }
+        try calendarText(planName: planName, pathway: pathway, catalog: catalog).data(using: .utf8)?.write(to: destination)
+    }
+
+    func calendarText(planName: String, pathway: Pathway, catalog: Catalog) -> String {
         let courses = catalog.coursesByID
-        var lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//JMUCoursePlanner//Schedule Export//EN"]
+        var lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//JMUCoursePlanner//Schedule Export//EN",
+            "X-WR-CALNAME:\(planName)",
+            "X-WR-CALDESC:Unofficial planning tool. Not affiliated with or endorsed by James Madison University."
+        ]
 
         for semester in pathway.semesters {
             let date = semester.id.term == .fall ? "\(semester.id.year)0820" : "\(semester.id.year)0110"
             for courseID in semester.courseIDs {
-                let code = courses[courseID]?.code ?? courseID
-                let title = semester.courseTitles[courseID] ?? courses[courseID]?.title ?? courseID
+                let item = exportItem(courseID, semester: semester, pathway: pathway, courses: courses)
                 lines.append("BEGIN:VEVENT")
                 lines.append("UID:\(UUID().uuidString)@jmu-course-planner")
                 lines.append("DTSTAMP:\(Self.icsDate(Date()))")
                 lines.append("DTSTART;VALUE=DATE:\(date)")
-                lines.append("SUMMARY:\(code) \(title)")
-                lines.append("DESCRIPTION:\(semester.id.displayName) placeholder course block. Confirm actual meeting times in MyMadison.")
+                lines.append("SUMMARY:\(item.code) \(item.title)")
+                lines.append("DESCRIPTION:\(semester.id.displayName) planning block (\(CreditHoursFormatter.string(item.credits)) estimated credits). Confirm requirements and actual meeting times with JMU.")
                 lines.append("END:VEVENT")
             }
         }
 
         lines.append("END:VCALENDAR")
-        try lines.joined(separator: "\r\n").data(using: .utf8)?.write(to: destination)
+        return lines.joined(separator: "\r\n")
     }
 
     func printableSummary(planName: String, pathway: Pathway, catalog: Catalog, history: AcademicHistory? = nil) -> String {
@@ -93,18 +102,49 @@ struct ExportService {
             text += "\nProjected coursework\n"
         }
         for semester in pathway.semesters {
-            let total = AcademicCreditCalculator.hours(in: semester, catalog: catalog)
+            let total = AcademicCreditCalculator.projectedHours(
+                in: [semester],
+                placeholders: pathway.placeholders,
+                transferCredits: [],
+                catalog: catalog
+            )
             text += "\(semester.id.displayName) - \(CreditHoursFormatter.string(total)) credits\n"
             for courseID in semester.courseIDs {
-                let code = courses[courseID]?.code ?? courseID
-                let title = semester.courseTitles[courseID] ?? courses[courseID]?.title ?? courseID
-                let hours = semester.creditOverrides[courseID] ?? Double(courses[courseID]?.credits ?? 0)
-                text += "  \(code): \(title) (\(CreditHoursFormatter.string(hours)) credits)\n"
+                let item = exportItem(courseID, semester: semester, pathway: pathway, courses: courses)
+                text += "  \(item.code): \(item.title) (\(CreditHoursFormatter.string(item.credits)) credits)\n"
             }
             text += "\n"
         }
+        text += "Unofficial planning tool. Not affiliated with or endorsed by James Madison University.\n"
         text += "Generated plan is an advising aid. Confirm all requirements and course availability with JMU before registering.\n"
         return text
+    }
+
+    private func exportItem(
+        _ courseID: String,
+        semester: SemesterPlan,
+        pathway: Pathway,
+        courses: [String: Course]
+    ) -> (code: String, title: String, credits: Double) {
+        if let course = courses[courseID] {
+            return (
+                course.code,
+                semester.courseTitles[courseID] ?? course.title,
+                semester.creditOverrides[courseID] ?? Double(course.credits)
+            )
+        }
+        if let placeholder = pathway.placeholders[courseID] {
+            return (
+                "Unresolved requirement",
+                placeholder.categoryName,
+                semester.creditOverrides[courseID] ?? placeholder.credits
+            )
+        }
+        return (
+            "Unresolved course",
+            semester.courseTitles[courseID] ?? "Course choice pending",
+            semester.creditOverrides[courseID] ?? 0
+        )
     }
 
     private func savePanel(defaultName: String, allowedTypes: [String]) -> URL? {

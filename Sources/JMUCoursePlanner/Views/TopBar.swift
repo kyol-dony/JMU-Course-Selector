@@ -3,6 +3,7 @@ import PlannerCore
 
 struct TopBar: View {
     @EnvironmentObject private var store: PlanStore
+    @State private var confirmsReset = false
     var catalog: Catalog
 
     var body: some View {
@@ -21,6 +22,18 @@ struct TopBar: View {
             Rectangle()
                 .fill(DesignTokens.Colors.borderSubtle)
                 .frame(height: 1)
+        }
+        .confirmationDialog(
+            "Reset all app data?",
+            isPresented: $confirmsReset,
+            titleVisibility: .visible
+        ) {
+            Button("Reset App Data", role: .destructive) { store.resetAppData() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(CatalogRepository.resetClearsCatalog
+                ? "This removes saved plans and cached catalog data. This action cannot be undone."
+                : "This removes saved plans. This action cannot be undone.")
         }
     }
 
@@ -85,7 +98,7 @@ struct TopBar: View {
                 Text(tab.title)
                     .font(DesignTokens.Typography.label)
             }
-            .foregroundStyle(isActive ? DesignTokens.Colors.brandGold : DesignTokens.Colors.textSecondary)
+            .foregroundStyle(isActive ? DesignTokens.Colors.brandGoldInk : DesignTokens.Colors.textSecondary)
             .padding(.horizontal, DesignTokens.Spacing.m)
             .padding(.vertical, 6)
             .background(
@@ -118,13 +131,15 @@ struct TopBar: View {
                     Button("Calendar (.ics)") { store.exportICS() }
                 }
                 Divider()
+                #if JMU_DEV_TOOLS
                 Button("Refresh Requirements") { store.refreshCatalog() }
+                #endif
                 Button("Start Over") {
                     store.startFresh()
                     store.setupSheetPresented = true
                 }
                 Divider()
-                Button("Reset App Data", role: .destructive) { store.resetAppData() }
+                Button("Reset App Data", role: .destructive) { confirmsReset = true }
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 18))

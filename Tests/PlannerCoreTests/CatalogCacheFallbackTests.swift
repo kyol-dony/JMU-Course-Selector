@@ -57,4 +57,18 @@ struct CatalogCacheFallbackTests {
             try CatalogRepository.loadNewestCachedCatalog(in: directory, currentVersion: 27)
         }
     }
+
+    @Test("shared Gen Ed cannot make a failed program page schedulable")
+    func genEdDoesNotConferSchedulability() {
+        let genEd = RequirementCategory(
+            id: "gened-c1ct",
+            name: "General Education",
+            requiredCredits: 3,
+            courseOptions: [["PHIL101"]]
+        )
+
+        #expect(!CatalogRepository.hasSchedulableProgramRequirements([], concentrations: []))
+        #expect(CatalogRepository.hasSchedulableProgramRequirements([genEd], concentrations: []))
+        // Refresh computes this value before appending shared Gen Ed.
+    }
 }

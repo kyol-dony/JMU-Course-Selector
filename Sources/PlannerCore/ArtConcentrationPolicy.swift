@@ -67,6 +67,7 @@ public enum ArtConcentrationPolicy {
         category.electivePoolSlots = Array(0..<5)
         category.note = "Choose 15 credits from Art, Graphic Design, Architectural Design, Art Education, or Industrial Design coursework, including eligible independent study, internship, and study-abroad studio work. Courses used for the studio concentration cannot count again here."
         category.verificationStatus = .partial
+        category.allocationReview = "Allocation review required: studio-concentration courses cannot also satisfy these electives. For Art Education, only 15 credits may overlap. Course suggestions do not confirm fulfillment."
         return category
     }
 
@@ -91,7 +92,7 @@ public enum ArtConcentrationPolicy {
                     return parsed.subject == "ART" && (300...499).contains(parsed.number)
                 }
             guard !courses.isEmpty else { return nil }
-            let part = RequirementCategory(
+            var part = RequirementCategory(
                 id: "studio-area",
                 name: "Upper-level \(studio.name)",
                 requiredCredits: 6,
@@ -100,6 +101,7 @@ public enum ArtConcentrationPolicy {
                 selection: .chooseCredits(6),
                 choices: courses.map { [$0] }
             )
+            part.allocationReview = "Allocation review required: these 6 credits must be additional to the 18 credits of Studio Art Electives."
             return RequirementOption(id: studio.id, label: studio.name, parts: [part])
         }
         guard !options.isEmpty else { return category }
@@ -109,6 +111,7 @@ public enum ArtConcentrationPolicy {
         category.selection = .chooseGroups(1)
         category.choices = []
         category.options = options
+        category.allocationReview = "Allocation review required: these 6 credits must be additional to the 18 credits of Studio Art Electives."
         category.note = "Choose 6 credits of 300- or 400-level ART coursework in one studio area. Courses from different studio areas cannot be mixed."
         return category
     }

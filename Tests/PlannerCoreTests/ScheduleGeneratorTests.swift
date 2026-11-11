@@ -306,6 +306,7 @@ struct ScheduleGeneratorTests {
         let major = Program.fixture(
             id: "cis-bba",
             title: "CIS, B.B.A.",
+            degreeMinimumCredits: 120,
             requirements: [
                 RequirementCategory(id: "core", name: "Core", requiredCredits: 90, courseOptions: [["CIS221"]])
             ]
@@ -388,6 +389,7 @@ struct ScheduleGeneratorTests {
         let major = Program.fixture(
             id: "econ-ba",
             title: "Economics, B.A.",
+            degreeMinimumCredits: 120,
             requirements: [
                 RequirementCategory(id: "core", name: "Core", requiredCredits: 90, courseOptions: [["MATH220"]]),
                 RequirementCategory(id: "gened-c3qr", name: "General Education - Quantitative Reasoning [C3QR]", requiredCredits: 3, courseOptions: [["MATH220", "MATH205"]])
@@ -426,6 +428,7 @@ struct ScheduleGeneratorTests {
         let major = Program.fixture(
             id: "chem-bs",
             title: "Chemistry, B.S.",
+            degreeMinimumCredits: 120,
             requirements: [
                 RequirementCategory(id: "core", name: "Core", requiredCredits: 60, courseOptions: courseIDs.map { [$0] }),
                 RequirementCategory(id: "gened-c3l", name: "General Education - Lab Experience [C3L]", requiredCredits: 1, courseOptions: [["ISAT100"]])
@@ -448,6 +451,36 @@ struct ScheduleGeneratorTests {
         let hours = AcademicCreditCalculator.projectedHours(
             in: pathway.semesters, placeholders: pathway.placeholders, transferCredits: [], catalog: catalog
         )
+        #expect(hours == 120)
+    }
+
+    @Test("degree minimum applies even when modeled requirements are thin")
+    func thinProgramStillReachesDeclaredDegreeMinimum() throws {
+        let major = Program.fixture(
+            id: "thin-ba",
+            title: "Thin Model, B.A.",
+            degreeMinimumCredits: 120,
+            requirements: [
+                RequirementCategory(id: "core", name: "Core", requiredCredits: 3, courseOptions: [["CORE101"]])
+            ]
+        )
+        let catalog = Catalog.fixture(
+            courses: [Course(id: "CORE101", code: "CORE 101", title: "Core", credits: 3, availability: nil, prerequisites: [])],
+            program: major
+        )
+
+        let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
+            for: major.id,
+            workload: .standard,
+            transferCredits: []
+        ).first)
+        let hours = AcademicCreditCalculator.projectedHours(
+            in: pathway.semesters,
+            placeholders: pathway.placeholders,
+            transferCredits: [],
+            catalog: catalog
+        )
+
         #expect(hours == 120)
     }
 

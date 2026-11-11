@@ -37,7 +37,15 @@ Generic “any upper-level ART” slots become one explicit option per studio ar
 
 - Psychology approval is intentionally unresolved. Catalog text cannot support an automatic course list.
 - Art-related independent study, internship, and study-abroad eligibility may still require departmental approval even when a course appears under one of the five subject prefixes.
-- 15 Art Education credits may overlap B.F.A. art-related electives. Current generator deduplicates scheduled courses and reaches the reviewed 143-credit minimum; full requirement-allocation evidence remains future manifest/validator work.
+- Course deduplication prevents duplicate enrollment, not prohibited requirement sharing. Until the shared allocation engine exists, B.A./B.S. Studio Art Emphasis and B.F.A. Art and Art-Related Electives retain course suggestions but contribute zero completed requirement credits, with an explicit allocation-review-pending label. This also applies to transferred work and additional programs. No in-app sign-off is available yet.
+- 15 Art Education credits may overlap B.F.A. art-related electives. The follow-up allocator must enforce that cap and prevent studio concentration reuse. Reaching 143 total credits alone does not establish requirement fulfillment.
+
+## Integration and migration
+
+- Latest dev's `degreeMinimumCredits` is the single reviewed degree minimum; composed Art Education paths set it to 143. Anchored regeneration uses that value too.
+- Legacy standalone Art Education selections request a studio area in setup. Their saved schedules remain intact until the student chooses; the app does not infer a studio area.
+- Restricted-build developer-control edits are preserved separately in a named Git stash and excluded from this integration. Dev's developer-only refresh and reset confirmation remain authoritative.
+- Follow-up: implement the shared requirement allocator described in `docs/plans/2026-11-11-requirement-sharing-rules-design.md`, replacing the temporary completion guard only when allocation evidence supports fulfillment.
 
 ## Verification
 

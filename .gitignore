@@ -25,19 +25,18 @@ LIMITATIONS_files/
 .impeccable/
 .planning/
 docs/superpowers/
+docs/audits/
 CLAUDE.md
 CLAUDE.local.md
 AGENTS.md
 GEMINI.md
+PLAN.md
+PRODUCT.md
+DESIGN.md
 .claude-plugin/
 .cursorrules
 .aider*
 
-
-# Local product and planning notes
-DESIGN.md
-PLAN.md
-PRODUCT.md
 # Shared agent policy is versioned and inherited by new branches.
 !AGENTS.md
 !CLAUDE.md

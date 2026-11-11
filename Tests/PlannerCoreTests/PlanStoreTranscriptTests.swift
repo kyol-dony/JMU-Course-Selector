@@ -53,6 +53,7 @@ import Testing
         let text = ExportService().printableSummary(planName: "Test", pathway: path, catalog: catalog, history: history)
         #expect(text.contains("JMU coursework"))
         #expect(text.contains("Independent Study (1.5 credits)"))
+        #expect(text.contains("Unofficial planning tool"))
     }
     @Test func failedSaveLeavesPlanUntouched() throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

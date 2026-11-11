@@ -23,8 +23,8 @@ enum DesignTokens {
         /// dark mode matches `brandGold`.
         static let brandGoldInk = dynamic(light: 0x7d6419, dark: 0xb8a168)
 
-        static let success = dynamic(light: 0x16a34a, dark: 0x22c55e)
-        static let warning = dynamic(light: 0xd97706, dark: 0xf59e0b)
+        static let success = dynamic(light: 0x166534, dark: 0x22c55e)
+        static let warning = dynamic(light: 0x92400e, dark: 0xf59e0b)
         static let danger = dynamic(light: 0xdc2626, dark: 0xef4444)
 
         static let dragShadow = Color.black.opacity(0.25)

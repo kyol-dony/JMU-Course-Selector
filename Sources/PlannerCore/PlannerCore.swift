@@ -199,6 +199,9 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
     /// of its slots.
     public var alternativeGroup: [String]?
     public var approval: CourseworkApproval?
+    /// Course eligibility is known, but cross-requirement allocation still
+    /// requires review. Keep course choices visible without claiming completion.
+    public var allocationReview: String? = nil
 
     public init(
         id: String,
@@ -233,7 +236,7 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, requiredCredits, courseOptions, verificationStatus, note, electivePoolSlots
-        case selection, choices, catalogDescription, courseRemarks, options, alternativeGroup, approval
+        case selection, choices, catalogDescription, courseRemarks, options, alternativeGroup, approval, allocationReview
     }
 
     public init(from decoder: Decoder) throws {
@@ -252,6 +255,7 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         options = try c.decodeIfPresent([RequirementOption].self, forKey: .options)
         alternativeGroup = try c.decodeIfPresent([String].self, forKey: .alternativeGroup)
         approval = try c.decodeIfPresent(CourseworkApproval.self, forKey: .approval)
+        allocationReview = try c.decodeIfPresent(String.self, forKey: .allocationReview)
     }
 }
 
@@ -287,15 +291,15 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
     public var department: String
     public var catalogPage: Int?
     public var totalCredits: Int?
+    /// Reviewed minimum credits required for this degree. This differs from
+    /// `totalCredits`, which catalog pages often use for section subtotals.
+    public var degreeMinimumCredits: Int?
     public var requirements: [RequirementCategory]
     public var concentrations: [Concentration]
     public var concentrationSelectionRequired: Bool
     public var verificationStatus: VerificationStatus
     public var requirementDataComplete: Bool
     public var sourceNote: String
-    /// Reviewed degree-wide minimum. Unlike `totalCredits`, this never holds
-    /// a parser-extracted major subtotal.
-    public var minimumDegreeCredits: Int?
     /// The B.A./B.S. rows of the program's "Degree Requirements" table.
     public var degreeRequirements: [DegreeRequirement] = []
 
@@ -308,6 +312,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         case department
         case catalogPage
         case totalCredits
+        case degreeMinimumCredits
         case requirements
         case concentrations
         case concentrationSelectionRequired
@@ -315,7 +320,6 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         case requirementDataComplete
         case sourceNote
         case degreeRequirements
-        case minimumDegreeCredits
     }
 
     public init(
@@ -327,13 +331,13 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         department: String,
         catalogPage: Int?,
         totalCredits: Int?,
+        degreeMinimumCredits: Int? = nil,
         requirements: [RequirementCategory],
         concentrations: [Concentration] = [],
         concentrationSelectionRequired: Bool? = nil,
         verificationStatus: VerificationStatus,
         requirementDataComplete: Bool,
-        sourceNote: String,
-        minimumDegreeCredits: Int? = nil
+        sourceNote: String
     ) {
         self.id = id
         self.title = title
@@ -343,13 +347,13 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         self.department = department
         self.catalogPage = catalogPage
         self.totalCredits = totalCredits
+        self.degreeMinimumCredits = degreeMinimumCredits
         self.requirements = requirements
         self.concentrations = concentrations
         self.concentrationSelectionRequired = concentrationSelectionRequired ?? !concentrations.isEmpty
         self.verificationStatus = verificationStatus
         self.requirementDataComplete = requirementDataComplete
         self.sourceNote = sourceNote
-        self.minimumDegreeCredits = minimumDegreeCredits
     }
 
     public init(from decoder: Decoder) throws {
@@ -362,6 +366,8 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         department = try container.decode(String.self, forKey: .department)
         catalogPage = try container.decodeIfPresent(Int.self, forKey: .catalogPage)
         totalCredits = try container.decodeIfPresent(Int.self, forKey: .totalCredits)
+        degreeMinimumCredits = try container.decodeIfPresent(Int.self, forKey: .degreeMinimumCredits)
+            ?? (kind == .major ? 120 : nil)
         requirements = try container.decode([RequirementCategory].self, forKey: .requirements)
         concentrations = try container.decodeIfPresent([Concentration].self, forKey: .concentrations) ?? []
         concentrationSelectionRequired = try container.decodeIfPresent(Bool.self, forKey: .concentrationSelectionRequired) ?? !concentrations.isEmpty
@@ -369,7 +375,6 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         requirementDataComplete = try container.decode(Bool.self, forKey: .requirementDataComplete)
         sourceNote = try container.decode(String.self, forKey: .sourceNote)
         degreeRequirements = try container.decodeIfPresent([DegreeRequirement].self, forKey: .degreeRequirements) ?? []
-        minimumDegreeCredits = try container.decodeIfPresent(Int.self, forKey: .minimumDegreeCredits)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -382,6 +387,7 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         try container.encode(department, forKey: .department)
         try container.encodeIfPresent(catalogPage, forKey: .catalogPage)
         try container.encodeIfPresent(totalCredits, forKey: .totalCredits)
+        try container.encodeIfPresent(degreeMinimumCredits, forKey: .degreeMinimumCredits)
         try container.encode(requirements, forKey: .requirements)
         try container.encode(concentrations, forKey: .concentrations)
         try container.encode(concentrationSelectionRequired, forKey: .concentrationSelectionRequired)
@@ -389,7 +395,6 @@ public struct Program: Codable, Hashable, Identifiable, Sendable {
         try container.encode(requirementDataComplete, forKey: .requirementDataComplete)
         try container.encode(sourceNote, forKey: .sourceNote)
         try container.encode(degreeRequirements, forKey: .degreeRequirements)
-        try container.encodeIfPresent(minimumDegreeCredits, forKey: .minimumDegreeCredits)
     }
 }
 
@@ -1036,10 +1041,10 @@ public struct ScheduleGenerator: Sendable {
             reservedIDs: context?.reservedPlaceholderIDs ?? []
         )
         if source != nil, program.kind == .major,
-           program.requirements.reduce(0, { $0 + $1.requiredCredits }) >= 60 {
+           let degreeMinimum = program.degreeMinimumCredits {
             let prefixHours = AcademicCreditCalculator.projectedHours(in: prefix, placeholders: placeholders, transferCredits: transferCredits, catalog: catalog)
             let suffixHours = Set(required).reduce(0.0) { $0 + credits(for: $1, placeholders: placeholders) }
-            required += openElectivePlaceholders(gap: max(0, 120 - prefixHours - suffixHours), placeholders: &placeholders, reservedIDs: context?.reservedPlaceholderIDs ?? [])
+            required += openElectivePlaceholders(gap: max(0, Double(degreeMinimum) - prefixHours - suffixHours), placeholders: &placeholders, reservedIDs: context?.reservedPlaceholderIDs ?? [])
         }
         required = seatingOutsidePrerequisites(
             in: required, completed: completed.union(languagePlan?.placementCreditCourseIDs() ?? []),
@@ -2055,13 +2060,9 @@ public struct ScheduleGenerator: Sendable {
     /// primary major's schedule out to the JMU degree credit minimum.
     public static let openElectiveCategoryID = "open-elective"
 
-    /// Gap between the primary major's declared requirement credits and
-    /// its reviewed degree minimum (normally JMU's 120 CRH). Only fires for `.major` programs whose
-    /// declared credits clear a substance threshold — the catalog parser's
-    /// `totalCredits` often reports a section subtotal ("Major Requirements
-    /// Total: 49 CRH") rather than the full degree total, so we hardcode
-    /// 120 for ordinary majors and ignore `program.totalCredits` here. A
-    /// reviewed concentration-specific minimum uses `minimumDegreeCredits`.
+    /// Gap between the primary major's declared requirement credits and its
+    /// reviewed degree minimum. `totalCredits` is not used because catalog
+    /// pages often use it for section subtotals.
     ///
     /// Umbrella section headers (categories with no parseable course
     /// options — e.g., "Additional Requirements: 22-24 CRH") are excluded
@@ -2086,18 +2087,12 @@ public struct ScheduleGenerator: Sendable {
         reusedCredits: Int = 0,
         scheduledCredits: Int = 0
     ) -> Int {
-        guard program.kind == .major else { return 0 }
+        guard program.kind == .major, let degreeMinimum = program.degreeMinimumCredits else { return 0 }
         let declared = program.requirements
             .filter { !$0.courseOptions.isEmpty }
             .reduce(0) { $0 + $1.requiredCredits }
-        // Threshold gate keeps thin test fixtures (under 60 credits) from
-        // generating dozens of placeholders. Real JMU majors easily clear
-        // 60 once Gen Ed clusters and concentration requirements are
-        // merged into the effective program. Requirements without a course
-        // list count toward the gate; their credits are left to the gap.
-        guard program.requirements.reduce(0, { $0 + $1.requiredCredits }) >= 60 else { return 0 }
         let counted = max(declared - reusedCredits + additionalCredits, scheduledCredits)
-        return max(0, (program.minimumDegreeCredits ?? 120) - counted)
+        return max(0, degreeMinimum - counted)
     }
 
     /// Open Elective gap for `program` once `additionalPrograms` (minors,
@@ -3060,8 +3055,9 @@ public struct ProgressCalculator: Sendable {
             let name = namePrefix.isEmpty ? category.name : "\(namePrefix): \(category.name)"
             return CategoryProgress(
                 id: id,
-                name: name,
-                completedCredits: min(completedCredits + repeatCredits, Double(category.requiredCredits)),
+                name: category.allocationReview == nil ? name : "\(name) (allocation review pending)",
+                completedCredits: category.allocationReview == nil
+                    ? min(completedCredits + repeatCredits, Double(category.requiredCredits)) : 0,
                 requiredCredits: category.requiredCredits,
                 verificationStatus: category.verificationStatus
             )
@@ -3231,7 +3227,8 @@ public struct ProgressCalculator: Sendable {
                 foldedIndex[part.requirementID] = result.count
                 var folded = rowForCategory
                 folded.id = idPrefix.isEmpty ? part.requirementID : "\(idPrefix)::\(part.requirementID)"
-                folded.name = namePrefix.isEmpty ? baseName : "\(namePrefix): \(baseName)"
+                let displayName = category.allocationReview == nil ? baseName : "\(baseName) (allocation review pending)"
+                folded.name = namePrefix.isEmpty ? displayName : "\(namePrefix): \(displayName)"
                 result.append(folded)
             }
         }
@@ -3296,7 +3293,7 @@ public extension Program {
         effective.requirements = requirements + concentrationRequirements
         if let totalCredits = concentration.totalCredits {
             effective.totalCredits = totalCredits
-            effective.minimumDegreeCredits = totalCredits
+            effective.degreeMinimumCredits = totalCredits
         }
         effective.sourceNote = "\(sourceNote) Selected concentration: \(concentration.name)."
         return effective
@@ -3305,6 +3302,7 @@ public extension Program {
     static func fixture(
         id: String,
         title: String,
+        degreeMinimumCredits: Int? = nil,
         requirements: [RequirementCategory],
         concentrations: [Concentration] = []
     ) -> Program {
@@ -3317,6 +3315,7 @@ public extension Program {
             department: "Fixture Department",
             catalogPage: nil,
             totalCredits: requirements.reduce(0) { $0 + $1.requiredCredits },
+            degreeMinimumCredits: degreeMinimumCredits ?? requirements.reduce(0) { $0 + $1.requiredCredits },
             requirements: requirements,
             concentrations: concentrations,
             verificationStatus: .verified,

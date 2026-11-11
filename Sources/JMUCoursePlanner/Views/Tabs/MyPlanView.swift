@@ -70,11 +70,7 @@ struct MyPlanView: View {
                     if let degree = program.degreeType {
                         StatusPill(text: degree, tone: .info)
                     }
-                    StatusPill(
-                        text: program.requirementDataComplete ? "Verified" : "Partial",
-                        tone: program.requirementDataComplete ? .success : .warning,
-                        systemImage: program.requirementDataComplete ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"
-                    )
+                    reviewStatusPill(program.verificationStatus)
                 }
                 Text("\(program.college) · \(program.department)")
                     .font(DesignTokens.Typography.body)
@@ -91,6 +87,17 @@ struct MyPlanView: View {
                         .padding(.top, DesignTokens.Spacing.s)
                 }
             }
+        }
+    }
+
+    private func reviewStatusPill(_ status: VerificationStatus) -> some View {
+        switch status {
+        case .verified:
+            StatusPill(text: "Reviewed", tone: .success, systemImage: "checkmark.seal.fill")
+        case .partial:
+            StatusPill(text: "Modeled, not reviewed", tone: .warning, systemImage: "exclamationmark.triangle.fill")
+        case .unverified:
+            StatusPill(text: "Unsupported", tone: .warning, systemImage: "xmark.octagon.fill")
         }
     }
 
@@ -408,7 +415,9 @@ private struct RequirementProgressRow: View {
                     Text(category.name)
                         .font(DesignTokens.Typography.bodyEmphasized)
                         .foregroundStyle(DesignTokens.Colors.textPrimary)
-                    if requirement?.approval != nil {
+                    if requirement?.allocationReview != nil || category.name.contains("allocation review pending") {
+                        StatusPill(text: "Allocation review pending", tone: .warning)
+                    } else if requirement?.approval != nil {
                         StatusPill(text: "Approval pending", tone: .warning)
                     } else if category.remainingCredits == 0 {
                         StatusPill(text: "Complete", tone: .success, systemImage: "checkmark.circle.fill")

@@ -38,6 +38,7 @@ struct CourseDetailService {
         )
     }
 
+    #if JMU_DEV_TOOLS
     /// On-demand fetch of the JMU catalog search page for a
     /// course that has a `registrarURL` but no cached description. Returns nil
     /// when the network call fails, the page is empty, or there is no URL.
@@ -67,6 +68,7 @@ struct CourseDetailService {
             return nil
         }
     }
+    #endif
 
     private let rmpStatusMessage = "Automatic Rate My Professors ratings are unavailable because the app does not use unstable scraping."
 
@@ -85,8 +87,10 @@ struct CourseDetailService {
         return "Description unavailable until the catalog refresh discovers the official JMU course page."
     }
 
+    #if JMU_DEV_TOOLS
     /// Convenience used by callers (`PlanStore`) once a live fetch succeeds.
     func descriptionStatus(forLiveFetched url: URL) -> String {
         "Fetched live from \(url.absoluteString)."
     }
+    #endif
 }

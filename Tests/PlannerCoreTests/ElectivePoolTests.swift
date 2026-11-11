@@ -160,7 +160,7 @@ struct ElectivePoolTests {
     func minorFillsMajorPoolSlot() throws {
         // 60 declared credits of core (one 60-credit placeholder course keeps
         // the fixture small) puts the major over the Open Elective threshold.
-        let major = Program.fixture(id: "m", title: "Math", requirements: [
+        let major = Program.fixture(id: "m", title: "Math", degreeMinimumCredits: 120, requirements: [
             RequirementCategory(id: "core", name: "Core Courses", requiredCredits: 60, courseOptions: [["BIG100"]]),
             RequirementCategory(id: "opt", name: "Option 1", requiredCredits: 6, courseOptions: [[Self.pool], [Self.pool]])
         ])

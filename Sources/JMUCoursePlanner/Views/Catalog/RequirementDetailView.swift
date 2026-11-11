@@ -119,6 +119,12 @@ struct RequirementDetailView: View {
                     .foregroundStyle(DesignTokens.Colors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if let review = category.allocationReview {
+                Label(review, systemImage: "person.crop.circle.badge.questionmark")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

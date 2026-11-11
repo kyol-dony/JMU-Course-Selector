@@ -47,7 +47,15 @@ struct PlaceholderPrerequisiteWorkflowTests {
         let requirement = try #require(catalog.programsByID[F.programID]?.requirements.first { $0.id == F.categoryID })
         let scheduled = Dictionary(path.semesters.flatMap { semester in semester.courseIDs.map { ($0, semester.id.displayName) } }, uniquingKeysWith: { first, _ in first })
         #expect(ProgressContributionBuilder.contributions(for: requirement, transferCredits: [], scheduled: scheduled, coursesByID: catalog.coursesByID).isEmpty)
-        #expect(!ExportService().printableSummary(planName: "Plan", pathway: path, catalog: catalog).contains("MATH 300"))
+        let export = ExportService().printableSummary(planName: "Plan", pathway: path, catalog: catalog)
+        #expect(!export.contains("MATH 300"))
+        #expect(export.contains("Unresolved requirement"))
+        #expect(export.contains("(3 credits)"))
+        #expect(export.contains("Fall 2026 - 3 credits"))
+        let calendar = ExportService().calendarText(planName: "Plan", pathway: path, catalog: catalog)
+        #expect(calendar.contains("SUMMARY:Unresolved requirement"))
+        #expect(calendar.contains("3 estimated credits"))
+        #expect(calendar.contains("Unofficial planning tool"))
     }
 
     @Test func choosingKeepsAccountingHonestAndUndoRestoresTheChoice() throws {

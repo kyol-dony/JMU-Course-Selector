@@ -44,6 +44,10 @@ After 1.0.0, stable fixes/maintenance bump patch, compatible features/deprecatio
 
 Public compatibility includes documented supported app behavior, import/export formats, saved `.jmuplan.json` data, catalog interchange data, and PlannerCore public declarations. Backward-compatible releases preserve existing documented workflows and readability of saved plans; intentional removals, incompatible serialized data, or incompatible public signatures are breaking changes. Unverified catalog prose is not promised to be fully schedulable. Changes to official JMU rules must distinguish correcting stale/incorrect source data from removing supported app functionality. Maintain migration notes for breaks and document new public behavior with its implementation.
 
+## Release artifacts
+
+Every published release, pre-release or stable, attaches exactly one app archive named after the release: `JMU Course Planner v<version>.zip`, containing a folder of the same name that holds `JMU Course Planner.app`. Build it only with `script/package_release.sh "<release title>" <output-dir>`, which produces the default public build (universal, optimized, ad-hoc signed). Public builds perform the automatic first-launch catalog refresh but expose no on-demand refresh or live catalog fetching. Never attach any other build. The publish job packages and attaches the archive automatically; a retry uploads it only when missing and never replaces an existing asset.
+
 ## Automation and recovery
 
 PR checks validate versions, impact receipts, and new Conventional Commits. Historical commits before policy installation are exempt. CI runs policy tests; publication runs Swift tests against the exact merge SHA first. Patch development merges return before any GitHub write. Minor development versions create pre-releases; stable main versions create stable releases.

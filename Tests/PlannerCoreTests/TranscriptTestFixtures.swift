@@ -52,6 +52,11 @@ enum TranscriptTestFixtures {
     static func sampleCatalog() -> Catalog { prerequisiteCatalog() }
     static func degreeCatalog() -> Catalog {
         let courses = (1...30).map { Course(id: "REQ\($0)", code: "REQ \($0)", title: "Required \($0)", credits: 3, availability: [.fall, .spring], prerequisites: []) }
-        return Catalog.fixture(courses: courses, program: Program.fixture(id: "degree", title: "Degree", requirements: [RequirementCategory(id: "core", name: "Core", requiredCredits: 90, courseOptions: courses.map { [$0.id] })]))
+        return Catalog.fixture(courses: courses, program: Program.fixture(
+            id: "degree",
+            title: "Degree",
+            degreeMinimumCredits: 120,
+            requirements: [RequirementCategory(id: "core", name: "Core", requiredCredits: 90, courseOptions: courses.map { [$0.id] })]
+        ))
     }
 }

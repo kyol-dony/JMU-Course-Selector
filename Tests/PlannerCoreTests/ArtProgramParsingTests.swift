@@ -193,6 +193,56 @@ struct ArtProgramParsingTests {
         "Ceramics", "Fibers", "Metals", "Painting", "Photography", "Printmaking", "Sculpture"
     ]
 
+    @Test func overlappingArtCoursesCannotClaimCompletionBeforeAllocationReview() throws {
+        let catalog = try Self.artCatalog()
+        for programID in ["art-ba", "art-bfa"] {
+            let program = try #require(catalog.programsByID[programID])
+            let concentration = programID == "art-bfa" ? "painting-art-education" : nil
+            let allCourses = catalog.courses.map(\.id)
+            let pathway = Pathway(id: "all", name: "All eligible courses", semesters: [
+                SemesterPlan(id: .init(year: 2026, term: .fall), courseIDs: allCourses)
+            ])
+            let progress = try ProgressCalculator(catalog: catalog).progress(
+                programID: program.id, concentrationID: concentration,
+                pathway: pathway, transferCredits: []
+            )
+            let name = programID == "art-ba" ? "Studio Art Emphasis" : "Art and Art-Related Electives"
+            let row = try #require(progress.categories.first { $0.name.hasPrefix(name) })
+            #expect(row.name.contains("allocation review pending"))
+            #expect(row.completedCredits == 0)
+            #expect(progress.overallFraction < 1)
+            let extra = try program.effectiveProgram(concentrationID: concentration)
+            let stacked = try ProgressCalculator(catalog: catalog).progress(
+                programID: program.id, concentrationID: concentration,
+                pathway: Pathway(id: "empty", name: "Transferred", semesters: []),
+                transferCredits: allCourses.map { TransferCredit(sourceDescription: $0, courseIDs: [$0], credits: 3) },
+                additionalPrograms: [extra]
+            )
+            #expect(stacked.categories.filter { $0.name.contains("allocation review pending") }.allSatisfy { $0.completedCredits == 0 })
+        }
+        let encoded = try JSONEncoder().encode(catalog)
+        let decoded = try JSONDecoder().decode(Catalog.self, from: encoded)
+        #expect(decoded.programsByID["art-bfa"]?.requirements.first { $0.name == "Art and Art-Related Electives" }?.allocationReview != nil)
+    }
+
+    @Test @MainActor func legacyArtEducationPlanRequestsStudioWithoutDiscardingSchedule() throws {
+        let store = PlanStore.temporary()
+        store.catalog = try Self.artCatalog()
+        store.plan.programID = "art-bfa"
+        store.plan.concentrationID = "art-education"
+        let pathway = Pathway(id: "saved", name: "Saved schedule", semesters: [
+            SemesterPlan(id: .init(year: 2026, term: .fall), courseIDs: ["ARED300"])
+        ])
+        store.plan.pathways = [pathway]
+        store.plan.activePathwayID = pathway.id
+        store.reconcilePlanWithCatalog()
+        #expect(store.plan.pathways == [pathway])
+        #expect(store.plan.activePathwayID == pathway.id)
+        #expect(!store.majorSelectionComplete)
+        #expect(store.setupSheetPresented)
+        #expect(store.errorMessage?.contains("studio area") == true)
+    }
+
     @Test func artHistoryMinorRowBecomesAPool() throws {
         let text = "Required Courses: Art history courses (300-400 level) Art history courses (300-400 level) For studio art, graphic design and architectural design majors, required ARTH courses in the art emphasis program may count toward the art history minor. Excludes ARTH 390 , ARTH 490 , ARTH 495 and ARTH 499 ."
         let pool = try #require(JMUHTMLCatalogParser.levelOrPrefixPool(in: text, subjects: ["ARTH"]))

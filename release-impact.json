@@ -1,6 +1,6 @@
 {
-  "base": "0.1.0-alpha.1+catalog.28",
+  "base": "0.1.1-alpha.1+catalog.27",
   "target": "schedule-board-interaction",
-  "impact": "patch",
-  "reason": "Policy bootstrap only; no version allocation or publication."
+  "impact": "minor",
+  "reason": "Removes the documented Refresh Requirements action from public builds (pre-1.0 breaking change uses minor) and adds release app zips"
 }

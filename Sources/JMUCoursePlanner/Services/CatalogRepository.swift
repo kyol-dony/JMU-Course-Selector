@@ -7,15 +7,6 @@ struct CatalogRepository {
     private let htmlParser = JMUHTMLCatalogParser()
 
     func loadCatalog() throws -> Catalog {
-        if BuildFeatures.isRestrictedTest {
-            guard let snapshotURL = Bundle.main.url(forResource: "testing_catalog", withExtension: "json") else {
-                throw CocoaError(.fileNoSuchFile, userInfo: [NSLocalizedDescriptionKey: "The test catalog snapshot is missing from this app."])
-            }
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let snapshot = try decoder.decode(Catalog.self, from: Data(contentsOf: snapshotURL))
-            return attachCurrentPrereqOverlay(to: Self.applyingCurrentGenEdCredits(to: snapshot).resolvingElectivePools())
-        }
         if var cached = try? loadCachedHTMLCatalog() {
             // AP credit rules ship in the bundled seed (sourced from the JMU AP
             // chart) and may evolve between releases without a full catalog
@@ -82,7 +73,7 @@ struct CatalogRepository {
         // Pull JMU General Education clusters once up-front. Used to enrich every
         // major's requirement list — JMU program pages reference Gen Ed by name
         // but don't repeat the cluster course buckets, so we have to inject them.
-        let genEd = (try? await fetchGeneralEducation(coursesByID: &coursesByID)) ?? []
+        let genEd = try await fetchGeneralEducation(coursesByID: &coursesByID)
 
         for (index, entry) in entries.enumerated() {
             progress?(CatalogRefreshProgress(current: index + 1, total: entries.count, programTitle: entry.title))
@@ -104,6 +95,10 @@ struct CatalogRepository {
             var parsedRequirements = requirements?.requirements ?? []
             let parsedConcentrations = requirements?.concentrations ?? []
             let concentrationSelectionRequired = requirements?.concentrationSelectionRequired ?? !parsedConcentrations.isEmpty
+            let hasSchedulableCourses = Self.hasSchedulableProgramRequirements(
+                parsedRequirements,
+                concentrations: parsedConcentrations
+            )
             // Majors at JMU all require General Education unless the parsed page
             // already includes its own gen ed category. Append the shared cluster
             // set so progress tracking and schedule generation can see it.
@@ -112,8 +107,6 @@ struct CatalogRepository {
                !parsedRequirements.contains(where: { $0.id.contains("gened") || $0.name.lowercased().contains("general education") }) {
                 parsedRequirements.append(contentsOf: genEd)
             }
-            let hasSchedulableCourses = parsedRequirements.contains { !$0.courseOptions.isEmpty }
-                || parsedConcentrations.flatMap(\.requirements).contains { !$0.courseOptions.isEmpty }
             let totalCredits = requirements?.totalCredits
                 ?? seedProgram.flatMap { existing in existing.kind == .major ? 120 : nil }
                 ?? (entry.kind == .major ? 120 : nil)
@@ -127,6 +120,7 @@ struct CatalogRepository {
                 department: seedProgram?.department ?? entry.sectionTitle,
                 catalogPage: seedProgram?.catalogPage,
                 totalCredits: totalCredits,
+                degreeMinimumCredits: entry.kind == .major ? 120 : nil,
                 requirements: parsedRequirements,
                 concentrations: parsedConcentrations,
                 concentrationSelectionRequired: concentrationSelectionRequired,
@@ -214,6 +208,7 @@ struct CatalogRepository {
         return catalog
     }
 
+    #if JMU_DEV_TOOLS
     func refreshCatalogPDF() async throws -> URL {
         var request = URLRequest(url: JMUCatalogConfiguration.pdfURL)
         request.setValue(JMUCatalogConfiguration.browserUserAgent, forHTTPHeaderField: "User-Agent")
@@ -230,10 +225,11 @@ struct CatalogRepository {
         try fileManager.moveItem(at: temporaryURL, to: destination)
         return destination
     }
+    #endif
 
     func supportDirectory() throws -> URL {
         let base = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        let directory = base.appending(path: BuildFeatures.isRestrictedTest ? "JMUCoursePlanner-RestrictedTest" : "JMUCoursePlanner", directoryHint: .isDirectory)
+        let directory = base.appending(path: "JMUCoursePlanner", directoryHint: .isDirectory)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
@@ -286,7 +282,15 @@ struct CatalogRepository {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        try encoder.encode(catalog).write(to: url)
+        try encoder.encode(catalog).write(to: url, options: .atomic)
+    }
+
+    nonisolated static func hasSchedulableProgramRequirements(
+        _ requirements: [RequirementCategory],
+        concentrations: [Concentration]
+    ) -> Bool {
+        requirements.contains { !$0.courseOptions.isEmpty }
+            || concentrations.flatMap(\.requirements).contains { !$0.courseOptions.isEmpty }
     }
 
     /// Bump this whenever cached catalog requirement shape changes. v13 treats
@@ -400,12 +404,30 @@ struct CatalogRepository {
         return directory.appending(path: "catalog_html_cache_v\(Self.cacheSchemaVersion).json")
     }
 
-    /// Wipe the cached HTML catalog and all saved plans. Called when the user
-    /// hits "Reset App Data" — gets them back to a true first-launch state.
+    /// Release builds keep the downloaded catalog on "Reset App Data" so a
+    /// reset cannot be used to force a fresh catalog pull. Developer builds
+    /// clear it too, returning to a true first-launch state.
+    #if JMU_DEV_TOOLS
+    nonisolated static let resetClearsCatalog = true
+    #else
+    nonisolated static let resetClearsCatalog = false
+    #endif
+
+    nonisolated static func resetTargets(in support: URL, includeCatalog: Bool) -> [URL] {
+        var targets = [support.appending(path: "Plans", directoryHint: .isDirectory)]
+        if includeCatalog {
+            targets.append(support.appending(path: "Catalog", directoryHint: .isDirectory))
+        }
+        return targets
+    }
+
+    /// Wipe saved plans (and, in developer builds, the cached HTML catalog).
+    /// Called when the user hits "Reset App Data".
     func resetAppData() throws {
         let support = try supportDirectory()
-        try? fileManager.removeItem(at: support.appending(path: "Catalog", directoryHint: .isDirectory))
-        try? fileManager.removeItem(at: support.appending(path: "Plans", directoryHint: .isDirectory))
+        for target in Self.resetTargets(in: support, includeCatalog: Self.resetClearsCatalog) {
+            try? fileManager.removeItem(at: target)
+        }
     }
 
     private func bundledCatalogURL() throws -> URL {
@@ -698,6 +720,7 @@ private struct SeedCatalog: Decodable {
                 department: seed.department,
                 catalogPage: seed.catalogPage,
                 totalCredits: seed.kind == .major ? 120 : nil,
+                degreeMinimumCredits: seed.kind == .major ? 120 : nil,
                 requirements: reqs,
                 concentrations: concentrations,
                 concentrationSelectionRequired: nil,

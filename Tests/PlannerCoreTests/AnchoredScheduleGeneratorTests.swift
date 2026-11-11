@@ -3,6 +3,24 @@ import Testing
 @testable import PlannerCore
 
 @Suite struct AnchoredScheduleGeneratorTests {
+    @Test func regenerationHonorsReviewed143CreditDegreeMinimum() throws {
+        let course = Course(id: "ART100", code: "ART 100", title: "Art", credits: 3, availability: nil, prerequisites: [])
+        let track = Concentration(id: "painting-art-education", name: "Painting + Art Education", requirements: [], totalCredits: 143)
+        let program = Program.fixture(id: "art-bfa", title: "Art B.F.A.", requirements: [
+            RequirementCategory(id: "core", name: "Required", requiredCredits: 3, courseOptions: [[course.id]])
+        ], concentrations: [track])
+        let catalog = Catalog.fixture(courses: [course], program: program)
+        let source = Pathway(id: "saved", name: "Saved", semesters: [
+            SemesterPlan(id: .init(year: 2026, term: .fall), courseIDs: [course.id])
+        ])
+        let regenerated = try ScheduleGenerator(catalog: catalog).regeneratePathway(
+            from: source, through: source.semesters[0].id, for: program.id,
+            concentrationID: track.id, strategy: .balanced, workload: .standard, transferCredits: []
+        )
+        #expect(regenerated.semesters.first == source.semesters.first)
+        let hours = AcademicCreditCalculator.projectedHours(in: regenerated.semesters, placeholders: regenerated.placeholders, transferCredits: [], catalog: catalog)
+        #expect(hours >= 143)
+    }
     private let fall = SemesterIdentity(year: 2026, term: .fall)
     private func regenerate(_ source: Pathway, catalog: Catalog, programID: String = "cs",
                             credits: [TransferCredit] = [], extras: [Program] = [], hours: Double? = nil,

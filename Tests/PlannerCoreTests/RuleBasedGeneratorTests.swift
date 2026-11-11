@@ -24,12 +24,21 @@ struct RuleBasedGeneratorTests {
         )
     }
 
-    private func scheduled(_ requirements: [RequirementCategory], transfer: [String] = []) throws -> [String] {
+    private func scheduled(
+        _ requirements: [RequirementCategory],
+        transfer: [String] = [],
+        degreeMinimumCredits: Int? = nil
+    ) throws -> [String] {
         let catalog = Catalog.fixture(
             courses: Self.courseIDs.map {
                 Course(id: $0, code: "TEST \($0)", title: "Course \($0)", credits: 3, availability: [.fall, .spring], prerequisites: [])
             },
-            program: Program.fixture(id: "rules", title: "Rules, B.S.", requirements: requirements)
+            program: Program.fixture(
+                id: "rules",
+                title: "Rules, B.S.",
+                degreeMinimumCredits: degreeMinimumCredits,
+                requirements: requirements
+            )
         )
         let credits = transfer.isEmpty ? [] : [TransferCredit(sourceDescription: "Transfer", courseIDs: transfer, credits: Double(3 * transfer.count))]
         let pathway = try #require(try ScheduleGenerator(catalog: catalog).generatePathways(
@@ -95,7 +104,7 @@ struct RuleBasedGeneratorTests {
         // Individualized Study: 18 listed credits plus 45 credits with no list
         let listed = requirement("Core", .allRequired, [["A"], ["B"], ["C"], ["D"], ["E"], ["F"]], credits: 18)
         let unlisted = RequirementCategory(id: "major-electives", name: "Major Electives", requiredCredits: 45, courseOptions: [], selection: .chooseCredits(45))
-        let ids = try scheduled([listed, unlisted])
+        let ids = try scheduled([listed, unlisted], degreeMinimumCredits: 120)
         #expect(ids.filter(PathwayPlaceholder.isPlaceholder).count >= 30)
     }
 }

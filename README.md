@@ -2,6 +2,8 @@
 
 A native macOS SwiftUI application for James Madison University undergraduate schedule planning.
 
+> **Unofficial tool:** This project is not affiliated with or endorsed by James Madison University. Generated plans are advising aids; confirm requirements with JMU before registering.
+
 The app lets students:
 
 - choose a JMU undergraduate major from a catalog-organized list,
@@ -16,8 +18,9 @@ The app lets students:
 
 ## Quick Start
 
-Build the app with `Build App.command`, then open `dist/JMU Course Planner.app`.
-The generated app is kept out of Git; release builds will be distributed separately.
+Download the latest `.zip` from [GitHub Releases](https://github.com/kyol-dony/JMU-Course-Selector/releases), unzip it, and open `JMU Course Planner.app`.
+
+To build from source instead, run `Build App.command`, then open `dist/JMU Course Planner.app` (kept out of Git).
 See [BUILD_AND_LAUNCH_GUIDE.md](BUILD_AND_LAUNCH_GUIDE.md) for requirements and steps.
 
 ## Important Data Notice

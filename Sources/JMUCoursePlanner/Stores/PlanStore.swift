@@ -16,7 +16,9 @@ final class PlanStore: ObservableObject {
     @Published var courseDetail: CourseDetail?
     @Published var statusMessage = "Loading JMU catalog data..."
     @Published var errorMessage: String?
+    #if JMU_DEV_TOOLS
     @Published var isRefreshingCatalog = false
+    #endif
     @Published var selectedTab: AppTab = .myPlan
     @Published var setupSheetPresented: Bool = false
     @Published var catalogSelectedProgramID: String?
@@ -196,10 +198,15 @@ final class PlanStore: ObservableObject {
             let catalogYear = catalog?.source.catalogYear ?? JMUCatalogConfiguration.catalogYear
             statusMessage = "Catalog loaded from the \(catalogYear) JMU undergraduate catalog cache."
         } catch {
+            #if JMU_DEV_TOOLS
             errorMessage = "The catalog cache could not be opened. First launch needs the bundled catalog data or an internet connection to refresh it."
+            #else
+            errorMessage = "The bundled catalog data could not be opened. Try downloading the app again."
+            #endif
             statusMessage = error.localizedDescription
         }
 
+        #if JMU_DEV_TOOLS
         // The bundled seed ships requirement data for only a handful of programs.
         // If most programs are unverified (e.g., this is a fresh install with no
         // cached HTML refresh yet), pull the live JMU catalog so every major has
@@ -207,8 +214,10 @@ final class PlanStore: ObservableObject {
         if let catalog, needsInitialRefresh(catalog: catalog) {
             refreshCatalog()
         }
+        #endif
     }
 
+    #if JMU_DEV_TOOLS
     private func needsInitialRefresh(catalog: Catalog) -> Bool {
         let majors = catalog.programs.filter { $0.kind == .major }
         guard !majors.isEmpty else { return true }
@@ -216,6 +225,7 @@ final class PlanStore: ObservableObject {
         // If fewer than 10% of majors can be scheduled, trigger a refresh.
         return Double(schedulable) / Double(majors.count) < 0.1
     }
+    #endif
 
     func selectProgram(_ program: Program) {
         let previousConcentrationID = plan.concentrationID
@@ -471,9 +481,14 @@ final class PlanStore: ObservableObject {
             return
         }
         Task {
+            #if JMU_DEV_TOOLS
             var detail = await detailService.detail(for: course)
+            #else
+            let detail = await detailService.detail(for: course)
+            #endif
             courseDetail = detail
 
+            #if JMU_DEV_TOOLS
             // If the cached catalog doesn't carry a description for this course,
             // try a live fetch against JMU's course search page. Updates the
             // sheet in place when it succeeds and persists into the in-memory
@@ -484,12 +499,14 @@ final class PlanStore: ObservableObject {
                 detail.descriptionStatus = detailService.descriptionStatus(forLiveFetched: live.sourceURL)
                 persistLiveDescription(courseID: courseID, description: live.description, sourceURL: live.sourceURL)
             }
+            #endif
 
             courseDetailCache[courseID] = detail
             courseDetail = detail
         }
     }
 
+    #if JMU_DEV_TOOLS
     private func persistLiveDescription(courseID: String, description: String, sourceURL: URL) {
         guard var catalog else { return }
         guard let index = catalog.courses.firstIndex(where: { $0.id == courseID }) else { return }
@@ -500,6 +517,7 @@ final class PlanStore: ObservableObject {
         catalog.courses[index] = course
         self.catalog = catalog
     }
+    #endif
 
     func saveCurrentPlan() {
         plan.updatedAt = Date()
@@ -557,6 +575,7 @@ final class PlanStore: ObservableObject {
         }
     }
 
+    #if JMU_DEV_TOOLS
     func refreshCatalog() {
         isRefreshingCatalog = true
         statusMessage = "Fetching JMU catalog HTML requirements..."
@@ -577,6 +596,7 @@ final class PlanStore: ObservableObject {
             }
         }
     }
+    #endif
 
     private var activePathwayIndex: Int? {
         guard let activePathway else { return nil }

@@ -25,18 +25,17 @@ export CLANG_MODULE_CACHE_PATH="$ROOT_DIR/.build/ModuleCache"
 
 pkill -x "$PRODUCT_NAME" >/dev/null 2>&1 || true
 
-swift build --disable-sandbox
-BUILD_BINARY="$(swift build --disable-sandbox --show-bin-path)/$PRODUCT_NAME"
+read -r -a EXTRA_BUILD_FLAGS <<< "${SWIFT_BUILD_FLAGS:-}"
+swift build --disable-sandbox ${EXTRA_BUILD_FLAGS[@]+"${EXTRA_BUILD_FLAGS[@]}"}
+BUILD_BINARY="$(swift build --disable-sandbox ${EXTRA_BUILD_FLAGS[@]+"${EXTRA_BUILD_FLAGS[@]}"} --show-bin-path)/$PRODUCT_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 cp "$ROOT_DIR/Data/catalog_seed.json" "$APP_RESOURCES/catalog_seed.json"
+cp "$ROOT_DIR/Data/catalog_snapshot.json" "$APP_RESOURCES/catalog_snapshot.json"
 cp "$ROOT_DIR/Data/prereq_coreq_overrides.json" "$APP_RESOURCES/prereq_coreq_overrides.json"
-if [ -f "$ROOT_DIR/Data/Sources/JMU2026-2027UndergraduateCatalog.pdf" ]; then
-  cp "$ROOT_DIR/Data/Sources/JMU2026-2027UndergraduateCatalog.pdf" "$APP_RESOURCES/JMU2026-2027UndergraduateCatalog.pdf"
-fi
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

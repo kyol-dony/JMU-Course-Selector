@@ -2,13 +2,13 @@
 
 ## Open the app
 
-1. Open this project folder in Finder.
-2. Open the `dist` folder.
+1. Download the latest `.zip` from the project's GitHub Releases page.
+2. Unzip it.
 3. Double-click `JMU Course Planner.app`.
 
 If macOS says the app is from an unidentified developer, right-click the app, choose **Open**, then choose **Open** again. This local build is not notarized.
 
-## If the app has not been built yet
+## Build from source
 
 Use the included helper:
 

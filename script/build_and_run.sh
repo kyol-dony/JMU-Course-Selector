@@ -25,8 +25,9 @@ export CLANG_MODULE_CACHE_PATH="$ROOT_DIR/.build/ModuleCache"
 
 pkill -x "$PRODUCT_NAME" >/dev/null 2>&1 || true
 
-swift build --disable-sandbox
-BUILD_BINARY="$(swift build --disable-sandbox --show-bin-path)/$PRODUCT_NAME"
+read -r -a EXTRA_BUILD_FLAGS <<< "${SWIFT_BUILD_FLAGS:-}"
+swift build --disable-sandbox ${EXTRA_BUILD_FLAGS[@]+"${EXTRA_BUILD_FLAGS[@]}"}
+BUILD_BINARY="$(swift build --disable-sandbox ${EXTRA_BUILD_FLAGS[@]+"${EXTRA_BUILD_FLAGS[@]}"} --show-bin-path)/$PRODUCT_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"

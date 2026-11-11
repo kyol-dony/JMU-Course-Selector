@@ -31,7 +31,9 @@ struct TopBar: View {
             Button("Reset App Data", role: .destructive) { store.resetAppData() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes saved plans and cached catalog data. This action cannot be undone.")
+            Text(CatalogRepository.resetClearsCatalog
+                ? "This removes saved plans and cached catalog data. This action cannot be undone."
+                : "This removes saved plans. This action cannot be undone.")
         }
     }
 
@@ -129,7 +131,9 @@ struct TopBar: View {
                     Button("Calendar (.ics)") { store.exportICS() }
                 }
                 Divider()
+                #if JMU_DEV_TOOLS
                 Button("Refresh Requirements") { store.refreshCatalog() }
+                #endif
                 Button("Start Over") {
                     store.startFresh()
                     store.setupSheetPresented = true

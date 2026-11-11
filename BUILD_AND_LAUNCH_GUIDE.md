@@ -8,7 +8,7 @@ Building from source requires Apple's Swift/Xcode command line tools. Use the in
 2. Wait for the window to say the app was built.
 3. Open `dist/JMU Course Planner.app`.
 
-The generated `dist` folder is ignored by Git. Release app bundles will be distributed separately. Local builds and direct-download releases are not notarized.
+The generated `dist` folder is ignored by Git. Ready-built apps are attached to each GitHub Release as a `.zip`. Local builds and direct-download releases are not notarized.
 
 If macOS blocks the app because it cannot verify the developer:
 

@@ -208,6 +208,7 @@ struct CatalogRepository {
         return catalog
     }
 
+    #if JMU_DEV_TOOLS
     func refreshCatalogPDF() async throws -> URL {
         var request = URLRequest(url: JMUCatalogConfiguration.pdfURL)
         request.setValue(JMUCatalogConfiguration.browserUserAgent, forHTTPHeaderField: "User-Agent")
@@ -224,6 +225,7 @@ struct CatalogRepository {
         try fileManager.moveItem(at: temporaryURL, to: destination)
         return destination
     }
+    #endif
 
     func supportDirectory() throws -> URL {
         let base = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -397,12 +399,30 @@ struct CatalogRepository {
         return directory.appending(path: "catalog_html_cache_v\(Self.cacheSchemaVersion).json")
     }
 
-    /// Wipe the cached HTML catalog and all saved plans. Called when the user
-    /// hits "Reset App Data" — gets them back to a true first-launch state.
+    /// Release builds keep the downloaded catalog on "Reset App Data" so a
+    /// reset cannot be used to force a fresh catalog pull. Developer builds
+    /// clear it too, returning to a true first-launch state.
+    #if JMU_DEV_TOOLS
+    nonisolated static let resetClearsCatalog = true
+    #else
+    nonisolated static let resetClearsCatalog = false
+    #endif
+
+    nonisolated static func resetTargets(in support: URL, includeCatalog: Bool) -> [URL] {
+        var targets = [support.appending(path: "Plans", directoryHint: .isDirectory)]
+        if includeCatalog {
+            targets.append(support.appending(path: "Catalog", directoryHint: .isDirectory))
+        }
+        return targets
+    }
+
+    /// Wipe saved plans (and, in developer builds, the cached HTML catalog).
+    /// Called when the user hits "Reset App Data".
     func resetAppData() throws {
         let support = try supportDirectory()
-        try? fileManager.removeItem(at: support.appending(path: "Catalog", directoryHint: .isDirectory))
-        try? fileManager.removeItem(at: support.appending(path: "Plans", directoryHint: .isDirectory))
+        for target in Self.resetTargets(in: support, includeCatalog: Self.resetClearsCatalog) {
+            try? fileManager.removeItem(at: target)
+        }
     }
 
     private func bundledCatalogURL() throws -> URL {

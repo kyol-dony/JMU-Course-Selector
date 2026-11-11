@@ -19,12 +19,12 @@ After each rebuild, verify by hand:
 - Clicking a category bar in My Plan switches to Schedule and highlights matching chips.
 - Course detail sheet opens from any course chip, shows the JMU registrar link, and closes via Esc or the X button.
 - Toggling macOS appearance in System Settings updates colors live.
-- "Reset App Data" in the menu wipes the cache and reloads.
+- "Reset App Data" in the menu wipes saved plans and reloads. The downloaded catalog is kept.
 
 ## Catalog requirements
 
 - The app lists JMU undergraduate majors and minors from the official 2026-2027 Undergraduate Catalog program search.
-- On first launch, the app automatically fetches official `catalog.jmu.edu` HTML for every listed program when fewer than 10% of majors have schedulable data cached. A progress message is shown while this runs (one program per ~150ms, so roughly 30-60 seconds end-to-end). The **Refresh Requirements** button repeats the fetch on demand.
+- On first launch, the app automatically fetches official `catalog.jmu.edu` HTML for every listed program when fewer than 10% of majors have schedulable data cached. A progress message is shown while this runs (one program per ~150ms plus course-detail pages, so roughly 2-3 minutes end-to-end). The same automatic fetch runs once after an update that changes the catalog format. There is no on-demand refresh; catalog corrections arrive with new releases.
 - Programs with fixed course lists become schedulable after the refresh completes. Broad prose requirements ("choose 9 credits of upper-division electives", "see advisor"), unrestricted electives, and advisor-selected choices are flagged partial and surface a per-program note rather than being silently inferred.
 - General Education is refreshed from JMU's five current General Education area pages. All 14 clusters are pulled with their full course buckets and merged into every undergraduate major's requirement set. Cluster credit allocations (C1CT, C1HC, C1W, C2HQC, C2VPA, C2L, C3QR, C3PP, C3NS, C3L, C4AE, C4GE, C5SD, C5W) follow the JMU 2026-2027 catalog narrative because they do not appear in the cluster headings.
 - Concentrations/tracks are supported for catalog pages where JMU exposes course-bearing concentration sections. The setup flow requires selecting one concentration for those majors, and generated plans include the shared major core plus the selected concentration only.
@@ -62,5 +62,6 @@ After each rebuild, verify by hand:
 
 ## Packaging
 
-- `dist/JMU Course Planner.app` is a local unsigned development build generated from source and ignored by Git. Public release artifacts must be built and distributed separately.
+- Each GitHub Release attaches `JMU Course Planner <version>.zip`, a universal, ad-hoc signed build that is not notarized. macOS may require right-clicking the app and choosing **Open**, or **System Settings → Privacy & Security → Open Anyway**.
+- `dist/JMU Course Planner.app` is a local unsigned build generated from source and ignored by Git.
 - Rebuilding and running tests require Apple’s Swift/Xcode command line tools.

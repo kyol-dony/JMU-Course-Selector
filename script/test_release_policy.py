@@ -119,5 +119,14 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(upload[3], '/out/app.zip#JMU Course Planner v0.2.0-alpha.1+catalog.28.zip')
         self.assertNotIn('--clobber', upload)
 
+    def test_package_rejects_non_release_titles(self):
+        import subprocess, pathlib
+        script = pathlib.Path(__file__).resolve().parent / 'package_release.sh'
+        for title in ('../../evil', 'JMU Course Planner v1/../../x', 'JMU Course Planner v1..2', 'Other v1.0.0'):
+            result = subprocess.run([str(script), title, '/tmp/unused'], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2, title)
+            self.assertIn('invalid release title', result.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()

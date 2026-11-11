@@ -13,17 +13,33 @@ OUT_DIR="${2:?output directory required}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="JMU Course Planner.app"
 
+# The title becomes a folder and file name; accept only release titles.
+if ! [[ "$TITLE" =~ ^JMU\ Course\ Planner\ v[0-9A-Za-z.+-]+$ ]] || [[ "$TITLE" == *..* ]]; then
+  echo "package_release.sh: invalid release title: $TITLE" >&2
+  exit 2
+fi
+
 if [ -n "${SWIFT_BUILD_FLAGS:-}" ]; then
   echo "package_release.sh builds the public app only; unset SWIFT_BUILD_FLAGS." >&2
   exit 2
 fi
+
+# One packaging run at a time per checkout: builds share .build/ and dist/.
+LOCK="$ROOT_DIR/.build/package_release.lock"
+mkdir -p "$ROOT_DIR/.build"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  echo "package_release.sh: another packaging run holds $LOCK" >&2
+  exit 3
+fi
+STAGE=""
+cleanup() { rm -rf "$LOCK"; [ -n "$STAGE" ] && rm -rf "$STAGE"; }
+trap cleanup EXIT
 
 SWIFT_BUILD_FLAGS="-c release --arch arm64 --arch x86_64" "$ROOT_DIR/script/build_and_run.sh" --no-launch >&2
 
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/$TITLE"
 ditto --norsrc --noextattr --noqtn "$ROOT_DIR/dist/$APP_NAME" "$STAGE/$TITLE/$APP_NAME"
 xattr -cr "$STAGE/$TITLE"

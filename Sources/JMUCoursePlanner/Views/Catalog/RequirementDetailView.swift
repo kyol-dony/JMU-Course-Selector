@@ -119,6 +119,12 @@ struct RequirementDetailView: View {
                     .foregroundStyle(DesignTokens.Colors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if let review = category.allocationReview {
+                Label(review, systemImage: "person.crop.circle.badge.questionmark")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -133,6 +139,29 @@ struct RequirementDetailView: View {
                 catalog: catalog,
                 slotMap: slotMap
             )
+        } else if let approval = category.approval {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.m) {
+                Label(approval.examples.isEmpty ? "Advisor confirmation required" : "Honors eligibility needs confirmation", systemImage: "person.crop.circle.badge.questionmark")
+                    .font(DesignTokens.Typography.bodyEmphasized)
+                Text(approval.guidance)
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textSecondary)
+                if !approval.examples.isEmpty {
+                    Text("Ways to earn Honors credit")
+                        .font(DesignTokens.Typography.bodyEmphasized)
+                    ForEach(approval.examples, id: \.self) { example in
+                        Label(example, systemImage: "circle")
+                            .font(DesignTokens.Typography.caption)
+                    }
+                }
+                Text("The plan reserves \(category.requiredCredits) credits as pending approval; ordinary coursework does not automatically complete this requirement.")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.Colors.textSecondary)
+                Link(approval.examples.isEmpty ? "Official catalog requirement" : "JMU Honors course types", destination: approval.sourceURL)
+                if !approval.examples.isEmpty {
+                    Link("Honors advising", destination: URL(string: "https://www.jmu.edu/honors/current-students/advising.shtml")!)
+                }
+            }
         } else if blocks.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "info.circle")

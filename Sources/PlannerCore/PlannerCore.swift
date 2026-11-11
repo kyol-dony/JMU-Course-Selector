@@ -198,6 +198,10 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
     /// "Or take both": these courses together meet the part instead of one
     /// of its slots.
     public var alternativeGroup: [String]?
+    public var approval: CourseworkApproval?
+    /// Course eligibility is known, but cross-requirement allocation still
+    /// requires review. Keep course choices visible without claiming completion.
+    public var allocationReview: String? = nil
 
     public init(
         id: String,
@@ -227,11 +231,12 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         self.courseRemarks = courseRemarks
         self.options = options
         self.alternativeGroup = alternativeGroup
+        self.approval = nil
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, requiredCredits, courseOptions, verificationStatus, note, electivePoolSlots
-        case selection, choices, catalogDescription, courseRemarks, options, alternativeGroup
+        case selection, choices, catalogDescription, courseRemarks, options, alternativeGroup, approval, allocationReview
     }
 
     public init(from decoder: Decoder) throws {
@@ -249,6 +254,8 @@ public struct RequirementCategory: Codable, Hashable, Identifiable, Sendable {
         courseRemarks = try c.decodeIfPresent([String: [String]].self, forKey: .courseRemarks) ?? [:]
         options = try c.decodeIfPresent([RequirementOption].self, forKey: .options)
         alternativeGroup = try c.decodeIfPresent([String].self, forKey: .alternativeGroup)
+        approval = try c.decodeIfPresent(CourseworkApproval.self, forKey: .approval)
+        allocationReview = try c.decodeIfPresent(String.self, forKey: .allocationReview)
     }
 }
 
@@ -257,12 +264,21 @@ public struct Concentration: Codable, Hashable, Identifiable, Sendable {
     public var name: String
     public var requirements: [RequirementCategory]
     public var verificationStatus: VerificationStatus
+    /// Catalog degree total when this concentration changes graduation hours.
+    public var totalCredits: Int?
 
-    public init(id: String, name: String, requirements: [RequirementCategory], verificationStatus: VerificationStatus = .unverified) {
+    public init(
+        id: String,
+        name: String,
+        requirements: [RequirementCategory],
+        verificationStatus: VerificationStatus = .unverified,
+        totalCredits: Int? = nil
+    ) {
         self.id = id
         self.name = name
         self.requirements = requirements
         self.verificationStatus = verificationStatus
+        self.totalCredits = totalCredits
     }
 }
 
@@ -509,13 +525,15 @@ public struct PlaceholderSpec: Codable, Hashable, Sendable {
     /// and is never swapped for its course ID, which stays unique in a plan.
     /// Plans saved before repeats decode it as nil.
     public var repeatOf: String?
+    public var approval: CourseworkApproval?
 
-    public init(categoryID: String, categoryName: String, alternates: [String], credits: Double, repeatOf: String? = nil) {
+    public init(categoryID: String, categoryName: String, alternates: [String], credits: Double, repeatOf: String? = nil, approval: CourseworkApproval? = nil) {
         self.categoryID = categoryID
         self.categoryName = categoryName
         self.alternates = alternates
         self.credits = credits
         self.repeatOf = repeatOf
+        self.approval = approval
     }
 }
 
@@ -1023,11 +1041,16 @@ public struct ScheduleGenerator: Sendable {
             reservedIDs: context?.reservedPlaceholderIDs ?? []
         )
         if source != nil, program.kind == .major,
-           program.requirements.reduce(0, { $0 + $1.requiredCredits }) >= 60 {
+           let degreeMinimum = Self.applicableDegreeMinimum(for: program, additionalPrograms: additionalPrograms) {
             let prefixHours = AcademicCreditCalculator.projectedHours(in: prefix, placeholders: placeholders, transferCredits: transferCredits, catalog: catalog)
             let suffixHours = Set(required).reduce(0.0) { $0 + credits(for: $1, placeholders: placeholders) }
-            required += openElectivePlaceholders(gap: max(0, 120 - prefixHours - suffixHours), placeholders: &placeholders, reservedIDs: context?.reservedPlaceholderIDs ?? [])
+            required += openElectivePlaceholders(gap: max(0, Double(degreeMinimum) - prefixHours - suffixHours), placeholders: &placeholders, reservedIDs: context?.reservedPlaceholderIDs ?? [])
         }
+        required = seatingOutsidePrerequisites(
+            in: required, completed: completed.union(languagePlan?.placementCreditCourseIDs() ?? []),
+            placeholders: &placeholders, activeProgramTitle: program.title,
+            reservedIDs: context?.reservedPlaceholderIDs ?? []
+        )
         try Task.checkCancellation()
 
         let genEdCourseIDs: Set<String> = Set(
@@ -1164,6 +1187,24 @@ public struct ScheduleGenerator: Sendable {
         var optionConsumed: [String: Set<String>] = [:]
         for category in Self.specificOptionPartsFirst(program.requirements) {
             if Task.isCancelled { break }
+            if let approval = category.approval {
+                // Approval cannot be inferred from earned or planned ordinary
+                // courses. Keep the obligation on the board until reviewed.
+                let reserved = anchors?.placeholders.values.filter { $0.categoryID == category.id }
+                    .reduce(0.0) { $0 + $1.credits } ?? 0
+                var remaining = max(Double(category.requiredCredits) - reserved, 0)
+                while remaining > 0 {
+                    let id = unusedPlaceholderID(categoryID: category.id, startingAt: 0, placeholders: placeholders,
+                                                 reservedIDs: anchors?.reservedPlaceholderIDs ?? [])
+                    let hours = min(3, remaining)
+                    placeholders[id] = PlaceholderSpec(categoryID: category.id, categoryName: category.name,
+                                                       alternates: [], credits: hours, approval: approval)
+                    result.append(id)
+                    seen.insert(id)
+                    remaining -= hours
+                }
+                continue
+            }
             let optionRequirementID = OptionPartID.parse(category.id)?.requirementID
             let lowerName = legacyKeywordText(category)
             let rule = behavior(for: category)
@@ -2019,6 +2060,12 @@ public struct ScheduleGenerator: Sendable {
     /// primary major's schedule out to the JMU degree credit minimum.
     public static let openElectiveCategoryID = "open-elective"
 
+    /// Selecting a second major must not lower its reviewed degree minimum.
+    private static func applicableDegreeMinimum(for program: Program, additionalPrograms: [Program]) -> Int? {
+        ([program] + additionalPrograms).filter { $0.kind == .major }
+            .compactMap(\.degreeMinimumCredits).max()
+    }
+
     /// Gap between the primary major's declared requirement credits and its
     /// reviewed degree minimum. `totalCredits` is not used because catalog
     /// pages often use it for section subtotals.
@@ -2071,6 +2118,8 @@ public struct ScheduleGenerator: Sendable {
     public func openElectiveGap(for program: Program, additionalPrograms: [Program], languagePlan: ForeignLanguagePlan? = nil,
                                 completedCourseIDs: Set<String> = []) -> Int {
         guard program.kind == .major else { return 0 }
+        var program = program
+        program.degreeMinimumCredits = Self.applicableDegreeMinimum(for: program, additionalPrograms: additionalPrograms)
         var placeholders: [String: PlaceholderSpec] = [:]
         let lists = plannedProgramLists(
             for: program, additionalPrograms: additionalPrograms, completed: [], placeholders: &placeholders,
@@ -2235,6 +2284,78 @@ public struct ScheduleGenerator: Sendable {
         }
         let credited = Set(resolution.satisfiedBy.values).intersection(completed).union(languageEarned)
         return (items, credited.sorted())
+    }
+
+    /// Synthetic category id for a slot that holds a prerequisite no declared
+    /// program lists.
+    public static let prerequisiteSupportCategoryID = "prerequisite-support"
+
+    /// Seats a slot directly ahead of each course whose prerequisite is
+    /// neither in the plan nor on any restricted slot's menu (MATH 220's
+    /// MATH 105). One Open Elective is moved up for each; when none is left,
+    /// as when a second major or minor fills the degree's free credits, a
+    /// slot limited to the missing prerequisite is added. Without a slot the
+    /// course and everything after it in its chain cannot be placed.
+    private func seatingOutsidePrerequisites(
+        in required: [String],
+        completed: Set<String>,
+        placeholders: inout [String: PlaceholderSpec],
+        activeProgramTitle: String?,
+        reservedIDs: Set<String>
+    ) -> [String] {
+        let resolver = PrereqRuleResolver(catalog: catalog)
+        let labPairing = LabPairing(catalog: catalog, activeProgramTitle: activeProgramTitle)
+        let coursesByID = catalog.coursesByID
+        let real = completed.union(required.filter { !PathwayPlaceholder.isPlaceholder($0) })
+        let offered = Set(placeholders.values.filter { $0.repeatOf == nil }.flatMap(\.alternates))
+        // Each set is one missing prerequisite: any course in it supplies it.
+        func unsupported(_ expression: PrereqExpr) -> [Set<String>] {
+            switch expression {
+            case .course(let id):
+                return real.contains(id) || offered.contains(id) ? [] : [[id]]
+            case .all(let children):
+                return children.flatMap(unsupported)
+            case .any(let children):
+                let branches = children.map(unsupported)
+                if branches.contains(where: \.isEmpty) { return [] }
+                if branches.allSatisfy({ $0.count == 1 }) {
+                    return [branches.reduce(into: Set<String>()) { $0.formUnion($1[0]) }]
+                }
+                return branches.min { $0.count < $1.count } ?? []
+            default:
+                return []
+            }
+        }
+
+        var result = required
+        var openSlots = required.filter { placeholders[$0]?.categoryID == Self.openElectiveCategoryID }
+        var seated: [Set<String>] = []
+        for courseID in required where !PathwayPlaceholder.isPlaceholder(courseID) {
+            guard let course = coursesByID[courseID] else { continue }
+            let rule = resolver.rule(for: course, activeProgramTitle: activeProgramTitle)
+            let expression = PrereqExpr.all([rule.prerequisiteExpr, rule.corequisiteExpr])
+                .treatingAsSatisfied(labPairing.pairedCourses(of: courseID))
+            for missing in unsupported(expression) {
+                let candidates = missing.filter { coursesByID[$0] != nil }
+                guard !candidates.isEmpty, !seated.contains(where: { !$0.isDisjoint(with: candidates) }) else { continue }
+                seated.append(candidates)
+                let slot: String
+                if openSlots.isEmpty {
+                    slot = unusedPlaceholderID(categoryID: Self.prerequisiteSupportCategoryID, startingAt: 0, placeholders: placeholders, reservedIDs: reservedIDs)
+                    placeholders[slot] = PlaceholderSpec(
+                        categoryID: Self.prerequisiteSupportCategoryID,
+                        categoryName: "Prerequisite for \(course.code)",
+                        alternates: candidates.sorted(),
+                        credits: Double(candidates.compactMap { coursesByID[$0]?.credits }.max() ?? 3)
+                    )
+                } else {
+                    slot = openSlots.removeFirst()
+                    result.removeAll { $0 == slot }
+                }
+                result.insert(slot, at: result.firstIndex(of: courseID) ?? result.endIndex)
+            }
+        }
+        return result
     }
 
     /// Build Open Elective placeholders to cover `gap` CRH — the shortfall
@@ -2942,8 +3063,9 @@ public struct ProgressCalculator: Sendable {
             let name = namePrefix.isEmpty ? category.name : "\(namePrefix): \(category.name)"
             return CategoryProgress(
                 id: id,
-                name: name,
-                completedCredits: min(completedCredits + repeatCredits, Double(category.requiredCredits)),
+                name: category.allocationReview == nil ? name : "\(name) (allocation review pending)",
+                completedCredits: category.allocationReview == nil
+                    ? min(completedCredits + repeatCredits, Double(category.requiredCredits)) : 0,
                 requiredCredits: category.requiredCredits,
                 verificationStatus: category.verificationStatus
             )
@@ -2975,7 +3097,7 @@ public struct ProgressCalculator: Sendable {
             return categories.indices.compactMap { rows[$0] }
         }
 
-        let primaryCategories = effectiveProgram.requirements.filter { !$0.courseOptions.isEmpty }
+        let primaryCategories = effectiveProgram.requirements.filter { !$0.courseOptions.isEmpty || $0.approval != nil }
         var categories = foldedRows(
             primaryCategories,
             rows: progressRows(primaryCategories),
@@ -3058,7 +3180,7 @@ public struct ProgressCalculator: Sendable {
             // own copy still knows each option requirement's name.
             var extraOptionRequirements = catalog.programsByID[extra.id].map(Self.optionRequirements(in:)) ?? [:]
             extraOptionRequirements.merge(Self.optionRequirements(in: extra)) { _, own in own }
-            let extraCategories = extra.requirements.filter { !$0.courseOptions.isEmpty }
+            let extraCategories = extra.requirements.filter { !$0.courseOptions.isEmpty || $0.approval != nil }
             categories += foldedRows(
                 extraCategories,
                 rows: progressRows(extraCategories, idPrefix: extra.id, namePrefix: prefix),
@@ -3113,7 +3235,8 @@ public struct ProgressCalculator: Sendable {
                 foldedIndex[part.requirementID] = result.count
                 var folded = rowForCategory
                 folded.id = idPrefix.isEmpty ? part.requirementID : "\(idPrefix)::\(part.requirementID)"
-                folded.name = namePrefix.isEmpty ? baseName : "\(namePrefix): \(baseName)"
+                let displayName = category.allocationReview == nil ? baseName : "\(baseName) (allocation review pending)"
+                folded.name = namePrefix.isEmpty ? displayName : "\(namePrefix): \(displayName)"
                 result.append(folded)
             }
         }
@@ -3176,6 +3299,10 @@ public extension Program {
             return category
         }
         effective.requirements = requirements + concentrationRequirements
+        if let totalCredits = concentration.totalCredits {
+            effective.totalCredits = totalCredits
+            effective.degreeMinimumCredits = totalCredits
+        }
         effective.sourceNote = "\(sourceNote) Selected concentration: \(concentration.name)."
         return effective
     }

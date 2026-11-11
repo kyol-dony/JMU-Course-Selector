@@ -248,6 +248,20 @@ final class PlanStore: ObservableObject {
         }
     }
 
+    /// Added minors and second majors whose required pathway isn't chosen.
+    /// They have no effective program yet, so `selectedMinorPrograms()`
+    /// leaves them out; generation stops instead of planning without them.
+    var addedProgramsMissingPathway: [Program] {
+        guard let catalog else { return [] }
+        return plan.minors.compactMap { selection in
+            guard let program = catalog.programsByID[selection.programID],
+                  program.concentrationSelectionRequired, !program.concentrations.isEmpty,
+                  !program.concentrations.contains(where: { $0.id == selection.concentrationID })
+            else { return nil }
+            return program
+        }
+    }
+
     /// Set of course IDs the student has completed (transfer credit + scheduled in active pathway).
     var completedCourseIDs: Set<String> {
         var ids = effectiveAcademicHistory.completedCourseIDs
@@ -385,6 +399,10 @@ final class PlanStore: ObservableObject {
     /// while `resolvedPlaceholders` tracks the mapping for synthetic
     /// progress rows and reversal.
     func resolvePlaceholder(_ placeholderID: String, with chosenCourseID: String) {
+        guard activePathway?.placeholders[placeholderID]?.approval == nil else {
+            errorMessage = "Eligibility needs advisor confirmation. An ordinary course selection cannot resolve an approval task."
+            return
+        }
         let name = scheduleItemName(chosenCourseID)
         let category = activePathway?.placeholders[placeholderID]?.categoryName ?? "this requirement"
         recordScheduleChange(actionName: "Choose \(name)", message: "Chose \(name) for \(category)") {
@@ -889,6 +907,11 @@ final class PlanStore: ObservableObject {
             return
         }
 
+        if let missing = addedProgramsMissingPathway.first {
+            errorMessage = "Choose a pathway for \(missing.title) before generating a plan."
+            return
+        }
+
         scheduleGenerationProgress = ScheduleGenerationProgress(current: 0, total: 3, pathwayName: "Preparing")
         migrateOptionChoices()
 
@@ -965,6 +988,10 @@ final class PlanStore: ObservableObject {
         guard let catalog, let programID = plan.programID, majorSelectionComplete,
               let source = activePathway else {
             errorMessage = "Choose a major and a pathway before regenerating."
+            return
+        }
+        if let missing = addedProgramsMissingPathway.first {
+            errorMessage = "Choose a pathway for \(missing.title) before regenerating."
             return
         }
         do { _ = try AnchoredScheduleContext(source: source, through: cutoff) }
@@ -1665,6 +1692,14 @@ final class PlanStore: ObservableObject {
         // The bundled seed lists programs without their requirements; a
         // concentration can't be judged until the real catalog arrives.
         guard let activeProgram, activeProgram.hasRequirementData else { return }
+        if activeProgram.id == "art-bfa", plan.concentrationID == "art-education",
+           !activeProgram.concentrations.contains(where: { $0.id == "art-education" }) {
+            // A studio area cannot be inferred from an older Art Education
+            // selection. Preserve the saved schedule until the student chooses.
+            setupSheetPresented = true
+            errorMessage = "Art Education now requires a studio area too. Choose a studio area + Art Education in setup. Your existing schedule has been preserved."
+            return
+        }
         if activeProgram.concentrations.isEmpty {
             plan.concentrationID = nil
             return

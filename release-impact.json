@@ -1,6 +1,6 @@
 {
-  "base": "0.1.1-alpha.1+catalog.27",
+  "base": "0.2.0-alpha.1+catalog.27",
   "target": "schedule-board-interaction",
   "impact": "minor",
-  "reason": "Removes the documented Refresh Requirements action from public builds (pre-1.0 breaking change uses minor) and adds release app zips"
+  "reason": "Add approval-backed prose requirements and composed Art Education pathways, preserve legacy schedules, and keep Art completion pending until sharing rules can be allocated."
 }

@@ -1,6 +1,6 @@
 {
-  "base": "0.3.1-alpha.1+catalog.28",
+  "base": "0.4.0-alpha.1+catalog.28",
   "target": "schedule-board-interaction",
   "impact": "minor",
-  "reason": "Promote release onboarding from PR #5 to the first controlled-distribution dev prerelease with bundled installation instructions and visible full build identity, as explicitly requested."
+  "reason": "Remove the destructive Reset App Data workflow from public builds, including distributed dev prereleases; retain it only behind JMU_DEV_TOOLS. Pre-1.0 public workflow removal requires a minor corrective prerelease with migration notes."
 }

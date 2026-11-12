@@ -1623,6 +1623,7 @@ final class PlanStore: ObservableObject {
         }
     }
 
+    #if JMU_DEV_TOOLS
     func resetAppData() {
         do {
             Self.flushPendingAutosaves()
@@ -1639,6 +1640,8 @@ final class PlanStore: ObservableObject {
             errorMessage = "App data could not be cleared: \(error.localizedDescription)"
         }
     }
+
+    #endif
 
     func refreshCatalog() {
         isRefreshingCatalog = true

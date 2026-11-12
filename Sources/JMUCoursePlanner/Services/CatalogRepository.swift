@@ -404,9 +404,8 @@ struct CatalogRepository {
         return directory.appending(path: "catalog_html_cache_v\(Self.cacheSchemaVersion).json")
     }
 
-    /// Release builds keep the downloaded catalog on "Reset App Data" so a
-    /// reset cannot be used to force a fresh catalog pull. Developer builds
-    /// clear it too, returning to a true first-launch state.
+    /// Reset is available only in developer-tool builds. Keep target
+    /// calculation separate so its deletion scope can be tested safely.
     #if JMU_DEV_TOOLS
     nonisolated static let resetClearsCatalog = true
     #else
@@ -421,14 +420,16 @@ struct CatalogRepository {
         return targets
     }
 
-    /// Wipe saved plans (and, in developer builds, the cached HTML catalog).
-    /// Called when the user hits "Reset App Data".
+    #if JMU_DEV_TOOLS
+    /// Developer-only reset to a first-launch state.
     func resetAppData() throws {
         let support = try supportDirectory()
         for target in Self.resetTargets(in: support, includeCatalog: Self.resetClearsCatalog) {
             try? fileManager.removeItem(at: target)
         }
     }
+
+    #endif
 
     private func bundledCatalogURL() throws -> URL {
         let candidates = [

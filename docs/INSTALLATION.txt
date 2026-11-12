@@ -88,8 +88,9 @@ INSTALLING AN UPDATE
 
 Save your plan in the app, then quit it. Download and unzip the new release.
 Drag the new app into Applications and choose Replace if Finder asks.
-This replaces the app, not its separately saved plans. Do not use Reset App
-Data as part of an update. Follow first-open approval again if prompted.
+This replaces the app, not its separately saved plans. Updating does not
+require deleting saved plans or course data. Follow first-open approval
+again if prompted.
 
 APPLE'S INSTRUCTIONS
 

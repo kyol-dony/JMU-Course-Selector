@@ -53,6 +53,14 @@ xattr -cr "$STAGE/$TITLE"
 codesign --force --deep --sign - "$STAGE/$TITLE/$APP_NAME" >&2
 codesign --verify --deep --strict "$STAGE/$TITLE/$APP_NAME" >&2
 
+# A prerelease is still a public build. Fail closed if developer reset UI
+# or reset entry points accidentally survive into the distributable binary.
+BINARY_STRINGS="$(strings -a "$STAGE/$TITLE/$APP_NAME/Contents/MacOS/JMUCoursePlanner")"
+if [[ "$BINARY_STRINGS" == *"Reset App Data"* ]] || [[ "$BINARY_STRINGS" == *"resetAppData"* ]]; then
+  echo "package_release.sh: public app contains developer reset controls; refusing to package." >&2
+  exit 4
+fi
+
 ZIP="$OUT_DIR/$TITLE.zip"
 rm -f "$ZIP"
 (cd "$STAGE" && ditto -c -k --norsrc --noextattr --keepParent "$TITLE" "$ZIP")

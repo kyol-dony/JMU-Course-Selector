@@ -195,6 +195,12 @@ class ArtifactAuditTests(unittest.TestCase):
     def test_guide_must_match_source(self):
         self.assertTrue(any('differs from docs' in f for f in self.audit(self.zip(self.app(), guide=b'Other'))))
 
+    def test_app_entry_must_be_a_bundle_directory(self):
+        folder = pathlib.Path(self.scratch.name) / 'stage' / TITLE
+        write(folder / safeguard.APP_NAME, 'not an app')
+        archive = self.zip(folder / safeguard.APP_NAME)
+        self.assertTrue(any('not an app bundle directory' in f for f in self.audit(archive)))
+
     def test_wrong_archive_layout_fails(self):
         archive = pathlib.Path(self.scratch.name) / 'bad.zip'
         with zipfile.ZipFile(archive, 'w') as bundle:

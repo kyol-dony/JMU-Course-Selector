@@ -318,8 +318,11 @@ def audit_artifact(path, title, root=ROOT, codesign=None):
         guide = folder / GUIDE_NAME
         if guide.is_file() and guide.read_bytes() != (root / GUIDE_SOURCE).read_bytes():
             failures.append(f'{GUIDE_NAME} differs from {GUIDE_SOURCE}')
-        if (folder / APP_NAME).is_dir():
-            failures += audit_app(folder / APP_NAME, version, root, codesign)
+        app = folder / APP_NAME
+        if app.is_dir() and not app.is_symlink():
+            failures += audit_app(app, version, root, codesign)
+        else:
+            failures.append(f'{APP_NAME} is missing or not an app bundle directory')
     return failures
 
 

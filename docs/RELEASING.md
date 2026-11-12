@@ -52,6 +52,16 @@ Each new release also ships the static, plain-language guide in `docs/INSTALLATI
 
 Every published release, pre-release or stable, attaches exactly one app archive named after the release: `JMU Course Planner v<version>.zip`, containing a folder of the same name that holds `JMU Course Planner.app`. Build it only with `script/package_release.sh "<release title>" <output-dir>`, which produces the default public build (universal, optimized, ad-hoc signed). Public builds perform the automatic first-launch catalog refresh but expose no on-demand refresh or live catalog fetching. Never attach any other build. The publish job packages and attaches the archive automatically; a retry uploads it only when missing and never replaces an existing asset.
 
+## Public build safeguard
+
+`script/release_safeguard.py` enforces that every shipped app is the public build. Public builds perform only the automatic first-launch (or stale-cache) catalog refresh. They expose no on-demand refresh, live course-description fetching, catalog PDF download, app-data reset, launch-time overrides, or data read from outside the signed bundle. Any code that does those things must be compiled only behind `#if JMU_DEV_TOOLS` (or `DEBUG`).
+
+- **Source audit** (`source`): runs in the PR Version policy check and before packaging. It fails on developer-only APIs or controls in public code paths. It also fails on catalog refresh calls outside the guarded automatic refresh, and on network requests outside `CatalogRepository.fetchHTML`.
+- **Archive audit** (`artifact`): `package_release.sh` runs it on the finished zip and deletes the zip if the audit fails, so a bad build never reaches upload. It checks the archive layout and the installation guide. It checks that the bundle holds exactly the expected files and that the data files are byte-identical to `Data/` at the shipped commit. It checks that the Info.plist keys match exactly and that `JMUPlannerBuildProfile` is `public`. It checks that the binary is universal, has no developer-tool canary strings, and has a valid code signature.
+- **Post-publication check** (`.github/workflows/release-safeguard.yml`): runs after the publish job, whenever a release is published by other means, and on demand through **Run workflow** with a tag. It downloads the published assets, audits them against the tagged sources, and calibrates by building a developer variant of the same commit. Calibration proves that every canary is still detectable. The developer variant is never uploaded.
+
+When adding a developer tool, gate it and, if the scan cannot see it, add a canary to `CANARIES`. Calibration fails when a canary no longer survives compilation. If the post-publication check fails, treat the release as unsafe to distribute: stop sharing it and ship a corrective version. Do not replace published assets or move tags.
+
 ## Automation and recovery
 
 PR checks validate versions, impact receipts, and new Conventional Commits. Historical commits before policy installation are exempt. CI runs policy tests; publication runs Swift tests against the exact merge SHA first. Patch development merges return before any GitHub write. Minor development versions create pre-releases; stable main versions create stable releases.

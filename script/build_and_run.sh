@@ -26,6 +26,12 @@ export CLANG_MODULE_CACHE_PATH="$ROOT_DIR/.build/ModuleCache"
 pkill -x "$PRODUCT_NAME" >/dev/null 2>&1 || true
 
 read -r -a EXTRA_BUILD_FLAGS <<< "${SWIFT_BUILD_FLAGS:-}"
+# Recorded in Info.plist; script/release_safeguard.py ships only "public".
+case " ${SWIFT_BUILD_FLAGS:-} " in
+  *JMU_DEV_TOOLS*) BUILD_PROFILE="developer" ;;
+  *" -c release "*|*" --configuration release "*) BUILD_PROFILE="public" ;;
+  *) BUILD_PROFILE="debug" ;;
+esac
 swift build --disable-sandbox ${EXTRA_BUILD_FLAGS[@]+"${EXTRA_BUILD_FLAGS[@]}"}
 BUILD_BINARY="$(swift build --disable-sandbox ${EXTRA_BUILD_FLAGS[@]+"${EXTRA_BUILD_FLAGS[@]}"} --show-bin-path)/$PRODUCT_NAME"
 
@@ -54,6 +60,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$BUILD_NUMBER</string>
   <key>JMUPlannerSemanticVersion</key>
   <string>$SEMANTIC_VERSION</string>
+  <key>JMUPlannerBuildProfile</key>
+  <string>$BUILD_PROFILE</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>

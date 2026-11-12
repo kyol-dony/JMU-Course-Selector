@@ -378,24 +378,26 @@ struct CatalogRepository {
     /// file leaves degree requirements without eligible courses rather than
     /// failing the catalog load.
     func bundledDegreeEligibility() -> DegreeEligibility {
-        let candidates = [
-            Bundle.main.url(forResource: "degree_requirement_courses", withExtension: "json"),
-            URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appending(path: "Data/degree_requirement_courses.json")
-        ].compactMap { $0 }
-        guard let url = candidates.first(where: { fileManager.fileExists(atPath: $0.path) }) else { return .empty }
+        guard let url = bundledDataURL("degree_requirement_courses") else { return .empty }
         return (try? DegreeEligibility.load(from: url)) ?? .empty
     }
 
     private func bundledPrereqOverlayURL() throws -> URL {
-        let candidates = [
-            Bundle.main.url(forResource: "prereq_coreq_overrides", withExtension: "json"),
-            URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appending(path: "Data/prereq_coreq_overrides.json")
-        ].compactMap { $0 }
-
-        guard let url = candidates.first(where: { fileManager.fileExists(atPath: $0.path) }) else {
+        guard let url = bundledDataURL("prereq_coreq_overrides") else {
             throw CocoaError(.fileNoSuchFile)
         }
         return url
+    }
+
+    /// Bundled JSON data. Public builds read only the signed app bundle, so a
+    /// working directory cannot substitute catalog data; debug and developer
+    /// builds (`swift run`, `swift test`) also fall back to the checkout's Data/.
+    private func bundledDataURL(_ name: String) -> URL? {
+        var candidates = [Bundle.main.url(forResource: name, withExtension: "json")].compactMap { $0 }
+        #if DEBUG || JMU_DEV_TOOLS
+        candidates.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appending(path: "Data/\(name).json"))
+        #endif
+        return candidates.first { fileManager.fileExists(atPath: $0.path) }
     }
 
     private func cachedHTMLCatalogURL() throws -> URL {
@@ -404,9 +406,8 @@ struct CatalogRepository {
         return directory.appending(path: "catalog_html_cache_v\(Self.cacheSchemaVersion).json")
     }
 
-    /// Release builds keep the downloaded catalog on "Reset App Data" so a
-    /// reset cannot be used to force a fresh catalog pull. Developer builds
-    /// clear it too, returning to a true first-launch state.
+    /// Reset is available only in developer-tool builds. Keep target
+    /// calculation separate so its deletion scope can be tested safely.
     #if JMU_DEV_TOOLS
     nonisolated static let resetClearsCatalog = true
     #else
@@ -421,22 +422,18 @@ struct CatalogRepository {
         return targets
     }
 
-    /// Wipe saved plans (and, in developer builds, the cached HTML catalog).
-    /// Called when the user hits "Reset App Data".
+    #if JMU_DEV_TOOLS
+    /// Developer-only reset to a first-launch state.
     func resetAppData() throws {
         let support = try supportDirectory()
         for target in Self.resetTargets(in: support, includeCatalog: Self.resetClearsCatalog) {
             try? fileManager.removeItem(at: target)
         }
     }
+    #endif
 
     private func bundledCatalogURL() throws -> URL {
-        let candidates = [
-            Bundle.main.url(forResource: "catalog_seed", withExtension: "json"),
-            URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appending(path: "Data/catalog_seed.json")
-        ].compactMap { $0 }
-
-        guard let url = candidates.first(where: { fileManager.fileExists(atPath: $0.path) }) else {
+        guard let url = bundledDataURL("catalog_seed") else {
             throw CocoaError(.fileNoSuchFile)
         }
         return url

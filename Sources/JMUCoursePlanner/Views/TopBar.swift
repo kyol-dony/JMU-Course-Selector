@@ -3,7 +3,9 @@ import PlannerCore
 
 struct TopBar: View {
     @EnvironmentObject private var store: PlanStore
+    #if JMU_DEV_TOOLS
     @State private var confirmsReset = false
+    #endif
     var catalog: Catalog
 
     var body: some View {
@@ -23,6 +25,7 @@ struct TopBar: View {
                 .fill(DesignTokens.Colors.borderSubtle)
                 .frame(height: 1)
         }
+        #if JMU_DEV_TOOLS
         .confirmationDialog(
             "Reset all app data?",
             isPresented: $confirmsReset,
@@ -35,6 +38,7 @@ struct TopBar: View {
                 ? "This removes saved plans and cached catalog data. This action cannot be undone."
                 : "This removes saved plans. This action cannot be undone.")
         }
+        #endif
     }
 
     private var leadingCluster: some View {
@@ -138,8 +142,10 @@ struct TopBar: View {
                     store.startFresh()
                     store.setupSheetPresented = true
                 }
+                #if JMU_DEV_TOOLS
                 Divider()
                 Button("Reset App Data", role: .destructive) { confirmsReset = true }
+                #endif
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 18))

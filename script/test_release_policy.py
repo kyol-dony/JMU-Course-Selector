@@ -172,6 +172,12 @@ class PolicyTests(unittest.TestCase):
             with zipfile.ZipFile(result.stdout.strip()) as archive:
                 self.assertEqual(archive.read(f'{title}/{GUIDE_LABEL}'), INSTALLATION_GUIDE.read_bytes())
                 self.assertIn(f'{title}/JMU Course Planner.app/Contents/MacOS/JMUCoursePlanner', archive.namelist())
+            for forbidden in ('Reset App Data', 'resetAppData'):
+                binary.write_text('mock app includes ' + forbidden)
+                result = subprocess.run([str(root / 'script' / 'package_release.sh'), title, str(root / 'out')],
+                                        env=environment, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 4, result.stderr)
+                self.assertIn('developer reset controls', result.stderr)
 
     def test_package_rejects_non_release_titles(self):
         import subprocess, pathlib

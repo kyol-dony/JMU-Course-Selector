@@ -146,17 +146,36 @@ class PolicyTests(unittest.TestCase):
         if sys.platform != 'darwin':
             self.skipTest('Release packaging uses macOS ditto')
         with tempfile.TemporaryDirectory() as directory:
+            import plistlib, struct
             root = pathlib.Path(directory)
+            repo = pathlib.Path(__file__).resolve().parent.parent
             (root / 'script').mkdir()
-            shutil.copy(pathlib.Path(__file__).with_name('package_release.sh'), root / 'script')
+            for name in ('package_release.sh', 'release_safeguard.py'):
+                shutil.copy(pathlib.Path(__file__).with_name(name), root / 'script')
+            shutil.copytree(repo / 'Sources', root / 'Sources')
             (root / 'docs').mkdir()
             shutil.copy(INSTALLATION_GUIDE, root / 'docs')
             builder = root / 'script' / 'build_and_run.sh'
             builder.write_text('#!/bin/bash\nexit 0\n')
             builder.chmod(0o755)
-            binary = root / 'dist' / 'JMU Course Planner.app' / 'Contents' / 'MacOS' / 'JMUCoursePlanner'
+            # A mock public bundle the release safeguard accepts: matching
+            # data, public Info.plist, and a universal Mach-O header.
+            contents = root / 'dist' / 'JMU Course Planner.app' / 'Contents'
+            (contents / 'Resources').mkdir(parents=True)
+            (root / 'Data').mkdir()
+            for name in ('catalog_seed.json', 'prereq_coreq_overrides.json', 'degree_requirement_courses.json'):
+                (root / 'Data' / name).write_text('{}')
+                (contents / 'Resources' / name).write_text('{}')
+            (contents / 'Info.plist').write_bytes(plistlib.dumps({
+                'CFBundleExecutable': 'JMUCoursePlanner', 'JMUPlannerBuildProfile': 'public',
+                'JMUPlannerSemanticVersion': '0.3.0-alpha.1+catalog.28'}))
+            (contents / '_CodeSignature').mkdir()
+            (contents / '_CodeSignature' / 'CodeResources').write_text('mock signature')
+            binary = contents / 'MacOS' / 'JMUCoursePlanner'
             binary.parent.mkdir(parents=True)
-            binary.write_text('mock app for archive layout test')
+            fat = struct.pack('>II', 0xCAFEBABE, 2) + b''.join(
+                struct.pack('>IIIII', cpu, 0, 0, 0, 0) for cpu in (0x0100000C, 0x01000007))
+            binary.write_bytes(fat + b'mock app for archive layout test')
             tools = root / 'tools'
             tools.mkdir()
             for name in ('codesign', 'xattr'):
@@ -178,6 +197,13 @@ class PolicyTests(unittest.TestCase):
                                         env=environment, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 4, result.stderr)
                 self.assertIn('developer reset controls', result.stderr)
+            # The archive audit rejects developer-tool binaries and deletes the zip.
+            binary.write_bytes(fat + b'Refresh Requirements')
+            result = subprocess.run([str(root / 'script' / 'package_release.sh'), title, str(root / 'out')],
+                                    env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 4, result.stderr)
+            self.assertIn('developer-only Refresh Requirements', result.stderr)
+            self.assertFalse((root / 'out' / f'{title}.zip').exists())
 
     def test_package_rejects_non_release_titles(self):
         import subprocess, pathlib

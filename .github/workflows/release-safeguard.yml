@@ -1,0 +1,77 @@
+name: Release safeguard
+
+# Proves a published release ships the public app: no on-demand catalog
+# refresh, live fetching, catalog-clearing reset, or data read from outside the
+# signed bundle. Releases created by the publish job use GITHUB_TOKEN, which
+# does not raise `release` events, so release-policy.yml calls this workflow
+# directly; the `release` trigger covers releases published any other way.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to verify, for example v0.4.0-alpha.1+catalog.28
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Public build safeguard
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+    steps:
+      - name: Check out safeguard tooling
+        uses: actions/checkout@v4
+        with:
+          path: tooling
+      - name: Check out shipped commit
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag || github.event.release.tag_name }}
+          path: shipped
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          state="$(gh release view "$TAG" --repo "$REPOSITORY" --json isDraft --jq .isDraft)"
+          if [ "$state" != false ]; then
+            echo "::error::$TAG is not a published release"
+            exit 1
+          fi
+          gh release download "$TAG" --repo "$REPOSITORY" --dir "$RUNNER_TEMP/assets"
+          ls -l "$RUNNER_TEMP/assets"
+      - name: Safeguard tests
+        run: python3 -m unittest discover -s tooling/script -p 'test_release_safeguard.py'
+      - name: Audit shipped sources
+        run: python3 tooling/script/release_safeguard.py source --root shipped
+      - name: Audit shipped app archive
+        run: python3 tooling/script/release_safeguard.py release --tag "$TAG" --assets "$RUNNER_TEMP/assets" --root shipped
+      - name: Calibrate against a developer build of the shipped commit
+        working-directory: shipped
+        run: |
+          # Never uploaded. Proves every canary the binary scan relies on is
+          # still present when developer tools are compiled in.
+          export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
+          flags=(--disable-sandbox -c release -Xswiftc -DJMU_DEV_TOOLS --build-path .build/safeguard-dev)
+          swift build "${flags[@]}"
+          python3 ../tooling/script/release_safeguard.py calibrate "$(swift build "${flags[@]}" --show-bin-path)/JMUCoursePlanner"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Release safeguard: \`$TAG\`"
+            echo
+            echo "Result: **${{ job.status }}**. Checks: shipped sources, release asset set, app bundle layout and data, Info.plist build profile, universal binary free of developer-tool canaries, code signature, and canary calibration."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -2,6 +2,7 @@
 """Publish only validated versions; safe to retry an identical commit."""
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -47,6 +48,14 @@ def guide_asset():
 def has_guide_asset(release):
     names = {INSTALLATION_GUIDE.name, GUIDE_LABEL, GUIDE_LABEL.replace(' ', '.')}
     return any(a.get('label') in names or a.get('name') in names for a in release.get('assets', []))
+
+
+def emit_tag(tag):
+    """Hand the published tag to the release safeguard job."""
+    output = os.environ.get('GITHUB_OUTPUT')
+    if output:
+        with open(output, 'a', encoding='utf-8') as handle:
+            handle.write(f'tag={tag}\n')
 
 
 def release_kind(base, head, branch):
@@ -112,9 +121,12 @@ def publish(base, head, branch, repo):
         if not refs or existing['draft'] or existing['prerelease'] != (kind == 'prerelease'):
             raise ValueError(f'{tag} conflicts with an existing draft or release status')
         ensure_app_asset(existing, tag, repo)
+        emit_tag(tag)
         print(existing['html_url'])
         return
-    print(create_release(tag, sha, kind, repo))
+    url = create_release(tag, sha, kind, repo)
+    emit_tag(tag)
+    print(url)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)

@@ -20,6 +20,10 @@ jobs:
           fetch-depth: 0
       - name: Policy tests
         run: python3 -m unittest discover -s script -p 'test_release_policy.py'
+      - name: Release safeguard tests
+        run: python3 -m unittest discover -s script -p 'test_release_safeguard.py'
+      - name: Developer tools stay out of public builds
+        run: python3 script/release_safeguard.py source
       - name: Validate integration
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -40,6 +44,8 @@ jobs:
     runs-on: macos-15
     permissions:
       contents: write
+    outputs:
+      tag: ${{ steps.publish.outputs.tag }}
     # A group per SHA deduplicates reruns without discarding other merge events.
     concurrency:
       group: release-${{ github.ref }}-${{ github.sha }}
@@ -49,6 +55,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Validate tested snapshot and publish eligible version
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -60,3 +67,13 @@ jobs:
           fi
           script/run_tests.sh
           python3 script/publish_release.py --base HEAD^1 --head HEAD --branch "$TARGET_BRANCH" --repo "$REPOSITORY"
+
+  safeguard:
+    name: Release safeguard
+    needs: publish
+    if: needs.publish.outputs.tag != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-safeguard.yml
+    with:
+      tag: ${{ needs.publish.outputs.tag }}

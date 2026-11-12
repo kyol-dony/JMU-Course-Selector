@@ -1,0 +1,102 @@
+JMU COURSE PLANNER — INSTALLATION GUIDE
+Start here. No coding or Terminal commands needed.
+
+BEFORE YOU START
+
+You need a Mac running macOS Sonoma 14 or newer. This download works on
+Apple silicon and Intel Macs. It does not run on Windows, iPhone, or iPad.
+
+Download only from this project's release page:
+https://github.com/kyol-dony/JMU-Course-Selector/releases
+
+This is an unofficial student planning tool, not a JMU registration system.
+Confirm your course requirements with your advisor before registering.
+
+WHY YOUR MAC MAY SHOW A WARNING
+
+This app is not notarized by Apple and does not have an Apple Developer ID
+signature. Apple has not checked this release for malicious software.
+Your Mac may say the developer cannot be verified or Apple cannot check
+the app for malicious software. This does not establish that the app is
+safe or unsafe. Open it only if you trust this project and its download.
+
+1. DOWNLOAD AND INSTALL
+
+1) On the release page, find Assets. Click the app download whose name
+   begins with JMU Course Planner (spaces may appear as dots) and ends
+   in .zip. Do not choose "Source code."
+2) In Finder, open Downloads. Double-click the .zip if it has not already
+   opened. Open the folder it creates.
+3) Drag JMU Course Planner.app into Applications in the Finder sidebar.
+   Finder may hide the .app ending; that is normal.
+4) Open Applications and double-click JMU Course Planner.
+
+2. IF YOUR MAC BLOCKS THE FIRST OPEN
+
+Use these steps only for a developer-verification or Apple-cannot-check
+warning, and only for the copy you downloaded from the project above.
+
+1) Close the warning using Done, Cancel, or OK, whichever appears.
+   Do not choose Move to Trash if you want to continue installing.
+2) Click the Apple menu at the top-left of your screen, then System Settings.
+3) Select Privacy & Security in the sidebar. Scroll down to Security.
+4) Find the message about JMU Course Planner being blocked.
+   Click Open Anyway. On some macOS versions, click Open first to see it.
+5) If macOS asks, use Touch ID or enter your Mac login password to confirm.
+   You do not need an Apple Account password or a developer account.
+6) Click Open if another confirmation appears.
+
+This approves this app specifically. Later, open it normally from
+Applications. A new version may need approval again.
+
+Do not disable your Mac's security protections or grant Full Disk Access
+to install this app. No security-disabling commands are needed.
+
+3. GET STARTED
+
+Keep an internet connection available while the app loads JMU course data.
+Follow setup to choose your major, any additional programs, and prior
+credit. Generated schedules are drafts for discussion with your advisor.
+
+If you import a transcript or save an export, select the file or location
+you want to use. Do not share transcripts or student IDs in public support
+requests. Installation itself needs no camera or microphone access.
+
+IF SOMETHING DOES NOT WORK
+
+No Open Anyway button?
+Try opening the app from Applications again, close the warning, then
+return to Privacy & Security. Apple makes this option available for about
+an hour after an opening attempt. Close and reopen System Settings if needed.
+
+School- or work-managed Mac?
+Your organization may block installation. Ask its IT team for help rather
+than changing organization security settings.
+
+"Will damage your computer," malware, or "app is damaged" warning?
+Stop. These are different from an unidentified-developer warning. Do not
+follow the override steps above. Delete that copy and contact the project
+maintainer. A fresh download from the official release page may help with
+a damaged download; do not force it open if the warning remains.
+
+Need help?
+https://github.com/kyol-dony/JMU-Course-Selector/issues
+Include your macOS version, app version, and exact warning text.
+Leave out your password, transcript, student ID, and other private details.
+
+INSTALLING AN UPDATE
+
+Save your plan in the app, then quit it. Download and unzip the new release.
+Drag the new app into Applications and choose Replace if Finder asks.
+This replaces the app, not its separately saved plans. Do not use Reset App
+Data as part of an update. Follow first-open approval again if prompted.
+
+APPLE'S INSTRUCTIONS
+
+Safely open apps on your Mac:
+https://support.apple.com/en-us/102445
+
+Open an app by overriding security settings:
+https://support.apple.com/guide/mac-help/mh40617/mac
+
+Instructions checked November 2026. Button names can vary by macOS version.

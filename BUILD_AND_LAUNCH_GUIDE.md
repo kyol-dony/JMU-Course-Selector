@@ -10,6 +10,8 @@ Building from source requires Apple's Swift/Xcode command line tools. Use the in
 
 The generated `dist` folder is ignored by Git. Ready-built apps are attached to each GitHub Release as a `.zip`. Local builds and direct-download releases are not notarized.
 
+For ready-built downloads, follow [the installation guide](docs/INSTALLATION.txt). Each new release includes it inside the app ZIP and as a separate **START HERE** download.
+
 If macOS blocks the app because it cannot verify the developer:
 
 1. Try opening the app once, then dismiss the warning.

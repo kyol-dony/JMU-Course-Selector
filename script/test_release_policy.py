@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 from release_policy import parse, transition, validate, publish_kind, check_message, catalog_revision, DEV
-from publish_release import publish
+from publish_release import publish, ensure_app_asset, INSTALLATION_GUIDE, GUIDE_LABEL
 
 
 class PolicyTests(unittest.TestCase):
@@ -87,6 +87,7 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(command[command.index('--target') + 1], 'abc123')
         self.assertEqual(package.call_args.args[0], 'JMU Course Planner v0.2.0-alpha.1+catalog.28')
         self.assertEqual(command[3], '/out/JMU Course Planner v0.2.0-alpha.1+catalog.28.zip#JMU Course Planner v0.2.0-alpha.1+catalog.28.zip')
+        self.assertIn(f'{INSTALLATION_GUIDE}#{GUIDE_LABEL}', command)
         self.assertEqual(command[command.index('--title') + 1], 'JMU Course Planner v0.2.0-alpha.1+catalog.28')
 
     @patch('publish_release.gh')
@@ -102,7 +103,7 @@ class PolicyTests(unittest.TestCase):
     @patch('publish_release.git')
     def test_retry_reuses_existing_release(self, git, gh, package):
         git.side_effect = ['0.1.0-alpha.1+catalog.27', '0.2.0-alpha.1+catalog.28', '{"base":"0.1.0-alpha.1+catalog.27","impact":"minor","target":"schedule-board-interaction","reason":"Support new catalog family"}', 'private static let cacheSchemaVersion = 28', 'abc123', 'abc123 refs/tags/v0.2.0-alpha.1+catalog.28']
-        gh.return_value = '[[{"tag_name":"v0.2.0-alpha.1+catalog.28","draft":false,"prerelease":true,"html_url":"existing-url","assets":[{"name":"JMU.Course.Planner.v0.2.0-alpha.1+catalog.28.zip","label":""}]}]]'
+        gh.return_value = '[[{"tag_name":"v0.2.0-alpha.1+catalog.28","draft":false,"prerelease":true,"html_url":"existing-url","assets":[{"name":"JMU.Course.Planner.v0.2.0-alpha.1+catalog.28.zip","label":""},{"name":"INSTALLATION.txt","label":""}]}]]'
         publish('base', 'head', DEV, 'owner/repo')
         self.assertEqual(gh.call_count, 1)
         package.assert_not_called()
@@ -117,7 +118,60 @@ class PolicyTests(unittest.TestCase):
         upload = gh.call_args.args
         self.assertEqual(upload[:3], ('release', 'upload', 'v0.2.0-alpha.1+catalog.28'))
         self.assertEqual(upload[3], '/out/app.zip#JMU Course Planner v0.2.0-alpha.1+catalog.28.zip')
+        self.assertIn(f'{INSTALLATION_GUIDE}#{GUIDE_LABEL}', upload)
         self.assertNotIn('--clobber', upload)
+
+    @patch('publish_release.package')
+    @patch('publish_release.gh')
+    def test_retry_adds_only_guide_when_app_already_exists(self, gh, package):
+        tag = 'v0.3.0-alpha.1+catalog.28'
+        release = {'assets': [{'name': 'JMU.Course.Planner.' + tag + '.zip'}]}
+        ensure_app_asset(release, tag, 'owner/repo')
+        package.assert_not_called()
+        gh.assert_called_once_with('release', 'upload', tag,
+                                   f'{INSTALLATION_GUIDE}#{GUIDE_LABEL}', '--repo', 'owner/repo')
+
+    @patch('publish_release.package', return_value='/out/app.zip')
+    @patch('publish_release.gh')
+    def test_retry_keeps_existing_guide_when_only_app_missing(self, gh, package):
+        tag = 'v0.3.0-alpha.1+catalog.28'
+        ensure_app_asset({'assets': [{'label': GUIDE_LABEL}]}, tag, 'owner/repo')
+        gh.assert_called_once_with('release', 'upload', tag,
+                                   '/out/app.zip#JMU Course Planner ' + tag + '.zip', '--repo', 'owner/repo')
+
+    def test_package_includes_readable_guide_beside_app(self):
+        # Exercise the real archive layout on macOS without compiling or
+        # launching an app, or claiming to validate its code signature.
+        import os, pathlib, shutil, subprocess, sys, tempfile, zipfile
+        if sys.platform != 'darwin':
+            self.skipTest('Release packaging uses macOS ditto')
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / 'script').mkdir()
+            shutil.copy(pathlib.Path(__file__).with_name('package_release.sh'), root / 'script')
+            (root / 'docs').mkdir()
+            shutil.copy(INSTALLATION_GUIDE, root / 'docs')
+            builder = root / 'script' / 'build_and_run.sh'
+            builder.write_text('#!/bin/bash\nexit 0\n')
+            builder.chmod(0o755)
+            binary = root / 'dist' / 'JMU Course Planner.app' / 'Contents' / 'MacOS' / 'JMUCoursePlanner'
+            binary.parent.mkdir(parents=True)
+            binary.write_text('mock app for archive layout test')
+            tools = root / 'tools'
+            tools.mkdir()
+            for name in ('codesign', 'xattr'):
+                stub = tools / name
+                stub.write_text('#!/bin/bash\nexit 0\n')
+                stub.chmod(0o755)
+            environment = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ['PATH'])
+            environment.pop('SWIFT_BUILD_FLAGS', None)
+            title = 'JMU Course Planner v0.3.0-alpha.1+catalog.28'
+            result = subprocess.run([str(root / 'script' / 'package_release.sh'), title, str(root / 'out')],
+                                    env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with zipfile.ZipFile(result.stdout.strip()) as archive:
+                self.assertEqual(archive.read(f'{title}/{GUIDE_LABEL}'), INSTALLATION_GUIDE.read_bytes())
+                self.assertIn(f'{title}/JMU Course Planner.app/Contents/MacOS/JMUCoursePlanner', archive.namelist())
 
     def test_package_rejects_non_release_titles(self):
         import subprocess, pathlib

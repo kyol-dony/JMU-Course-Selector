@@ -1,6 +1,6 @@
 {
-  "base": "0.3.0-alpha.1+catalog.28",
+  "base": "0.3.1-alpha.1+catalog.28",
   "target": "schedule-board-interaction",
-  "impact": "patch",
-  "reason": "Improve release onboarding with bundled installation instructions and display the existing full build version on development and prerelease app notices."
+  "impact": "minor",
+  "reason": "Promote release onboarding from PR #5 to the first controlled-distribution dev prerelease with bundled installation instructions and visible full build identity, as explicitly requested."
 }

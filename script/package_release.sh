@@ -4,7 +4,8 @@
 # usage: script/package_release.sh "<release title>" <output-dir>
 #
 # Produces <output-dir>/<release title>.zip containing a folder named
-# <release title> that holds "JMU Course Planner.app". The app is the default
+# <release title> that holds "JMU Course Planner.app" and a static installation
+# guide. The app is the default
 # (public) build: universal, optimized, ad-hoc signed.
 set -euo pipefail
 
@@ -12,6 +13,11 @@ TITLE="${1:?release title required}"
 OUT_DIR="${2:?output directory required}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="JMU Course Planner.app"
+GUIDE="$ROOT_DIR/docs/INSTALLATION.txt"
+if [ ! -f "$GUIDE" ]; then
+  echo "package_release.sh: installation guide is missing: $GUIDE" >&2
+  exit 2
+fi
 
 # The title becomes a folder and file name; accept only release titles.
 if ! [[ "$TITLE" =~ ^JMU\ Course\ Planner\ v[0-9A-Za-z.+-]+$ ]] || [[ "$TITLE" == *..* ]]; then
@@ -41,6 +47,7 @@ mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 STAGE="$(mktemp -d)"
 mkdir -p "$STAGE/$TITLE"
+cp "$GUIDE" "$STAGE/$TITLE/START HERE - Installation Guide.txt"
 ditto --norsrc --noextattr --noqtn "$ROOT_DIR/dist/$APP_NAME" "$STAGE/$TITLE/$APP_NAME"
 xattr -cr "$STAGE/$TITLE"
 codesign --force --deep --sign - "$STAGE/$TITLE/$APP_NAME" >&2

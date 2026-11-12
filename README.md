@@ -18,7 +18,7 @@ The app lets students:
 
 ## Quick Start
 
-Download the latest `.zip` from [GitHub Releases](https://github.com/kyol-dony/JMU-Course-Selector/releases), unzip it, and open `JMU Course Planner.app`.
+Download the latest app `.zip` from [GitHub Releases](https://github.com/kyol-dony/JMU-Course-Selector/releases). Open the included **START HERE - Installation Guide.txt**, then move `JMU Course Planner.app` to Applications. The same guide is available as a separate release download and [here](docs/INSTALLATION.txt). It explains first-open approval for this unnotarized app without disabling Mac security protections.
 
 To build from source instead, run `Build App.command`, then open `dist/JMU Course Planner.app` (kept out of Git).
 See [BUILD_AND_LAUNCH_GUIDE.md](BUILD_AND_LAUNCH_GUIDE.md) for requirements and steps.

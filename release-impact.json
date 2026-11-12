@@ -1,6 +1,6 @@
 {
-  "base": "0.2.0-alpha.1+catalog.27",
+  "base": "0.3.0-alpha.1+catalog.28",
   "target": "schedule-board-interaction",
-  "impact": "minor",
-  "reason": "Add approval-backed prose requirements and composed Art Education pathways, preserve legacy schedules, and keep Art completion pending until sharing rules can be allocated."
+  "impact": "patch",
+  "reason": "Improve release onboarding with bundled installation instructions and display the existing full build version on development and prerelease app notices."
 }

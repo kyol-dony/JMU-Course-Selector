@@ -8,6 +8,8 @@ import tempfile
 from release_policy import git, validate, catalog_revision, CATALOG_SOURCE
 
 PACKAGE_SCRIPT = pathlib.Path(__file__).resolve().parent / 'package_release.sh'
+INSTALLATION_GUIDE = PACKAGE_SCRIPT.parent.parent / 'docs' / 'INSTALLATION.txt'
+GUIDE_LABEL = 'START HERE - Installation Guide.txt'
 
 
 def gh(*args):
@@ -35,6 +37,18 @@ def package(title, out_dir):
     return output.strip().splitlines()[-1]
 
 
+def guide_asset():
+    """Expose the same static guide separately, before the app is downloaded."""
+    if not INSTALLATION_GUIDE.is_file():
+        raise FileNotFoundError(f'Installation guide missing: {INSTALLATION_GUIDE}')
+    return f'{INSTALLATION_GUIDE}#{GUIDE_LABEL}'
+
+
+def has_guide_asset(release):
+    names = {INSTALLATION_GUIDE.name, GUIDE_LABEL, GUIDE_LABEL.replace(' ', '.')}
+    return any(a.get('label') in names or a.get('name') in names for a in release.get('assets', []))
+
+
 def release_kind(base, head, branch):
     """Validate the version transition and return its publication kind."""
     previous = git('show', f'{base}:VERSION')
@@ -60,19 +74,25 @@ def find_release(repo, tag):
 
 
 def ensure_app_asset(release, tag, repo):
-    """Retry path: add the app zip if it is missing; never replace an asset."""
+    """Retry path: add missing app/guide assets without replacing existing ones."""
     label = app_asset_label(tag)
-    if has_app_asset(release, label):
+    missing_app = not has_app_asset(release, label)
+    missing_guide = not has_guide_asset(release)
+    if not missing_app and not missing_guide:
         return
     with tempfile.TemporaryDirectory() as out_dir:
+        assets = [guide_asset()] if missing_guide else []
+        if missing_app:
+            assets.insert(0, f'{package(release_title(tag), out_dir)}#{label}')
         # Without --clobber, an upload racing an existing asset fails instead of overwriting it.
-        gh('release', 'upload', tag, f'{package(release_title(tag), out_dir)}#{label}', '--repo', repo)
+        gh('release', 'upload', tag, *assets, '--repo', repo)
 
 
 def create_release(tag, sha, kind, repo):
+    guide = guide_asset()
     with tempfile.TemporaryDirectory() as out_dir:
         asset = package(release_title(tag), out_dir)
-        args = ['release', 'create', tag, f'{asset}#{app_asset_label(tag)}', '--repo', repo, '--target', sha,
+        args = ['release', 'create', tag, f'{asset}#{app_asset_label(tag)}', guide, '--repo', repo, '--target', sha,
                 '--title', release_title(tag), '--generate-notes']
         if kind == 'prerelease':
             args.append('--prerelease')

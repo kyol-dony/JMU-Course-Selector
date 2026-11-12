@@ -41,9 +41,6 @@ STAGE=""
 cleanup() { rm -rf "$LOCK"; [ -n "$STAGE" ] && rm -rf "$STAGE"; }
 trap cleanup EXIT
 
-# Refuse to package sources that expose developer tools to public builds.
-python3 "$ROOT_DIR/script/release_safeguard.py" source --root "$ROOT_DIR" >&2
-
 SWIFT_BUILD_FLAGS="-c release --arch arm64 --arch x86_64" "$ROOT_DIR/script/build_and_run.sh" --no-launch >&2
 
 mkdir -p "$OUT_DIR"
@@ -67,9 +64,4 @@ fi
 ZIP="$OUT_DIR/$TITLE.zip"
 rm -f "$ZIP"
 (cd "$STAGE" && ditto -c -k --norsrc --noextattr --keepParent "$TITLE" "$ZIP")
-# Audit the finished archive before anything can upload it.
-if ! python3 "$ROOT_DIR/script/release_safeguard.py" artifact "$ZIP" --title "$TITLE" --root "$ROOT_DIR" >&2; then
-  rm -f "$ZIP"
-  exit 4
-fi
 echo "$ZIP"

@@ -1,6 +1,6 @@
 {
-  "base": "0.5.0-alpha.1+catalog.28",
+  "base": "0.5.1-alpha.1+catalog.28",
   "target": "schedule-board-interaction",
-  "impact": "patch",
-  "reason": "Add release safeguard tooling and workflow verifying shipped builds exclude developer tools, and restrict the working-directory data fallback to debug/developer builds; no documented app workflow, saved-plan, or PlannerCore API change."
+  "impact": "minor",
+  "reason": "Corrective prerelease superseding v0.5.0: public builds no longer read bundled catalog data from the launch directory (an intentional pre-1.0 removal from public builds, with a migration note), and every shipped archive now carries the public build profile and passes the release safeguard."
 }

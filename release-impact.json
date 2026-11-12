@@ -1,6 +1,6 @@
 {
-  "base": "0.4.0-alpha.1+catalog.28",
+  "base": "0.5.0-alpha.1+catalog.28",
   "target": "schedule-board-interaction",
-  "impact": "minor",
-  "reason": "Remove the destructive Reset App Data workflow from public builds, including distributed dev prereleases; retain it only behind JMU_DEV_TOOLS. Pre-1.0 public workflow removal requires a minor corrective prerelease with migration notes."
+  "impact": "patch",
+  "reason": "Add release safeguard tooling and workflow verifying shipped builds exclude developer tools, and restrict the working-directory data fallback to debug/developer builds; no documented app workflow, saved-plan, or PlannerCore API change."
 }
